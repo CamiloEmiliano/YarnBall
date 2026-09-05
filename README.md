@@ -1,4 +1,4 @@
-# Financial‑RAG Ingestion Module
+# GRAPH‑RAG Ingestion Module
 
 A collection of tiny, single‑purpose Python scripts that fetch raw financial‑news
 payloads, publish them to Kafka, and persist them into the PostgreSQL staging queue
