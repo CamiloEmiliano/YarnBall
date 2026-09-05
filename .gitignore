@@ -7,9 +7,8 @@ data/
 .env.swp
 *.swp
 
-# Graphify temporary caches and snapshot backups
-graphify-out/cache/
-graphify-out/20[0-9][0-9]-*/
+# Graphify codebase analysis artifacts
+graphify-out/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
