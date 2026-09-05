@@ -30,17 +30,17 @@
       "norm_label": "kafkaconsumertests"
     },
     {
-      "label": "_DummyModel",
+      "label": "KafkaProducerDLTTests",
       "file_type": "code",
-      "source_file": "embedding/embedder.py",
+      "source_file": "tests/test_kafka_producer_dlt.py",
       "source_location": "L13",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
-      "id": "embedding_embedder_dummymodel",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "_dummymodel"
+      "id": "tests_test_kafka_producer_dlt_kafkaproducerdlttests",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "kafkaproducerdlttests"
     },
     {
       "label": "_DummyDriver",
@@ -52,7 +52,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummydriver",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "_dummydriver"
     },
     {
@@ -65,21 +65,21 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummysession",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "_dummysession"
     },
     {
-      "label": "SearchRequest",
+      "label": "TestMemgraphConsumer",
       "file_type": "code",
-      "source_file": "rag/retriever/main.py",
+      "source_file": "tests/test_memgraph_consumer.py",
       "source_location": "L9",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
-      "id": "rag_retriever_main_searchrequest",
+      "id": "tests_test_memgraph_consumer_testmemgraphconsumer",
       "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "searchrequest"
+      "community_name": "store_graph_entities",
+      "norm_label": "testmemgraphconsumer"
     },
     {
       "label": "FinnhubClientContractTests",
@@ -234,21 +234,8 @@
       "_origin": "ast",
       "id": "kafka_pipeline_kafka_producer_kafkaproducerfallback",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": "kafkaproducerfallback"
-    },
-    {
-      "label": "KafkaProducerDLTTests",
-      "file_type": "code",
-      "source_file": "tests/test_kafka_producer_dlt.py",
-      "source_location": "L13",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "id": "tests_test_kafka_producer_dlt_kafkaproducerdlttests",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "kafkaproducerdlttests"
     },
     {
       "label": "TestKafkaProducer",
@@ -260,7 +247,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_testkafkaproducer",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": "testkafkaproducer"
     },
     {
@@ -342,6 +329,19 @@
       "norm_label": "kafkaconsumerfallback"
     },
     {
+      "label": "_PsycopgStub",
+      "file_type": "code",
+      "source_file": "tools/init_db.py",
+      "source_location": "L49",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "id": "tools_init_db_psycopgstub",
+      "community": 7,
+      "community_name": "RuntimeError",
+      "norm_label": "_psycopgstub"
+    },
+    {
       "label": "KafkaProducerFallback",
       "file_type": "code",
       "source_file": "tools/utils.py",
@@ -355,17 +355,30 @@
       "norm_label": "kafkaproducerfallback"
     },
     {
-      "label": "TestMemgraphConsumer",
+      "label": "_DummyModel",
       "file_type": "code",
-      "source_file": "tests/test_memgraph_consumer.py",
+      "source_file": "embedding/embedder.py",
+      "source_location": "L13",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "id": "embedding_embedder_dummymodel",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "_dummymodel"
+    },
+    {
+      "label": "SearchRequest",
+      "file_type": "code",
+      "source_file": "rag/retriever/main.py",
       "source_location": "L9",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
-      "id": "tests_test_memgraph_consumer_testmemgraphconsumer",
+      "id": "rag_retriever_main_searchrequest",
       "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "testmemgraphconsumer"
+      "community_name": "pg_connection",
+      "norm_label": "searchrequest"
     },
     {
       "label": "ScrapingWorkerTests",
@@ -379,19 +392,6 @@
       "community": 9,
       "community_name": "scraping_worker.py",
       "norm_label": "scrapingworkertests"
-    },
-    {
-      "label": "_PsycopgStub",
-      "file_type": "code",
-      "source_file": "tools/init_db.py",
-      "source_location": "L49",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "id": "tools_init_db_psycopgstub",
-      "community": 9,
-      "community_name": "scraping_worker.py",
-      "norm_label": "_psycopgstub"
     },
     {
       "label": "_SQLStub",
@@ -491,6 +491,78 @@
       "norm_label": "store_raw()"
     },
     {
+      "label": "_ensure_topics()",
+      "file_type": "code",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L21",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_ensure_topics",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "_ensure_topics()"
+    },
+    {
+      "label": "get_producer()",
+      "file_type": "code",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L153",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_get_producer",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "get_producer()"
+    },
+    {
+      "label": "_init_topic()",
+      "file_type": "code",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L137",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_init_topic",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "_init_topic()"
+    },
+    {
+      "label": "_producer()",
+      "file_type": "code",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L67",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_producer",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "_producer()"
+    },
+    {
+      "label": "publish_message()",
+      "file_type": "code",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L162",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_publish_message",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "publish_message()"
+    },
+    {
+      "label": "send_to_dlt()",
+      "file_type": "code",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L76",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_send_to_dlt",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "send_to_dlt()"
+    },
+    {
       "label": ".test_ingest_message_routes_invalid_json_to_dlt()",
       "file_type": "code",
       "source_file": "tests/test_kafka_consumer.py",
@@ -527,6 +599,30 @@
       "norm_label": ".test_process_message_rejects_malformed_payload()"
     },
     {
+      "label": ".test_get_producer_initialises_dlt_topic()",
+      "file_type": "code",
+      "source_file": "tests/test_kafka_producer_dlt.py",
+      "source_location": "L35",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "tests_test_kafka_producer_dlt_kafkaproducerdlttests_test_get_producer_initialises_dlt_topic",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": ".test_get_producer_initialises_dlt_topic()"
+    },
+    {
+      "label": ".test_malformed_payload_triggers_dlt()",
+      "file_type": "code",
+      "source_file": "tests/test_kafka_producer_dlt.py",
+      "source_location": "L14",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "tests_test_kafka_producer_dlt_kafkaproducerdlttests_test_malformed_payload_triggers_dlt",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": ".test_malformed_payload_triggers_dlt()"
+    },
+    {
       "label": "store_embedding()",
       "file_type": "code",
       "source_file": "tools/utils.py",
@@ -539,78 +635,6 @@
       "norm_label": "store_embedding()"
     },
     {
-      "label": ".encode()",
-      "file_type": "code",
-      "source_file": "embedding/embedder.py",
-      "source_location": "L16",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "embedding_embedder_dummymodel_encode",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": ".encode()"
-    },
-    {
-      "label": ".__init__()",
-      "file_type": "code",
-      "source_file": "embedding/embedder.py",
-      "source_location": "L14",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "embedding_embedder_dummymodel_init",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": ".__init__()"
-    },
-    {
-      "label": "embed_texts()",
-      "file_type": "code",
-      "source_file": "embedding/embedder.py",
-      "source_location": "L23",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "embedding_embedder_embed_texts",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "embed_texts()"
-    },
-    {
-      "label": "_build_dsn()",
-      "file_type": "code",
-      "source_file": "graph/db.py",
-      "source_location": "L17",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "graph_db_build_dsn",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "_build_dsn()"
-    },
-    {
-      "label": "pg_connection()",
-      "file_type": "code",
-      "source_file": "graph/db.py",
-      "source_location": "L32",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "graph_db_pg_connection",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "pg_connection()"
-    },
-    {
-      "label": "store_node_embeddings()",
-      "file_type": "code",
-      "source_file": "graph/embedding_store.py",
-      "source_location": "L8",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "graph_embedding_store_store_node_embeddings",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "store_node_embeddings()"
-    },
-    {
       "label": "_clean_json_response()",
       "file_type": "code",
       "source_file": "graph/graph_store.py",
@@ -619,7 +643,7 @@
       "_origin": "ast",
       "id": "graph_graph_store_clean_json_response",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "_clean_json_response()"
     },
     {
@@ -631,7 +655,7 @@
       "_origin": "ast",
       "id": "graph_graph_store_default_ollama_url",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "_default_ollama_url()"
     },
     {
@@ -643,7 +667,7 @@
       "_origin": "ast",
       "id": "graph_graph_store_extract_entities",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "extract_entities()"
     },
     {
@@ -655,7 +679,7 @@
       "_origin": "ast",
       "id": "graph_graph_store_extract_entities_via_ollama",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "_extract_entities_via_ollama()"
     },
     {
@@ -667,8 +691,44 @@
       "_origin": "ast",
       "id": "graph_graph_store_store_graph_entities",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "store_graph_entities()"
+    },
+    {
+      "label": "_deserialize_message()",
+      "file_type": "code",
+      "source_file": "graph/memgraph_consumer.py",
+      "source_location": "L48",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "graph_memgraph_consumer_deserialize_message",
+      "community": 1,
+      "community_name": "store_graph_entities",
+      "norm_label": "_deserialize_message()"
+    },
+    {
+      "label": "process_graph_message()",
+      "file_type": "code",
+      "source_file": "graph/memgraph_consumer.py",
+      "source_location": "L54",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "graph_memgraph_consumer_process_graph_message",
+      "community": 1,
+      "community_name": "store_graph_entities",
+      "norm_label": "process_graph_message()"
+    },
+    {
+      "label": "run_memgraph_consumer()",
+      "file_type": "code",
+      "source_file": "graph/memgraph_consumer.py",
+      "source_location": "L80",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "graph_memgraph_consumer_run_memgraph_consumer",
+      "community": 1,
+      "community_name": "store_graph_entities",
+      "norm_label": "run_memgraph_consumer()"
     },
     {
       "label": "close_memgraph_driver()",
@@ -679,7 +739,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_close_memgraph_driver",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "close_memgraph_driver()"
     },
     {
@@ -691,7 +751,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummydriver_close",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": ".close()"
     },
     {
@@ -703,7 +763,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummydriver_session",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": ".session()"
     },
     {
@@ -715,7 +775,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummydriver_verify_connectivity",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": ".verify_connectivity()"
     },
     {
@@ -727,7 +787,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummysession_enter",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": ".__enter__()"
     },
     {
@@ -739,7 +799,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummysession_exit",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": ".__exit__()"
     },
     {
@@ -751,7 +811,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummysession_init",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": ".__init__()"
     },
     {
@@ -763,7 +823,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_dummysession_run",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": ".run()"
     },
     {
@@ -775,7 +835,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_get_memgraph_driver",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "get_memgraph_driver()"
     },
     {
@@ -787,68 +847,56 @@
       "_origin": "ast",
       "id": "rag_graph_enricher_enrich_nodes",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "enrich_nodes()"
     },
     {
-      "label": "search()",
+      "label": ".test_deserialize_message()",
       "file_type": "code",
-      "source_file": "rag/retriever/main.py",
-      "source_location": "L14",
+      "source_file": "tests/test_memgraph_consumer.py",
+      "source_location": "L10",
       "_callable": true,
       "_origin": "ast",
-      "id": "rag_retriever_main_search",
+      "id": "tests_test_memgraph_consumer_testmemgraphconsumer_test_deserialize_message",
       "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "search()"
+      "community_name": "store_graph_entities",
+      "norm_label": ".test_deserialize_message()"
     },
     {
-      "label": "fetch_embedding()",
+      "label": ".test_process_graph_message_json_payload()",
       "file_type": "code",
-      "source_file": "tests/test_embedding_store.py",
-      "source_location": "L39",
+      "source_file": "tests/test_memgraph_consumer.py",
+      "source_location": "L22",
       "_callable": true,
       "_origin": "ast",
-      "id": "tests_test_embedding_store_fetch_embedding",
+      "id": "tests_test_memgraph_consumer_testmemgraphconsumer_test_process_graph_message_json_payload",
       "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "fetch_embedding()"
+      "community_name": "store_graph_entities",
+      "norm_label": ".test_process_graph_message_json_payload()"
     },
     {
-      "label": "pg_conn()",
+      "label": ".test_process_graph_message_malformed_payload()",
       "file_type": "code",
-      "source_file": "tests/test_embedding_store.py",
-      "source_location": "L13",
+      "source_file": "tests/test_memgraph_consumer.py",
+      "source_location": "L16",
       "_callable": true,
       "_origin": "ast",
-      "id": "tests_test_embedding_store_pg_conn",
+      "id": "tests_test_memgraph_consumer_testmemgraphconsumer_test_process_graph_message_malformed_payload",
       "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "pg_conn()"
+      "community_name": "store_graph_entities",
+      "norm_label": ".test_process_graph_message_malformed_payload()"
     },
     {
-      "label": "test_store_node_embeddings_basic()",
+      "label": ".test_process_graph_message_raw_string()",
       "file_type": "code",
-      "source_file": "tests/test_embedding_store.py",
-      "source_location": "L55",
+      "source_file": "tests/test_memgraph_consumer.py",
+      "source_location": "L32",
       "_callable": true,
       "_origin": "ast",
-      "id": "tests_test_embedding_store_test_store_node_embeddings_basic",
+      "id": "tests_test_memgraph_consumer_testmemgraphconsumer_test_process_graph_message_raw_string",
       "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "test_store_node_embeddings_basic()"
-    },
-    {
-      "label": "test_upsert_updates_existing_row()",
-      "file_type": "code",
-      "source_file": "tests/test_embedding_store.py",
-      "source_location": "L75",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "tests_test_embedding_store_test_upsert_updates_existing_row",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "test_upsert_updates_existing_row()"
+      "community_name": "store_graph_entities",
+      "norm_label": ".test_process_graph_message_raw_string()"
     },
     {
       "label": "insert_test_embeddings()",
@@ -859,7 +907,7 @@
       "_origin": "ast",
       "id": "tests_test_retriever_insert_test_embeddings",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "insert_test_embeddings()"
     },
     {
@@ -871,7 +919,7 @@
       "_origin": "ast",
       "id": "tests_test_retriever_teardown_module",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "teardown_module()"
     },
     {
@@ -883,7 +931,7 @@
       "_origin": "ast",
       "id": "tests_test_retriever_test_search_endpoint",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "test_search_endpoint()"
     },
     {
@@ -1595,42 +1643,6 @@
       "norm_label": "_db_connection()"
     },
     {
-      "label": "_ensure_topics()",
-      "file_type": "code",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L21",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_ensure_topics",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "_ensure_topics()"
-    },
-    {
-      "label": "get_producer()",
-      "file_type": "code",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L153",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_get_producer",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "get_producer()"
-    },
-    {
-      "label": "_init_topic()",
-      "file_type": "code",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L137",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_init_topic",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "_init_topic()"
-    },
-    {
       "label": ".close()",
       "file_type": "code",
       "source_file": "kafka_pipeline/kafka_producer.py",
@@ -1639,7 +1651,7 @@
       "_origin": "ast",
       "id": "kafka_pipeline_kafka_producer_kafkaproducerfallback_close",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".close()"
     },
     {
@@ -1651,7 +1663,7 @@
       "_origin": "ast",
       "id": "kafka_pipeline_kafka_producer_kafkaproducerfallback_init",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".__init__()"
     },
     {
@@ -1663,68 +1675,8 @@
       "_origin": "ast",
       "id": "kafka_pipeline_kafka_producer_kafkaproducerfallback_send",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".send()"
-    },
-    {
-      "label": "_producer()",
-      "file_type": "code",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L67",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_producer",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "_producer()"
-    },
-    {
-      "label": "publish_message()",
-      "file_type": "code",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L162",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_publish_message",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "publish_message()"
-    },
-    {
-      "label": "send_to_dlt()",
-      "file_type": "code",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L76",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_send_to_dlt",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "send_to_dlt()"
-    },
-    {
-      "label": ".test_get_producer_initialises_dlt_topic()",
-      "file_type": "code",
-      "source_file": "tests/test_kafka_producer_dlt.py",
-      "source_location": "L35",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "tests_test_kafka_producer_dlt_kafkaproducerdlttests_test_get_producer_initialises_dlt_topic",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": ".test_get_producer_initialises_dlt_topic()"
-    },
-    {
-      "label": ".test_malformed_payload_triggers_dlt()",
-      "file_type": "code",
-      "source_file": "tests/test_kafka_producer_dlt.py",
-      "source_location": "L14",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "tests_test_kafka_producer_dlt_kafkaproducerdlttests_test_malformed_payload_triggers_dlt",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": ".test_malformed_payload_triggers_dlt()"
     },
     {
       "label": ".setUp()",
@@ -1735,7 +1687,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_testkafkaproducer_setup",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".setup()"
     },
     {
@@ -1747,7 +1699,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_testkafkaproducer_teardown",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".teardown()"
     },
     {
@@ -1759,7 +1711,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_testkafkaproducer_test_producer_created_with_env_vars",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".test_producer_created_with_env_vars()"
     },
     {
@@ -1771,7 +1723,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_testkafkaproducer_test_producer_fallback_when_kafka_not_installed",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".test_producer_fallback_when_kafka_not_installed()"
     },
     {
@@ -1783,7 +1735,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_testkafkaproducer_test_send_to_dlt_no_producer_logs_and_returns_false",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".test_send_to_dlt_no_producer_logs_and_returns_false()"
     },
     {
@@ -1795,7 +1747,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_testkafkaproducer_test_send_to_dlt_send_raises_exception_returns_false",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".test_send_to_dlt_send_raises_exception_returns_false()"
     },
     {
@@ -1807,7 +1759,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_testkafkaproducer_test_send_to_dlt_successful_send_returns_true",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": ".test_send_to_dlt_successful_send_returns_true()"
     },
     {
@@ -2147,6 +2099,18 @@
       "norm_label": ".__iter__()"
     },
     {
+      "label": ".connect()",
+      "file_type": "code",
+      "source_file": "tools/init_db.py",
+      "source_location": "L50",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "tools_init_db_psycopgstub_connect",
+      "community": 7,
+      "community_name": "RuntimeError",
+      "norm_label": ".connect()"
+    },
+    {
       "label": ".close()",
       "file_type": "code",
       "source_file": "tools/utils.py",
@@ -2183,88 +2147,136 @@
       "norm_label": ".send()"
     },
     {
-      "label": "_deserialize_message()",
+      "label": ".encode()",
       "file_type": "code",
-      "source_file": "graph/memgraph_consumer.py",
-      "source_location": "L48",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "graph_memgraph_consumer_deserialize_message",
-      "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "_deserialize_message()"
-    },
-    {
-      "label": "process_graph_message()",
-      "file_type": "code",
-      "source_file": "graph/memgraph_consumer.py",
-      "source_location": "L54",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "graph_memgraph_consumer_process_graph_message",
-      "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "process_graph_message()"
-    },
-    {
-      "label": "run_memgraph_consumer()",
-      "file_type": "code",
-      "source_file": "graph/memgraph_consumer.py",
-      "source_location": "L80",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "graph_memgraph_consumer_run_memgraph_consumer",
-      "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "run_memgraph_consumer()"
-    },
-    {
-      "label": ".test_deserialize_message()",
-      "file_type": "code",
-      "source_file": "tests/test_memgraph_consumer.py",
-      "source_location": "L10",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "tests_test_memgraph_consumer_testmemgraphconsumer_test_deserialize_message",
-      "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": ".test_deserialize_message()"
-    },
-    {
-      "label": ".test_process_graph_message_json_payload()",
-      "file_type": "code",
-      "source_file": "tests/test_memgraph_consumer.py",
-      "source_location": "L22",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "tests_test_memgraph_consumer_testmemgraphconsumer_test_process_graph_message_json_payload",
-      "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": ".test_process_graph_message_json_payload()"
-    },
-    {
-      "label": ".test_process_graph_message_malformed_payload()",
-      "file_type": "code",
-      "source_file": "tests/test_memgraph_consumer.py",
+      "source_file": "embedding/embedder.py",
       "source_location": "L16",
       "_callable": true,
       "_origin": "ast",
-      "id": "tests_test_memgraph_consumer_testmemgraphconsumer_test_process_graph_message_malformed_payload",
+      "id": "embedding_embedder_dummymodel_encode",
       "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": ".test_process_graph_message_malformed_payload()"
+      "community_name": "pg_connection",
+      "norm_label": ".encode()"
     },
     {
-      "label": ".test_process_graph_message_raw_string()",
+      "label": ".__init__()",
       "file_type": "code",
-      "source_file": "tests/test_memgraph_consumer.py",
+      "source_file": "embedding/embedder.py",
+      "source_location": "L14",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "embedding_embedder_dummymodel_init",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": "embed_texts()",
+      "file_type": "code",
+      "source_file": "embedding/embedder.py",
+      "source_location": "L23",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "embedding_embedder_embed_texts",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "embed_texts()"
+    },
+    {
+      "label": "_build_dsn()",
+      "file_type": "code",
+      "source_file": "graph/db.py",
+      "source_location": "L17",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "graph_db_build_dsn",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "_build_dsn()"
+    },
+    {
+      "label": "pg_connection()",
+      "file_type": "code",
+      "source_file": "graph/db.py",
       "source_location": "L32",
       "_callable": true,
       "_origin": "ast",
-      "id": "tests_test_memgraph_consumer_testmemgraphconsumer_test_process_graph_message_raw_string",
+      "id": "graph_db_pg_connection",
       "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": ".test_process_graph_message_raw_string()"
+      "community_name": "pg_connection",
+      "norm_label": "pg_connection()"
+    },
+    {
+      "label": "store_node_embeddings()",
+      "file_type": "code",
+      "source_file": "graph/embedding_store.py",
+      "source_location": "L8",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "graph_embedding_store_store_node_embeddings",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "store_node_embeddings()"
+    },
+    {
+      "label": "search()",
+      "file_type": "code",
+      "source_file": "rag/retriever/main.py",
+      "source_location": "L14",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "rag_retriever_main_search",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "search()"
+    },
+    {
+      "label": "fetch_embedding()",
+      "file_type": "code",
+      "source_file": "tests/test_embedding_store.py",
+      "source_location": "L39",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "tests_test_embedding_store_fetch_embedding",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "fetch_embedding()"
+    },
+    {
+      "label": "pg_conn()",
+      "file_type": "code",
+      "source_file": "tests/test_embedding_store.py",
+      "source_location": "L13",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "tests_test_embedding_store_pg_conn",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "pg_conn()"
+    },
+    {
+      "label": "test_store_node_embeddings_basic()",
+      "file_type": "code",
+      "source_file": "tests/test_embedding_store.py",
+      "source_location": "L55",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "tests_test_embedding_store_test_store_node_embeddings_basic",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "test_store_node_embeddings_basic()"
+    },
+    {
+      "label": "test_upsert_updates_existing_row()",
+      "file_type": "code",
+      "source_file": "tests/test_embedding_store.py",
+      "source_location": "L75",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "tests_test_embedding_store_test_upsert_updates_existing_row",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "test_upsert_updates_existing_row()"
     },
     {
       "label": "compute_source_hash()",
@@ -2591,18 +2603,6 @@
       "norm_label": "_load_real_psycopg()"
     },
     {
-      "label": ".connect()",
-      "file_type": "code",
-      "source_file": "tools/init_db.py",
-      "source_location": "L50",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "tools_init_db_psycopgstub_connect",
-      "community": 9,
-      "community_name": "scraping_worker.py",
-      "norm_label": ".connect()"
-    },
-    {
       "label": "kafka_consumer.py",
       "file_type": "code",
       "source_file": "kafka_pipeline/kafka_consumer.py",
@@ -2636,6 +2636,39 @@
       "norm_label": "datetime"
     },
     {
+      "label": "kafka_producer.py",
+      "file_type": "code",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "kafka_producer.py"
+    },
+    {
+      "label": "Any",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_py_any",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "any"
+    },
+    {
+      "label": "KafkaProducer",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_py_kafkaproducer",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "kafkaproducer"
+    },
+    {
       "label": "test_kafka_consumer.py",
       "file_type": "code",
       "source_file": "tests/test_kafka_consumer.py",
@@ -2645,6 +2678,28 @@
       "community": 0,
       "community_name": "kafka_consumer.py",
       "norm_label": "test_kafka_consumer.py"
+    },
+    {
+      "label": "test_kafka_producer.py",
+      "file_type": "code",
+      "source_file": "tests/test_kafka_producer.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_kafka_producer",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "test_kafka_producer.py"
+    },
+    {
+      "label": "test_kafka_producer_dlt.py",
+      "file_type": "code",
+      "source_file": "tests/test_kafka_producer_dlt.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_kafka_producer_dlt",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "test_kafka_producer_dlt.py"
     },
     {
       "label": "ValueError",
@@ -2680,6 +2735,72 @@
       "norm_label": "route function calls to the compatibility stub module if it exists. this allows..."
     },
     {
+      "label": "Create the given topic if it does not already exist. Uses KafkaAdminClient;\u2026",
+      "file_type": "rationale",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L138",
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_rationale_138",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "create the given topic if it does not already exist. uses kafkaadminclient;..."
+    },
+    {
+      "label": "Factory that returns a ready\u2011to\u2011use producer and ensures both main and\u2026",
+      "file_type": "rationale",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L154",
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_rationale_154",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "factory that returns a ready\u2010to\u2010use producer and ensures both main and..."
+    },
+    {
+      "label": "Convenient wrapper for sending a JSON\u2011serialised message. Arguments: payload:\u2026",
+      "file_type": "rationale",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L167",
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_rationale_167",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "convenient wrapper for sending a json\u2010serialised message. arguments: payload:..."
+    },
+    {
+      "label": "Create the primary data topic and the dead\u2011letter topic if they do not already\u2026",
+      "file_type": "rationale",
+      "source_file": "kafka_pipeline/kafka_producer.py",
+      "source_location": "L22",
+      "_origin": "ast",
+      "id": "kafka_pipeline_kafka_producer_rationale_22",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "create the primary data topic and the dead\u2010letter topic if they do not already..."
+    },
+    {
+      "label": "A payload that cannot be JSON\u2011encoded (e.g., a set) should cause\u2026",
+      "file_type": "rationale",
+      "source_file": "tests/test_kafka_producer_dlt.py",
+      "source_location": "L15",
+      "_origin": "ast",
+      "id": "tests_test_kafka_producer_dlt_rationale_15",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "a payload that cannot be json\u2010encoded (e.g., a set) should cause..."
+    },
+    {
+      "label": "Calling ``get_producer`` should attempt to create both the main topic and the\u2026",
+      "file_type": "rationale",
+      "source_file": "tests/test_kafka_producer_dlt.py",
+      "source_location": "L36",
+      "_origin": "ast",
+      "id": "tests_test_kafka_producer_dlt_rationale_36",
+      "community": 0,
+      "community_name": "kafka_consumer.py",
+      "norm_label": "calling ``get_producer`` should attempt to create both the main topic and the..."
+    },
+    {
       "label": "Persist a pgvector embedding for an existing row. The vector is stored as a\u2026",
       "file_type": "rationale",
       "source_file": "tools/utils.py",
@@ -2691,50 +2812,6 @@
       "norm_label": "persist a pgvector embedding for an existing row. the vector is stored as a..."
     },
     {
-      "label": "BaseModel",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "id": "basemodel",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "basemodel"
-    },
-    {
-      "label": "embedder.py",
-      "file_type": "code",
-      "source_file": "embedding/embedder.py",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "embedding_embedder",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "embedder.py"
-    },
-    {
-      "label": "db.py",
-      "file_type": "code",
-      "source_file": "graph/db.py",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "graph_db",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "db.py"
-    },
-    {
-      "label": "embedding_store.py",
-      "file_type": "code",
-      "source_file": "graph/embedding_store.py",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "graph_embedding_store",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "embedding_store.py"
-    },
-    {
       "label": "graph_store.py",
       "file_type": "code",
       "source_file": "graph/graph_store.py",
@@ -2742,8 +2819,30 @@
       "_origin": "ast",
       "id": "graph_graph_store",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "graph_store.py"
+    },
+    {
+      "label": "memgraph_consumer.py",
+      "file_type": "code",
+      "source_file": "graph/memgraph_consumer.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "graph_memgraph_consumer",
+      "community": 1,
+      "community_name": "store_graph_entities",
+      "norm_label": "memgraph_consumer.py"
+    },
+    {
+      "label": "Any",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "graph_memgraph_consumer_py_any",
+      "community": 1,
+      "community_name": "store_graph_entities",
+      "norm_label": "any"
     },
     {
       "label": "memgraph_driver.py",
@@ -2753,19 +2852,8 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "memgraph_driver.py"
-    },
-    {
-      "label": "post",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "id": "post",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "post"
     },
     {
       "label": "graph_enricher.py",
@@ -2775,41 +2863,30 @@
       "_origin": "ast",
       "id": "rag_graph_enricher",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "graph_enricher.py"
     },
     {
-      "label": "retriever/main.py",
+      "label": "test_memgraph_consumer.py",
       "file_type": "code",
-      "source_file": "rag/retriever/main.py",
+      "source_file": "tests/test_memgraph_consumer.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "rag_retriever_main",
+      "id": "tests_test_memgraph_consumer",
       "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "retriever/main.py"
+      "community_name": "store_graph_entities",
+      "norm_label": "test_memgraph_consumer.py"
     },
     {
-      "label": "test_embedding_store.py",
-      "file_type": "code",
-      "source_file": "tests/test_embedding_store.py",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "tests_test_embedding_store",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "test_embedding_store.py"
-    },
-    {
-      "label": "fixture",
+      "label": "patch",
       "file_type": "code",
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "tests_test_embedding_store_py_fixture",
+      "id": "tests_test_memgraph_consumer_py_patch",
       "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "fixture"
+      "community_name": "store_graph_entities",
+      "norm_label": "patch"
     },
     {
       "label": "test_retriever.py",
@@ -2819,7 +2896,7 @@
       "_origin": "ast",
       "id": "tests_test_retriever",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "test_retriever.py"
     },
     {
@@ -2830,52 +2907,8 @@
       "_origin": "ast",
       "id": "tests_test_retriever_py_fixture",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "fixture"
-    },
-    {
-      "label": "Return a list of embedding vectors for the supplied texts. The vectors are\u2026",
-      "file_type": "rationale",
-      "source_file": "embedding/embedder.py",
-      "source_location": "L24",
-      "_origin": "ast",
-      "id": "embedding_embedder_rationale_24",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "return a list of embedding vectors for the supplied texts. the vectors are..."
-    },
-    {
-      "label": "Construct a clean DSN for PostgreSQL, respecting custom database names.",
-      "file_type": "rationale",
-      "source_file": "graph/db.py",
-      "source_location": "L18",
-      "_origin": "ast",
-      "id": "graph_db_rationale_18",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "construct a clean dsn for postgresql, respecting custom database names."
-    },
-    {
-      "label": "Return a PostgreSQL connection. Prefers tools.init_db._connect_db, then falls\u2026",
-      "file_type": "rationale",
-      "source_file": "graph/db.py",
-      "source_location": "L33",
-      "_origin": "ast",
-      "id": "graph_db_rationale_33",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "return a postgresql connection. prefers tools.init_db._connect_db, then falls..."
-    },
-    {
-      "label": "Persist embeddings for a list of graph nodes into the PGVECTOR table. Each node\u2026",
-      "file_type": "rationale",
-      "source_file": "graph/embedding_store.py",
-      "source_location": "L9",
-      "_origin": "ast",
-      "id": "graph_embedding_store_rationale_9",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "persist embeddings for a list of graph nodes into the pgvector table. each node..."
     },
     {
       "label": "Extract entities and relationships from text using local LLM.",
@@ -2885,7 +2918,7 @@
       "_origin": "ast",
       "id": "graph_graph_store_rationale_145",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "extract entities and relationships from text using local llm."
     },
     {
@@ -2896,7 +2929,7 @@
       "_origin": "ast",
       "id": "graph_graph_store_rationale_152",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "extract entities and relationships and persist them to memgraph."
     },
     {
@@ -2907,7 +2940,7 @@
       "_origin": "ast",
       "id": "graph_graph_store_rationale_34",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "detect whether running inside docker container or host."
     },
     {
@@ -2918,7 +2951,7 @@
       "_origin": "ast",
       "id": "graph_graph_store_rationale_62",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "extract and parse json from llm output, handling markdown fences or reasoning..."
     },
     {
@@ -2929,8 +2962,30 @@
       "_origin": "ast",
       "id": "graph_graph_store_rationale_89",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "query local ollama server for entity extraction."
+    },
+    {
+      "label": "Extract raw payload text and persist entities/relations to Memgraph.",
+      "file_type": "rationale",
+      "source_file": "graph/memgraph_consumer.py",
+      "source_location": "L55",
+      "_origin": "ast",
+      "id": "graph_memgraph_consumer_rationale_55",
+      "community": 1,
+      "community_name": "store_graph_entities",
+      "norm_label": "extract raw payload text and persist entities/relations to memgraph."
+    },
+    {
+      "label": "Continuously consume messages from Kafka and persist extracted entities to\u2026",
+      "file_type": "rationale",
+      "source_file": "graph/memgraph_consumer.py",
+      "source_location": "L81",
+      "_origin": "ast",
+      "id": "graph_memgraph_consumer_rationale_81",
+      "community": 1,
+      "community_name": "store_graph_entities",
+      "norm_label": "continuously consume messages from kafka and persist extracted entities to..."
     },
     {
       "label": "Close the active Memgraph driver instance if open.",
@@ -2940,7 +2995,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_rationale_120",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "close the active memgraph driver instance if open."
     },
     {
@@ -2951,7 +3006,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_rationale_36",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "in-memory dummy session for testing without a live memgraph instance."
     },
     {
@@ -2962,7 +3017,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_rationale_66",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "dummy driver compatible with the neo4j/memgraph driver interface."
     },
     {
@@ -2973,7 +3028,7 @@
       "_origin": "ast",
       "id": "graph_memgraph_driver_rationale_82",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "return a live memgraph driver if reachable, or a dummy driver for unit testing."
     },
     {
@@ -2984,19 +3039,8 @@
       "_origin": "ast",
       "id": "rag_graph_enricher_rationale_4",
       "community": 1,
-      "community_name": "pg_connection",
+      "community_name": "store_graph_entities",
       "norm_label": "given a list of node ids, pull each node plus its `hops`\u2010hop neighborhood from..."
-    },
-    {
-      "label": "Helper to pull a single row from the embedding table for assertions.",
-      "file_type": "rationale",
-      "source_file": "tests/test_embedding_store.py",
-      "source_location": "L40",
-      "_origin": "ast",
-      "id": "tests_test_embedding_store_rationale_40",
-      "community": 1,
-      "community_name": "pg_connection",
-      "norm_label": "helper to pull a single row from the embedding table for assertions."
     },
     {
       "label": "README.md",
@@ -3407,34 +3451,6 @@
       "norm_label": "rag/__init__.py"
     },
     {
-      "label": "rules/graphify.md",
-      "file_type": "document",
-      "node_kind": "page",
-      "source_file": ".agents/rules/graphify.md",
-      "source_location": "L1",
-      "frontmatter": {
-        "trigger": "always_on",
-        "description": "Consult the graphify knowledge graph at graphify-out/ for codebase and architecture questions."
-      },
-      "_origin": "ast",
-      "id": "agents_rules_graphify",
-      "community": 19,
-      "community_name": "rules/graphify.md",
-      "norm_label": "rules/graphify.md"
-    },
-    {
-      "label": "graphify",
-      "file_type": "document",
-      "node_kind": "heading",
-      "source_file": ".agents/rules/graphify.md",
-      "source_location": "L6",
-      "_origin": "ast",
-      "id": "agents_rules_graphify_graphify",
-      "community": 19,
-      "community_name": "rules/graphify.md",
-      "norm_label": "graphify"
-    },
-    {
       "label": "finnhub_client.py",
       "file_type": "code",
       "source_file": "ingest/finnhub_client.py",
@@ -3655,34 +3671,6 @@
       "norm_label": "feed the same payloads directly to the scraper (bypassing the consumer) and..."
     },
     {
-      "label": "workflows/graphify.md",
-      "file_type": "document",
-      "node_kind": "page",
-      "source_file": ".agents/workflows/graphify.md",
-      "source_location": "L1",
-      "frontmatter": {
-        "name": "graphify",
-        "description": "Turn any folder of files into a navigable knowledge graph"
-      },
-      "_origin": "ast",
-      "id": "agents_workflows_graphify",
-      "community": 20,
-      "community_name": "workflows/graphify.md",
-      "norm_label": "workflows/graphify.md"
-    },
-    {
-      "label": "Workflow: graphify",
-      "file_type": "document",
-      "node_kind": "heading",
-      "source_file": ".agents/workflows/graphify.md",
-      "source_location": "L6",
-      "_origin": "ast",
-      "id": "agents_workflows_graphify_workflow_graphify",
-      "community": 20,
-      "community_name": "workflows/graphify.md",
-      "norm_label": "workflow: graphify"
-    },
-    {
       "label": "test_init_db.py",
       "file_type": "code",
       "source_file": "tests/test_init_db.py",
@@ -3771,61 +3759,6 @@
       "norm_label": "placeholder for ``psycopg2.operationalerror``."
     },
     {
-      "label": "kafka_producer.py",
-      "file_type": "code",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "kafka_producer.py"
-    },
-    {
-      "label": "Any",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_py_any",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "any"
-    },
-    {
-      "label": "KafkaProducer",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_py_kafkaproducer",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "kafkaproducer"
-    },
-    {
-      "label": "test_kafka_producer.py",
-      "file_type": "code",
-      "source_file": "tests/test_kafka_producer.py",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "tests_test_kafka_producer",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "test_kafka_producer.py"
-    },
-    {
-      "label": "test_kafka_producer_dlt.py",
-      "file_type": "code",
-      "source_file": "tests/test_kafka_producer_dlt.py",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "tests_test_kafka_producer_dlt",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "test_kafka_producer_dlt.py"
-    },
-    {
       "label": "patch",
       "file_type": "code",
       "source_file": "",
@@ -3833,74 +3766,8 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_py_patch",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": "patch"
-    },
-    {
-      "label": "Create the given topic if it does not already exist. Uses KafkaAdminClient;\u2026",
-      "file_type": "rationale",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L138",
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_rationale_138",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "create the given topic if it does not already exist. uses kafkaadminclient;..."
-    },
-    {
-      "label": "Factory that returns a ready\u2011to\u2011use producer and ensures both main and\u2026",
-      "file_type": "rationale",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L154",
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_rationale_154",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "factory that returns a ready\u2010to\u2010use producer and ensures both main and..."
-    },
-    {
-      "label": "Convenient wrapper for sending a JSON\u2011serialised message. Arguments: payload:\u2026",
-      "file_type": "rationale",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L167",
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_rationale_167",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "convenient wrapper for sending a json\u2010serialised message. arguments: payload:..."
-    },
-    {
-      "label": "Create the primary data topic and the dead\u2011letter topic if they do not already\u2026",
-      "file_type": "rationale",
-      "source_file": "kafka_pipeline/kafka_producer.py",
-      "source_location": "L22",
-      "_origin": "ast",
-      "id": "kafka_pipeline_kafka_producer_rationale_22",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "create the primary data topic and the dead\u2010letter topic if they do not already..."
-    },
-    {
-      "label": "A payload that cannot be JSON\u2011encoded (e.g., a set) should cause\u2026",
-      "file_type": "rationale",
-      "source_file": "tests/test_kafka_producer_dlt.py",
-      "source_location": "L15",
-      "_origin": "ast",
-      "id": "tests_test_kafka_producer_dlt_rationale_15",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "a payload that cannot be json\u2010encoded (e.g., a set) should cause..."
-    },
-    {
-      "label": "Calling ``get_producer`` should attempt to create both the main topic and the\u2026",
-      "file_type": "rationale",
-      "source_file": "tests/test_kafka_producer_dlt.py",
-      "source_location": "L36",
-      "_origin": "ast",
-      "id": "tests_test_kafka_producer_dlt_rationale_36",
-      "community": 5,
-      "community_name": "kafka_producer.py",
-      "norm_label": "calling ``get_producer`` should attempt to create both the main topic and the..."
     },
     {
       "label": "If producer.send().get() raises, the function logs failure and returns False.",
@@ -3910,7 +3777,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_rationale_113",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": "if producer.send().get() raises, the function logs failure and returns false."
     },
     {
@@ -3921,7 +3788,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_rationale_31",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": "_producer should instantiate kafkaproducer with the bootstrap server from the..."
     },
     {
@@ -3932,7 +3799,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_rationale_48",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": "when the kafka library cannot be imported, the fallback class is used...."
     },
     {
@@ -3943,7 +3810,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_rationale_58",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": "when producer is none, send_to_dlt logs a skip event and returns false."
     },
     {
@@ -3954,7 +3821,7 @@
       "_origin": "ast",
       "id": "tests_test_kafka_producer_rationale_76",
       "community": 5,
-      "community_name": "kafka_producer.py",
+      "community_name": "TestKafkaProducer",
       "norm_label": "a healthy producer should send the event, log success and return true."
     },
     {
@@ -4068,70 +3935,147 @@
       "norm_label": "raised when a message cannot be routed to the dead\u2010letter topic."
     },
     {
-      "label": "memgraph_consumer.py",
-      "file_type": "code",
-      "source_file": "graph/memgraph_consumer.py",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "graph_memgraph_consumer",
-      "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "memgraph_consumer.py"
-    },
-    {
-      "label": "Any",
+      "label": "BaseModel",
       "file_type": "code",
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "graph_memgraph_consumer_py_any",
+      "id": "basemodel",
       "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "any"
+      "community_name": "pg_connection",
+      "norm_label": "basemodel"
     },
     {
-      "label": "test_memgraph_consumer.py",
+      "label": "embedder.py",
       "file_type": "code",
-      "source_file": "tests/test_memgraph_consumer.py",
+      "source_file": "embedding/embedder.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "tests_test_memgraph_consumer",
+      "id": "embedding_embedder",
       "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "test_memgraph_consumer.py"
+      "community_name": "pg_connection",
+      "norm_label": "embedder.py"
     },
     {
-      "label": "patch",
+      "label": "db.py",
+      "file_type": "code",
+      "source_file": "graph/db.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "graph_db",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "db.py"
+    },
+    {
+      "label": "embedding_store.py",
+      "file_type": "code",
+      "source_file": "graph/embedding_store.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "graph_embedding_store",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "embedding_store.py"
+    },
+    {
+      "label": "post",
       "file_type": "code",
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "tests_test_memgraph_consumer_py_patch",
+      "id": "post",
       "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "patch"
+      "community_name": "pg_connection",
+      "norm_label": "post"
     },
     {
-      "label": "Extract raw payload text and persist entities/relations to Memgraph.",
-      "file_type": "rationale",
-      "source_file": "graph/memgraph_consumer.py",
-      "source_location": "L55",
+      "label": "retriever/main.py",
+      "file_type": "code",
+      "source_file": "rag/retriever/main.py",
+      "source_location": "L1",
       "_origin": "ast",
-      "id": "graph_memgraph_consumer_rationale_55",
+      "id": "rag_retriever_main",
       "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "extract raw payload text and persist entities/relations to memgraph."
+      "community_name": "pg_connection",
+      "norm_label": "retriever/main.py"
     },
     {
-      "label": "Continuously consume messages from Kafka and persist extracted entities to\u2026",
-      "file_type": "rationale",
-      "source_file": "graph/memgraph_consumer.py",
-      "source_location": "L81",
+      "label": "test_embedding_store.py",
+      "file_type": "code",
+      "source_file": "tests/test_embedding_store.py",
+      "source_location": "L1",
       "_origin": "ast",
-      "id": "graph_memgraph_consumer_rationale_81",
+      "id": "tests_test_embedding_store",
       "community": 8,
-      "community_name": "process_graph_message",
-      "norm_label": "continuously consume messages from kafka and persist extracted entities to..."
+      "community_name": "pg_connection",
+      "norm_label": "test_embedding_store.py"
+    },
+    {
+      "label": "fixture",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "tests_test_embedding_store_py_fixture",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "fixture"
+    },
+    {
+      "label": "Return a list of embedding vectors for the supplied texts. The vectors are\u2026",
+      "file_type": "rationale",
+      "source_file": "embedding/embedder.py",
+      "source_location": "L24",
+      "_origin": "ast",
+      "id": "embedding_embedder_rationale_24",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "return a list of embedding vectors for the supplied texts. the vectors are..."
+    },
+    {
+      "label": "Construct a clean DSN for PostgreSQL, respecting custom database names.",
+      "file_type": "rationale",
+      "source_file": "graph/db.py",
+      "source_location": "L18",
+      "_origin": "ast",
+      "id": "graph_db_rationale_18",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "construct a clean dsn for postgresql, respecting custom database names."
+    },
+    {
+      "label": "Return a PostgreSQL connection. Prefers tools.init_db._connect_db, then falls\u2026",
+      "file_type": "rationale",
+      "source_file": "graph/db.py",
+      "source_location": "L33",
+      "_origin": "ast",
+      "id": "graph_db_rationale_33",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "return a postgresql connection. prefers tools.init_db._connect_db, then falls..."
+    },
+    {
+      "label": "Persist embeddings for a list of graph nodes into the PGVECTOR table. Each node\u2026",
+      "file_type": "rationale",
+      "source_file": "graph/embedding_store.py",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "graph_embedding_store_rationale_9",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "persist embeddings for a list of graph nodes into the pgvector table. each node..."
+    },
+    {
+      "label": "Helper to pull a single row from the embedding table for assertions.",
+      "file_type": "rationale",
+      "source_file": "tests/test_embedding_store.py",
+      "source_location": "L40",
+      "_origin": "ast",
+      "id": "tests_test_embedding_store_rationale_40",
+      "community": 8,
+      "community_name": "pg_connection",
+      "norm_label": "helper to pull a single row from the embedding table for assertions."
     },
     {
       "label": "scraping_worker.py",
@@ -7554,28 +7498,6 @@
       "_origin": "ast",
       "source": "tools_utils",
       "target": "tools_psycopg2_init",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": ".agents/rules/graphify.md",
-      "source_location": "L6",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "agents_rules_graphify",
-      "target": "agents_rules_graphify_graphify",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": ".agents/workflows/graphify.md",
-      "source_location": "L6",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "agents_workflows_graphify",
-      "target": "agents_workflows_graphify_workflow_graphify",
       "confidence_score": 1.0
     },
     {
@@ -11188,6 +11110,5 @@
       "target": "runtimeerror"
     }
   ],
-  "hyperedges": [],
-  "built_at_commit": "e3a2def540fbd0ee0b70903ec14f0a86fee2f309"
+  "hyperedges": []
 }

@@ -1,260 +1,248 @@
 {
   "embedding/embedder.py": {
     "mtime": 1787460455.81176,
-    "seen": 1788584606.6902106,
+    "seen": 1788389331.6351926,
     "ast_hash": "229c8aa0cf7e96d41d424cfe1c2677e2",
     "semantic_hash": ""
   },
   "graph/__init__.py": {
     "mtime": 1786680180.221272,
-    "seen": 1788584606.6902153,
+    "seen": 1788389331.635197,
     "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "graph/graph_store.py": {
     "mtime": 1788388556.9490225,
-    "seen": 1788584606.69022,
+    "seen": 1788389331.6352017,
     "ast_hash": "ae4fc95cc8702beb5ac1d66968e6714f",
     "semantic_hash": ""
   },
   "ingest/__init__.py": {
     "mtime": 1787889930.951012,
-    "seen": 1788584606.6902232,
+    "seen": 1788389331.6352053,
     "ast_hash": "40e210e051a625ca0a76b42da3d0f6aa",
     "semantic_hash": ""
   },
   "main.py": {
     "mtime": 1787966840.5949817,
-    "seen": 1788584606.690231,
+    "seen": 1788389331.635213,
     "ast_hash": "8468dd2e45cb62a0e3026c52512c36ab",
     "semantic_hash": ""
   },
   "tests/conftest.py": {
     "mtime": 1788150483.8312893,
-    "seen": 1788584606.6902344,
+    "seen": 1788389331.6352162,
     "ast_hash": "7c2160d1cb7998c2e6c209ae77bfeb4c",
     "semantic_hash": ""
   },
   "tests/test_init_db.py": {
     "mtime": 1786779134.6114464,
-    "seen": 1788584606.6902378,
+    "seen": 1788389331.635219,
     "ast_hash": "3b21a775a9c9676c1641cb4e7f6aed2a",
     "semantic_hash": "3b21a775a9c9676c1641cb4e7f6aed2a"
   },
   "tests/test_insert_raw_message.py": {
     "mtime": 1786680443.2702394,
-    "seen": 1788584606.6902385,
+    "seen": 1788389331.63522,
     "ast_hash": "74191962780be66e6d62d62f9f68c94e",
     "semantic_hash": "74191962780be66e6d62d62f9f68c94e"
   },
   "tests/test_kafka_consumer.py": {
     "mtime": 1788247686.2294562,
-    "seen": 1788584606.6902392,
+    "seen": 1788389331.6352208,
     "ast_hash": "d4701e3d8c5372178360529f8e6f3e7f",
     "semantic_hash": ""
   },
   "tests/test_kafka_producer.py": {
     "mtime": 1788247690.971979,
-    "seen": 1788584606.6902401,
+    "seen": 1788389331.6352215,
     "ast_hash": "71ff189412c858f75a8c82ff0944234e",
     "semantic_hash": ""
   },
   "tests/test_kafka_producer_dlt.py": {
     "mtime": 1788247696.7089036,
-    "seen": 1788584606.690241,
+    "seen": 1788389331.6352222,
     "ast_hash": "8aa67413aaf5bde78d032d17e029894f",
     "semantic_hash": ""
   },
   "tools/__init__.py": {
     "mtime": 1786680415.633695,
-    "seen": 1788584606.6902437,
+    "seen": 1788389331.6352255,
     "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "tools/init_db.py": {
     "mtime": 1788388464.6281347,
-    "seen": 1788584606.6902447,
+    "seen": 1788389331.6352262,
     "ast_hash": "c6a5d530b27836478fed6df774b342b6",
     "semantic_hash": ""
   },
   "tools/utils.py": {
     "mtime": 1788150430.4505324,
-    "seen": 1788584606.6902475,
+    "seen": 1788389331.635229,
     "ast_hash": "2f65ca948304ffff8dc756b4a6cb2199",
     "semantic_hash": ""
   },
   "graph/memgraph_driver.py": {
     "mtime": 1787896880.4471726,
-    "seen": 1788584606.6902223,
+    "seen": 1788389331.6352043,
     "ast_hash": "2342a166006eae4a347ed75a03bd40f7",
     "semantic_hash": ""
   },
   "README.md": {
     "mtime": 1787894347.3891847,
-    "seen": 1788584606.690252,
+    "seen": 1788389331.6352308,
     "ast_hash": "3d2d5a71b2da60a7765b0b59c06a1ded",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
     "mtime": 1788247422.9586692,
-    "seen": 1788584606.6902528,
+    "seen": 1788389331.6352315,
     "ast_hash": "29a4475e355ee1905b70213784d21f86",
     "semantic_hash": ""
   },
   "requirements.txt": {
     "mtime": 1788245923.5002694,
-    "seen": 1788584606.6902547,
+    "seen": 1788389331.6352332,
     "ast_hash": "fa5e1ed926bd021b9026d0ac7dc7303b",
     "semantic_hash": ""
   },
   "graph/db.py": {
     "mtime": 1788388785.2853782,
-    "seen": 1788584606.6902175,
+    "seen": 1788389331.635199,
     "ast_hash": "0891aed1909021df1992fd5743a507e7",
     "semantic_hash": ""
   },
   "graph/embedding_store.py": {
     "mtime": 1788388544.7644932,
-    "seen": 1788584606.690219,
+    "seen": 1788389331.6352007,
     "ast_hash": "f776e431d8acb9b032e0043fa4d98acd",
     "semantic_hash": ""
   },
   "rag/__init__.py": {
     "mtime": 1787267925.2123804,
-    "seen": 1788584606.6902318,
+    "seen": 1788389331.6352136,
     "ast_hash": "dfc3f4b577e05749f205f89fb06155a9",
     "semantic_hash": ""
   },
   "rag/graph_enricher.py": {
     "mtime": 1787265437.2591362,
-    "seen": 1788584606.6902325,
+    "seen": 1788389331.6352146,
     "ast_hash": "4daeb8d6586c316b6b892641d40147ef",
     "semantic_hash": ""
   },
   "rag/retriever/main.py": {
     "mtime": 1788150513.5934262,
-    "seen": 1788584606.6902337,
+    "seen": 1788389331.6352153,
     "ast_hash": "04d916d5e8e16367503c2e751134fae3",
     "semantic_hash": ""
   },
   "tests/test_embedding_store.py": {
     "mtime": 1788150508.7456117,
-    "seen": 1788584606.690236,
+    "seen": 1788389331.6352177,
     "ast_hash": "6601390707691bb442bea0ba6c1fb56c",
     "semantic_hash": ""
   },
   "tests/test_retriever.py": {
     "mtime": 1788150526.5498188,
-    "seen": 1788584606.6902423,
+    "seen": 1788389331.6352239,
     "ast_hash": "6e4ad53da22a28c5c7d36903af4ce643",
     "semantic_hash": ""
   },
   "rag/retriever/requirements.txt": {
     "mtime": 1788246307.2539358,
-    "seen": 1788584606.6902535,
+    "seen": 1788389331.6352324,
     "ast_hash": "6555ee4d6f78c426b1901e77dbd91639",
     "semantic_hash": ""
   },
   "ingest/finnhub_client.py": {
     "mtime": 1788247672.34911,
-    "seen": 1788584606.6902242,
+    "seen": 1788389331.6352062,
     "ast_hash": "8958f69c7997ff7ed7d61d25d1146e68",
     "semantic_hash": ""
   },
   "tools/psycopg2/__init__.py": {
     "mtime": 1787782135.2952769,
-    "seen": 1788584606.6902459,
+    "seen": 1788389331.6352272,
     "ast_hash": "ec9435346cef96ee160d003387cba3aa",
     "semantic_hash": ""
   },
   "tools/scheduler.py": {
     "mtime": 1787894337.3539507,
-    "seen": 1788584606.6902466,
+    "seen": 1788389331.6352282,
     "ast_hash": "a176c28366df96d7f3aa9fadb031df53",
     "semantic_hash": ""
   },
   "graph/memgraph_consumer.py": {
     "mtime": 1787890520.5766006,
-    "seen": 1788584606.690221,
+    "seen": 1788389331.6352031,
     "ast_hash": "7c906e9dbf1b58e20f490d79d350fe43",
     "semantic_hash": ""
   },
   "tests/test_memgraph_consumer.py": {
     "mtime": 1787890537.983613,
-    "seen": 1788584606.6902416,
+    "seen": 1788389331.6352232,
     "ast_hash": "96a4e5c160fb2967c03718636b0b4949",
     "semantic_hash": ""
   },
   "tests/test_finnhub_client.py": {
     "mtime": 1787966852.7897916,
-    "seen": 1788584606.6902366,
+    "seen": 1788389331.6352184,
     "ast_hash": "80060ec3f8d56ff2bf9cd402aff4de68",
     "semantic_hash": ""
   },
   "ingest/task_runner.py": {
     "mtime": 1787894309.01997,
-    "seen": 1788584606.6902263,
+    "seen": 1788389331.635208,
     "ast_hash": "53a0b5426083642a71ec9cec3b07260d",
     "semantic_hash": ""
   },
   "ingest/scraping_worker.py": {
     "mtime": 1788388564.9834788,
-    "seen": 1788584606.6902254,
+    "seen": 1788389331.635207,
     "ast_hash": "786b6d1e8040d3365d859f431ada25bd",
     "semantic_hash": ""
   },
   "tests/test_scraping_worker.py": {
     "mtime": 1788161053.1954422,
-    "seen": 1788584606.690243,
+    "seen": 1788389331.6352248,
     "ast_hash": "e45e20dd2db19c5b0125b1f7e34c6736",
     "semantic_hash": ""
   },
   "kafka_pipeline/__init__.py": {
     "mtime": 1788247667.0054734,
-    "seen": 1788584606.6902275,
+    "seen": 1788389331.6352086,
     "ast_hash": "e5e77c5f7da6d24500ed927b7c08f66b",
     "semantic_hash": ""
   },
   "kafka_pipeline/kafka_consumer.py": {
     "mtime": 1787289348.883109,
-    "seen": 1788584606.6902285,
+    "seen": 1788389331.63521,
     "ast_hash": "41d5be36b6dfdc1a1820c855a4b61300",
     "semantic_hash": ""
   },
   "kafka_pipeline/kafka_driver.py": {
     "mtime": 1787890106.5027058,
-    "seen": 1788584606.6902292,
+    "seen": 1788389331.6352108,
     "ast_hash": "d32e08960aea4b3ae00e5a0d45f51fad",
     "semantic_hash": ""
   },
   "kafka_pipeline/kafka_producer.py": {
     "mtime": 1787289358.0563357,
-    "seen": 1788584606.6902301,
+    "seen": 1788389331.6352117,
     "ast_hash": "69dba29ea7ae13ee0677a36abf604290",
     "semantic_hash": ""
   },
   "tests/perf_test_scraper.py": {
     "mtime": 1788373285.875651,
-    "seen": 1788584606.6902354,
+    "seen": 1788389331.635217,
     "ast_hash": "b7c63389449883557c6a7a2b99a16102",
     "semantic_hash": ""
   },
   "PLAN_OF_ACTION.md": {
     "mtime": 1788389326.0059454,
-    "seen": 1788584606.690251,
+    "seen": 1788389331.63523,
     "ast_hash": "b4ed666c780d97064ec9a338c003a957",
-    "semantic_hash": ""
-  },
-  ".agents/rules/graphify.md": {
-    "mtime": 1787038737.1633604,
-    "seen": 1788584606.6902485,
-    "ast_hash": "f1e53ecc9194573d3c28fc116c743a2e",
-    "semantic_hash": ""
-  },
-  ".agents/workflows/graphify.md": {
-    "mtime": 1787038737.1636198,
-    "seen": 1788584606.6902494,
-    "ast_hash": "6d73634a678cf1e1c71930adf80bd1f0",
     "semantic_hash": ""
   }
 }
