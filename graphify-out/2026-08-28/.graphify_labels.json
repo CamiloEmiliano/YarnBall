@@ -1,0 +1,19 @@
+{
+  "0": "kafka_producer.py",
+  "1": "graph_store.py",
+  "2": "finnhub_client.py",
+  "3": "FinnhubClientContractTests",
+  "4": "psycopg2/__init__.py",
+  "5": "kafka_consumer.py",
+  "6": "utils.py",
+  "7": "RuntimeError",
+  "8": "pg_connection",
+  "10": "Financial‑RAG Ingestion Module",
+  "12": "task_runner.py",
+  "13": "graph/__init__.py",
+  "14": "kafka/__init__.py",
+  "15": "conftest.py",
+  "16": "tools/__init__.py",
+  "18": "rag/__init__.py",
+  "20": "_Client"
+}

@@ -1,0 +1,131 @@
+# ------------------------------------------------------------------------------
+services:
+  memgraph:
+    image: memgraph/memgraph-mage:latest
+    container_name: memgraph
+    ports:
+      - "${MEMGRAPH_PORT:-7687}:7687"
+
+    environment:
+      - MEMGRAPH_ENABLE_UI=1
+      - MEMGRAPH_USER=${MEMGRAPH_USER}
+      - MEMGRAPH_PASSWORD=${MEMGRAPH_PASSWORD}
+    restart: unless-stopped
+
+  # Memgraph Lab (UI) service
+  memgraph_lab:
+    image: memgraph/lab:latest
+    container_name: memgraph_lab
+    ports:
+      - "${MEMGRAPH_UI_PORT:-3000}:3000"
+    environment:
+      - QUICK_CONNECT_MG_HOST=memgraph
+      - QUICK_CONNECT_MG_PORT=7687
+    depends_on:
+      - memgraph
+    restart: unless-stopped
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: graphrag_pg
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    env_file: .env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: financial_rag
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+  # Kafka service (KRaft mode, no Zookeeper)
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+
+  # Sidecar service that runs DB initialisation once
+  db_init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: graphrag_finance:latest
+    container_name: graphrag_db_init
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "tools/init_db.py"]
+    restart: no
+    mem_limit: 1g
+
+  # Scheduler service that periodically runs Finnhub ingestion via APScheduler
+  finnhub_scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: graphrag_finance:latest
+    container_name: graphrag_scheduler
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db_init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      FINANCIAL_RAG_DB: ${FINANCIAL_RAG_DB}
+    command: ["python", "-m", "tools.scheduler"]
+# ------------------------------------------------------------------------------
+
+  retriever:
+    build:
+      context: .
+      dockerfile: rag/retriever/Dockerfile
+    image: graphrag_retriever:latest
+    container_name: graphrag_retriever
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - postgres
+      - memgraph
+    ports:
+      - "8000:8000"
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: graphrag_finance:latest
+    container_name: graphrag_scraper
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - kafka
+      - postgres
+      - db_init
+    command: ["python", "-m", "ingest.scraping_worker"]
+
+volumes:
+  pgdata:

@@ -1,0 +1,21 @@
+{
+  "0": "kafka_consumer.py",
+  "1": "store_graph_entities",
+  "2": "finnhub_client.py",
+  "3": "InitDbTests",
+  "4": "psycopg2/__init__.py",
+  "5": "TestKafkaProducer",
+  "6": "utils.py",
+  "7": "RuntimeError",
+  "8": "pg_connection",
+  "9": "scraping_worker.py",
+  "10": "Financial‑RAG Ingestion Module",
+  "11": "FinnhubClientContractTests",
+  "12": "task_runner.py",
+  "13": "graph/__init__.py",
+  "14": "kafka_pipeline/__init__.py",
+  "15": "conftest.py",
+  "16": "tools/__init__.py",
+  "17": "3. Step-by-Step Implementation Roadmap",
+  "18": "rag/__init__.py"
+}

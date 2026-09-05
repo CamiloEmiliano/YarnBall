@@ -1,0 +1,410 @@
+{
+  "communities": {
+    "0": [
+      "kafka_kafka_driver",
+      "kafka_kafka_driver_make_envelope",
+      "kafka_kafka_driver_py_any",
+      "kafka_kafka_driver_rationale_16",
+      "kafka_kafka_driver_rationale_44",
+      "kafka_kafka_driver_send_record",
+      "kafka_kafka_producer",
+      "kafka_kafka_producer_ensure_topics",
+      "kafka_kafka_producer_get_producer",
+      "kafka_kafka_producer_init_topic",
+      "kafka_kafka_producer_kafkaproducerfallback",
+      "kafka_kafka_producer_kafkaproducerfallback_close",
+      "kafka_kafka_producer_kafkaproducerfallback_init",
+      "kafka_kafka_producer_kafkaproducerfallback_send",
+      "kafka_kafka_producer_producer",
+      "kafka_kafka_producer_publish_message",
+      "kafka_kafka_producer_py_any",
+      "kafka_kafka_producer_py_kafkaproducer",
+      "kafka_kafka_producer_rationale_141",
+      "kafka_kafka_producer_rationale_157",
+      "kafka_kafka_producer_rationale_170",
+      "kafka_kafka_producer_rationale_22",
+      "kafka_kafka_producer_send_to_dlt",
+      "tests_test_kafka_producer",
+      "tests_test_kafka_producer_dlt",
+      "tests_test_kafka_producer_dlt_kafkaproducerdlttests",
+      "tests_test_kafka_producer_dlt_kafkaproducerdlttests_test_get_producer_initialises_dlt_topic",
+      "tests_test_kafka_producer_dlt_kafkaproducerdlttests_test_malformed_payload_triggers_dlt",
+      "tests_test_kafka_producer_dlt_rationale_15",
+      "tests_test_kafka_producer_dlt_rationale_36"
+    ],
+    "1": [
+      "graph_graph_store",
+      "graph_graph_store_close_memgraph_driver",
+      "graph_graph_store_dummychat",
+      "graph_graph_store_dummychat_create",
+      "graph_graph_store_dummychat_init",
+      "graph_graph_store_dummychoice",
+      "graph_graph_store_dummychoice_init",
+      "graph_graph_store_dummydriver",
+      "graph_graph_store_dummydriver_session",
+      "graph_graph_store_dummymessage",
+      "graph_graph_store_dummymessage_init",
+      "graph_graph_store_dummysession",
+      "graph_graph_store_dummysession_enter",
+      "graph_graph_store_dummysession_exit",
+      "graph_graph_store_dummysession_run",
+      "graph_graph_store_extract_entities_with_qwen",
+      "graph_graph_store_get_memgraph_driver",
+      "graph_graph_store_graphdatabase",
+      "graph_graph_store_graphdatabase_driver",
+      "graph_graph_store_openai",
+      "graph_graph_store_openai_init",
+      "graph_graph_store_rationale_110",
+      "graph_graph_store_store_graph_entities",
+      "ingest_memgraph_consumer",
+      "ingest_memgraph_consumer_deserialize_message",
+      "ingest_memgraph_consumer_rationale_19",
+      "ingest_memgraph_consumer_run_memgraph_consumer"
+    ],
+    "2": [
+      "embedding_embedder",
+      "embedding_embedder_dummymodel",
+      "embedding_embedder_dummymodel_encode",
+      "embedding_embedder_dummymodel_init",
+      "embedding_embedder_embed_texts",
+      "embedding_embedder_rationale_31",
+      "kafka_kafka_consumer",
+      "kafka_kafka_consumer_call",
+      "kafka_kafka_consumer_consumererror",
+      "kafka_kafka_consumer_deserialize_message",
+      "kafka_kafka_consumer_ingest_message",
+      "kafka_kafka_consumer_is_valid_payload",
+      "kafka_kafka_consumer_process_message",
+      "kafka_kafka_consumer_py_any",
+      "kafka_kafka_consumer_py_datetime",
+      "kafka_kafka_consumer_rationale_65",
+      "kafka_kafka_consumer_rationale_85",
+      "kafka_kafka_consumer_run_consumer",
+      "kafka_kafka_consumer_store_raw",
+      "tests_test_kafka_consumer",
+      "tests_test_kafka_consumer_kafkaconsumertests",
+      "tests_test_kafka_consumer_kafkaconsumertests_test_ingest_message_routes_invalid_json_to_dlt",
+      "tests_test_kafka_consumer_kafkaconsumertests_test_ingest_message_writes_valid_payload",
+      "tests_test_kafka_consumer_kafkaconsumertests_test_process_message_rejects_malformed_payload",
+      "valueerror"
+    ],
+    "3": [
+      "ingest_api_ingest",
+      "ingest_api_ingest_alphavantage_params",
+      "ingest_api_ingest_alphavantage_response_ok",
+      "ingest_api_ingest_date_range",
+      "ingest_api_ingest_fetch_free_historical_news",
+      "ingest_api_ingest_fetch_guardian_all_pages",
+      "ingest_api_ingest_fetch_json_if_available",
+      "ingest_api_ingest_fetch_newsapi_all_pages",
+      "ingest_api_ingest_finnhub_params",
+      "ingest_api_ingest_get_json",
+      "ingest_api_ingest_guardian_params",
+      "ingest_api_ingest_guardian_response_ok",
+      "ingest_api_ingest_is_api_available",
+      "ingest_api_ingest_newsapi_params",
+      "ingest_api_ingest_newsapi_response_ok",
+      "ingest_api_ingest_process_alphavantage",
+      "ingest_api_ingest_process_finnhub",
+      "ingest_api_ingest_process_guardian",
+      "ingest_api_ingest_process_newsapi",
+      "ingest_api_ingest_py_any",
+      "ingest_api_ingest_py_retry",
+      "ingest_api_ingest_rationale_269",
+      "ingest_api_ingest_rationale_357",
+      "ingest_api_ingest_rationale_36"
+    ],
+    "4": [
+      "testcase",
+      "tests_test_insert_raw_message",
+      "tests_test_insert_raw_message_insertrawmessagetests",
+      "tests_test_insert_raw_message_insertrawmessagetests_setup",
+      "tests_test_insert_raw_message_insertrawmessagetests_teardown",
+      "tests_test_insert_raw_message_insertrawmessagetests_test_full_payload_is_inserted",
+      "tests_test_insert_raw_message_insertrawmessagetests_test_missing_optional_fields",
+      "tools_utils",
+      "tools_utils_db_connection",
+      "tools_utils_insert_raw_message",
+      "tools_utils_kafka_producer",
+      "tools_utils_payload_hash",
+      "tools_utils_py_datetime",
+      "tools_utils_py_kafkaproducer",
+      "tools_utils_py_retry",
+      "tools_utils_rationale_176",
+      "tools_utils_rationale_203",
+      "tools_utils_rationale_64",
+      "tools_utils_rationale_87",
+      "tools_utils_store_embedding",
+      "tools_utils_store_raw"
+    ],
+    "5": [
+      "feedparserdict",
+      "ingest_kafka_driver",
+      "ingest_kafka_driver_rationale_14",
+      "ingest_kafka_driver_send_record",
+      "ingest_rss_ingest",
+      "ingest_rss_ingest_fetch_rss",
+      "ingest_rss_ingest_fetch_rss_historical_news",
+      "ingest_rss_ingest_is_feed_available",
+      "ingest_rss_ingest_parse_feed_if_available",
+      "ingest_rss_ingest_process_investing_rss",
+      "ingest_rss_ingest_process_yahoo_rss",
+      "ingest_rss_ingest_published_date",
+      "ingest_rss_ingest_rationale_110",
+      "ingest_rss_ingest_rationale_123",
+      "ingest_rss_ingest_rationale_45",
+      "ingest_rss_ingest_yahoo_rss_url"
+    ],
+    "6": [
+      "tests_test_init_db",
+      "tests_test_init_db_initdbtests",
+      "tests_test_init_db_initdbtests_test_create_queue_table_runs_schema",
+      "tests_test_init_db_initdbtests_test_ensure_database_creates_missing_database",
+      "tests_test_init_db_initdbtests_test_get_dsn_appends_database_name",
+      "tests_test_init_db_initdbtests_test_get_dsn_keeps_existing_database_name",
+      "tests_test_init_db_py_patch",
+      "tools_init_db",
+      "tools_init_db_create_queue_table",
+      "tools_init_db_ensure_database",
+      "tools_init_db_get_dsn",
+      "tools_init_db_rationale_1",
+      "tools_init_db_rationale_40",
+      "tools_init_db_rationale_63",
+      "tools_init_db_rationale_90"
+    ],
+    "7": [
+      "tests_test_kafka_producer_py_patch",
+      "tests_test_kafka_producer_rationale_113",
+      "tests_test_kafka_producer_rationale_31",
+      "tests_test_kafka_producer_rationale_48",
+      "tests_test_kafka_producer_rationale_58",
+      "tests_test_kafka_producer_rationale_76",
+      "tests_test_kafka_producer_testkafkaproducer",
+      "tests_test_kafka_producer_testkafkaproducer_setup",
+      "tests_test_kafka_producer_testkafkaproducer_teardown",
+      "tests_test_kafka_producer_testkafkaproducer_test_producer_created_with_env_vars",
+      "tests_test_kafka_producer_testkafkaproducer_test_producer_fallback_when_kafka_not_installed",
+      "tests_test_kafka_producer_testkafkaproducer_test_send_to_dlt_no_producer_logs_and_returns_false",
+      "tests_test_kafka_producer_testkafkaproducer_test_send_to_dlt_send_raises_exception_returns_false",
+      "tests_test_kafka_producer_testkafkaproducer_test_send_to_dlt_successful_send_returns_true"
+    ],
+    "8": [
+      "kafka_kafka_consumer_dltqueueerror",
+      "kafka_kafka_consumer_kafkaconsumerfallback",
+      "kafka_kafka_consumer_kafkaconsumerfallback_close",
+      "kafka_kafka_consumer_kafkaconsumerfallback_commit",
+      "kafka_kafka_consumer_kafkaconsumerfallback_init",
+      "kafka_kafka_consumer_kafkaconsumerfallback_iter",
+      "kafka_kafka_consumer_rationale_68",
+      "runtimeerror",
+      "tools_utils_kafkaproducerfallback",
+      "tools_utils_kafkaproducerfallback_close",
+      "tools_utils_kafkaproducerfallback_init",
+      "tools_utils_kafkaproducerfallback_send"
+    ],
+    "9": [
+      "tests_test_api_ingest",
+      "tests_test_api_ingest_apiingestcontracttests",
+      "tests_test_api_ingest_apiingestcontracttests_setup",
+      "tests_test_api_ingest_apiingestcontracttests_test_alphavantage_params_contract",
+      "tests_test_api_ingest_apiingestcontracttests_test_fetch_free_historical_news_processes_available_sources",
+      "tests_test_api_ingest_apiingestcontracttests_test_finnhub_processes_top_level_list_payload",
+      "tests_test_api_ingest_apiingestcontracttests_test_guardian_pagination_stops_at_last_page",
+      "tests_test_api_ingest_apiingestcontracttests_test_guardian_params_contract",
+      "tests_test_api_ingest_apiingestcontracttests_test_newsapi_and_alphavantage_error_payloads",
+      "tests_test_api_ingest_apiingestcontracttests_test_newsapi_pagination_stops_when_page_size_covers_total_results",
+      "tests_test_api_ingest_apiingestcontracttests_test_newsapi_params_contract"
+    ],
+    "10": [
+      "tests_test_rss_ingest",
+      "tests_test_rss_ingest_py_patch",
+      "tests_test_rss_ingest_rssingesttests",
+      "tests_test_rss_ingest_rssingesttests_test_fetch_rss_historical_news_uses_store_raw",
+      "tests_test_rss_ingest_rssingesttests_test_process_yahoo_rss_normalizes_payload",
+      "tests_test_rss_ingest_rssingesttests_test_published_date_handles_struct_time"
+    ],
+    "11": [
+      "main",
+      "main_rationale_15",
+      "main_rationale_27",
+      "main_run_all",
+      "main_run_coroutine"
+    ],
+    "12": [
+      "ingest_init",
+      "ingest_init_rationale_1"
+    ],
+    "13": [
+      "graph_init"
+    ],
+    "14": [
+      "kafka_init"
+    ],
+    "15": [
+      "tests_conftest"
+    ],
+    "16": [
+      "tools_init"
+    ]
+  },
+  "cohesion": {
+    "0": 0.11494252873563218,
+    "1": 0.10826210826210826,
+    "2": 0.14333333333333334,
+    "3": 0.20652173913043478,
+    "4": 0.1380952380952381,
+    "5": 0.225,
+    "6": 0.1619047619047619,
+    "7": 0.18681318681318682,
+    "8": 0.18181818181818182,
+    "9": 0.18181818181818182,
+    "10": 0.3333333333333333,
+    "11": 0.5,
+    "12": 1.0,
+    "13": 1.0,
+    "14": 1.0,
+    "15": 1.0,
+    "16": 1.0
+  },
+  "gods": [
+    {
+      "id": "kafka_kafka_producer_publish_message",
+      "label": "publish_message()",
+      "degree": 12
+    },
+    {
+      "id": "kafka_kafka_producer_send_to_dlt",
+      "label": "send_to_dlt()",
+      "degree": 11
+    },
+    {
+      "id": "ingest_api_ingest_fetch_free_historical_news",
+      "label": "fetch_free_historical_news()",
+      "degree": 11
+    },
+    {
+      "id": "tools_utils_insert_raw_message",
+      "label": "insert_raw_message()",
+      "degree": 11
+    },
+    {
+      "id": "tests_test_api_ingest_apiingestcontracttests",
+      "label": "ApiIngestContractTests",
+      "degree": 10
+    },
+    {
+      "id": "tests_test_kafka_producer_testkafkaproducer",
+      "label": "TestKafkaProducer",
+      "degree": 9
+    },
+    {
+      "id": "kafka_kafka_consumer_run_consumer",
+      "label": "run_consumer()",
+      "degree": 9
+    },
+    {
+      "id": "kafka_kafka_producer_get_producer",
+      "label": "get_producer()",
+      "degree": 8
+    },
+    {
+      "id": "graph_graph_store_store_graph_entities",
+      "label": "store_graph_entities()",
+      "degree": 8
+    },
+    {
+      "id": "ingest_kafka_driver_send_record",
+      "label": "send_record()",
+      "degree": 8
+    }
+  ],
+  "surprises": [
+    {
+      "source": "TestKafkaProducer",
+      "target": "KafkaProducerFallback",
+      "source_files": [
+        "tests/test_kafka_producer.py",
+        "kafka/kafka_producer.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "KafkaConsumerTests",
+      "target": "ConsumerError",
+      "source_files": [
+        "tests/test_kafka_consumer.py",
+        "kafka/kafka_consumer.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories"
+    },
+    {
+      "source": "send_record()",
+      "target": "publish_message()",
+      "source_files": [
+        "ingest/kafka_driver.py",
+        "kafka/kafka_producer.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "run_consumer()",
+      "target": "store_graph_entities()",
+      "source_files": [
+        "kafka/kafka_consumer.py",
+        "graph/graph_store.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "run_consumer()",
+      "target": "insert_raw_message()",
+      "source_files": [
+        "kafka/kafka_consumer.py",
+        "tools/utils.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `publish_message()` connect `kafka_producer.py` to `rss_ingest.py`?",
+      "why": "High betweenness centrality (0.086) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `send_to_dlt()` connect `kafka_producer.py` to `kafka_consumer.py`, `TestKafkaProducer`?",
+      "why": "High betweenness centrality (0.079) - this node is a cross-community bridge."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `kafka_producer.py` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.11494252873563218 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `graph_store.py` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.10826210826210826 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `kafka_consumer.py` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.14333333333333334 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `utils.py` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.1380952380952381 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

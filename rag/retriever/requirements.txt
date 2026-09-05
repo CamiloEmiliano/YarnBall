@@ -1,0 +1,5 @@
+fastapi[all]==0.110.0
+uvicorn==0.30.0
+psycopg[binary]==3.2.2
+neo4j==5.16.0
+kafka-python==2.0.2
