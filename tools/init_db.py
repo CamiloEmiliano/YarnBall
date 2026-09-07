@@ -87,6 +87,8 @@ def get_dsn(db_name: str = "postgres") -> str:
     user = os.getenv("POSTGRES_USER", "postgres")
     password = os.getenv("POSTGRES_PASSWORD", "postgres")
     host = os.getenv("POSTGRES_HOST", "postgres")
+    if host == "postgres" and not os.path.exists("/.dockerenv"):
+        host = "localhost"
     port = os.getenv("POSTGRES_PORT", "5432")
     return f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
 
@@ -238,6 +240,25 @@ def create_queue_table(db_name: str = "financial_rag"):
         );
     """)
     logger.info("Created/checked table node_embeddings")
+
+    # Create the graph_snapshots registry table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS graph_snapshots (
+            snapshot_id         VARCHAR(64) PRIMARY KEY,
+            tag                 VARCHAR(32) NOT NULL,
+            description         TEXT,
+            created_at          TIMESTAMPTZ DEFAULT now(),
+            time_window_start   TIMESTAMPTZ,
+            time_window_end     TIMESTAMPTZ,
+            node_count          INTEGER NOT NULL DEFAULT 0,
+            edge_count          INTEGER NOT NULL DEFAULT 0,
+            snapshot_dir        TEXT NOT NULL,
+            metadata            JSONB DEFAULT '{}'::jsonb
+        );
+        CREATE INDEX IF NOT EXISTS idx_graph_snapshots_tag ON graph_snapshots(tag);
+        CREATE INDEX IF NOT EXISTS idx_graph_snapshots_created_at ON graph_snapshots(created_at DESC);
+    """)
+    logger.info("Created/checked table graph_snapshots")
 
     conn.commit()
     if hasattr(cur, "close"):
