@@ -120,7 +120,7 @@ pytest tests/ -v
   - Read-only AST validators and self-correction loop.
 - [x] **Phase 5: Hybrid Retriever & Grounded Synthesis**
   - Dense pgvector search + multi-hop Memgraph traversal.
-- [ ] **Phase 6: Chainlit Conversational UI & PyVis Visualizer**
+- [x] **Phase 6: Chainlit Conversational UI & PyVis Visualizer**
   - Interactive multi-turn chat, Cypher tracing, and draggable graph visualizer.
 - [ ] Phase 7: GNN-Readiness (Extension)
   - PyTorch Geometric export (R-GCN / GAT link prediction).
