@@ -109,16 +109,16 @@ pytest tests/ -v
   - Multi-day Mag7 historical window configuration.
   - Parquet export/restore engine (`nodes.parquet`, `edges.parquet`) with parameterized `UNWIND`.
   - PostgreSQL `graph_snapshots` metadata catalog.
-- [ ] **Phase 2: Splink Entity Resolution & Edge Canonicalization**
+- [x] **Phase 2: Splink Entity Resolution & Edge Canonicalization**
   - DuckDB + Splink Fellegi-Sunter probabilistic linkage model.
   - Entity clustering and symmetric edge canonicalization.
-- [ ] **Phase 3: Automated A/B Evaluation Harness**
+- [x] **Phase 3: Automated A/B Evaluation Harness**
   - 25 multi-hop golden financial benchmark queries.
   - Statistical scorecards ($G_{\text{raw}}$ vs $G_{\text{resolved}}$).
-- [ ] **Phase 4: Guarded Text-to-CQL Engine**
+- [x] **Phase 4: Guarded Text-to-CQL Engine**
   - Schema-aware prompt compilation with Ollama `qwen3:8b`.
   - Read-only AST validators and self-correction loop.
-- [ ] **Phase 5: Hybrid Retriever & Grounded Synthesis**
+- [x] **Phase 5: Hybrid Retriever & Grounded Synthesis**
   - Dense pgvector search + multi-hop Memgraph traversal.
 - [ ] **Phase 6: Chainlit Conversational UI & PyVis Visualizer**
   - Interactive multi-turn chat, Cypher tracing, and draggable graph visualizer.
