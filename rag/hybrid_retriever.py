@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 def _default_ollama_url() -> str:
     env_url = os.getenv("QWEN_API_BASE")
     if env_url:
+        if "host.docker.internal" in env_url and not os.path.exists("/.dockerenv"):
+            return env_url.replace("host.docker.internal", "localhost")
         return env_url
     if os.path.exists("/.dockerenv"):
         return "http://host.docker.internal:11434/api/generate"
@@ -426,3 +428,7 @@ class HybridGraphRAGEngine:
             "articles": context.get("articles", []),
             "retrieval_latency_ms": context.get("latency_ms", 0.0),
         }
+
+    def query(self, query: str) -> Dict[str, Any]:
+        """Alias for answer_query."""
+        return self.answer_query(query)

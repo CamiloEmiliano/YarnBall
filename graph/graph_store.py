@@ -34,6 +34,8 @@ def _default_ollama_url() -> str:
     """Detect whether running inside Docker container or host."""
     env_url = os.getenv("QWEN_API_BASE")
     if env_url:
+        if "host.docker.internal" in env_url and not os.path.exists("/.dockerenv"):
+            return env_url.replace("host.docker.internal", "localhost")
         return env_url
     if os.path.exists("/.dockerenv"):
         return "http://host.docker.internal:11434/api/generate"
