@@ -12,6 +12,7 @@ Executes 25 golden multi-hop benchmark queries across raw (G_raw) and resolved
 """
 
 import os
+import sys
 import json
 import logging
 import argparse
@@ -19,6 +20,11 @@ import time
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Ensure project root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from graph.snapshot_manager import SnapshotManager
 from graph.memgraph_driver import get_memgraph_driver

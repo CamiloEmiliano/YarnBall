@@ -20,17 +20,18 @@ class KafkaProducerDLTTests(unittest.TestCase):
         mock_producer = MagicMock()
         mock_producer.send.side_effect = Exception("serialization error")
         # Patch ``_producer`` to return our mock (so get_producer uses it)
-        with patch("kafka_pipeline.kafka_producer._producer", return_value=mock_producer):
-            # Spy on send_to_dlt
-            with patch("kafka_pipeline.kafka_producer.send_to_dlt") as mock_send_to_dlt:
-                result = publish_message(malformed)
-                self.assertFalse(result)
-                # send_to_dlt should be called exactly once with the mock producer
-                mock_send_to_dlt.assert_called_once()
-                args, kwargs = mock_send_to_dlt.call_args
-                self.assertIs(args[0], mock_producer)  # producer argument
-                self.assertEqual(args[2], malformed)   # payload argument
-                self.assertEqual(kwargs.get("reason"), "publish_failed")
+        with patch("kafka_pipeline.kafka_producer._init_topic"):
+            with patch("kafka_pipeline.kafka_producer._producer", return_value=mock_producer):
+                # Spy on send_to_dlt
+                with patch("kafka_pipeline.kafka_producer.send_to_dlt") as mock_send_to_dlt:
+                    result = publish_message(malformed)
+                    self.assertFalse(result)
+                    # send_to_dlt should be called exactly once with the mock producer
+                    mock_send_to_dlt.assert_called_once()
+                    args, kwargs = mock_send_to_dlt.call_args
+                    self.assertIs(args[0], mock_producer)  # producer argument
+                    self.assertEqual(args[2], malformed)   # payload argument
+                    self.assertEqual(kwargs.get("reason"), "publish_failed")
 
     def test_get_producer_initialises_dlt_topic(self):
         """Calling ``get_producer`` should attempt to create both the main

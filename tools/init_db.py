@@ -25,7 +25,7 @@ import importlib.util
 import logging
 
 def _load_real_psycopg():
-    """Load the real psycopg (psycopg[binary]) package from site‑packages, bypassing repo mock."""
+    """Load the real psycopg2 or psycopg package from site-packages, bypassing repo mock."""
     repo_tools = [p for p in sys.path if "tools" in p and "site-packages" not in p]
     saved_path = list(sys.path)
     try:
@@ -33,11 +33,16 @@ def _load_real_psycopg():
         for mod in list(sys.modules.keys()):
             if mod.startswith("psycopg"):
                 del sys.modules[mod]
-        import psycopg as psycopg2
-        from psycopg import sql
-        # psycopg uses autocommit mode by default; placeholder for compatibility
-        ISOLATION_LEVEL_AUTOCOMMIT = None
-        return psycopg2, sql, ISOLATION_LEVEL_AUTOCOMMIT
+        try:
+            import psycopg2
+            from psycopg2 import sql
+            from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+            return psycopg2, sql, ISOLATION_LEVEL_AUTOCOMMIT
+        except ImportError:
+            import psycopg as psycopg2
+            from psycopg import sql
+            ISOLATION_LEVEL_AUTOCOMMIT = None
+            return psycopg2, sql, ISOLATION_LEVEL_AUTOCOMMIT
     finally:
         sys.path = saved_path
 
