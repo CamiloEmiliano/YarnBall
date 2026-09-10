@@ -265,6 +265,78 @@ def create_queue_table(db_name: str = "financial_rag"):
     """)
     logger.info("Created/checked table graph_snapshots")
 
+    # SEC EDGAR extensions and tables
+    try:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+    except Exception as exc:
+        logger.info(f"Could not create pg_trgm extension (mock or permissions): {exc}")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sec_companies (
+            cik VARCHAR(10) PRIMARY KEY,
+            ticker VARCHAR(12),
+            company_name TEXT NOT NULL,
+            normalized_name TEXT NOT NULL,
+            sic VARCHAR(4),
+            sic_description TEXT,
+            is_sp500 BOOLEAN DEFAULT FALSE,
+            ein VARCHAR(10),
+            state_of_incorporation VARCHAR(2),
+            fiscal_year_end VARCHAR(4),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_sec_ticker ON sec_companies(ticker);
+        CREATE INDEX IF NOT EXISTS idx_sec_normalized_name ON sec_companies(normalized_name);
+        CREATE INDEX IF NOT EXISTS idx_sec_is_sp500 ON sec_companies(is_sp500);
+    """)
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_sec_name_trgm ON sec_companies USING gin (normalized_name gin_trgm_ops);")
+    except Exception as exc:
+        logger.info(f"Could not create idx_sec_name_trgm GIN index: {exc}")
+    logger.info("Created/checked table sec_companies")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sec_subsidiaries (
+            id SERIAL PRIMARY KEY,
+            parent_cik VARCHAR(10) REFERENCES sec_companies(cik) ON DELETE CASCADE,
+            subsidiary_name TEXT NOT NULL,
+            normalized_name TEXT NOT NULL,
+            jurisdiction TEXT,
+            fiscal_year INT,
+            source_filing_acc VARCHAR(32)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sec_sub_parent ON sec_subsidiaries(parent_cik);
+        CREATE INDEX IF NOT EXISTS idx_sec_sub_name ON sec_subsidiaries(normalized_name);
+    """)
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_sec_sub_trgm ON sec_subsidiaries USING gin (normalized_name gin_trgm_ops);")
+    except Exception as exc:
+        logger.info(f"Could not create idx_sec_sub_trgm GIN index: {exc}")
+    logger.info("Created/checked table sec_subsidiaries")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sec_filings_queue (
+            accession_number VARCHAR(32) PRIMARY KEY,
+            cik VARCHAR(10) REFERENCES sec_companies(cik),
+            ticker VARCHAR(12),
+            form_type VARCHAR(20) NOT NULL,
+            filing_date DATE NOT NULL,
+            report_date DATE,
+            fiscal_year INT,
+            fiscal_period VARCHAR(10),
+            items_present JSONB DEFAULT '[]'::jsonb,
+            status VARCHAR(20) DEFAULT 'pending',
+            extracted_nodes INT DEFAULT 0,
+            extracted_edges INT DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            processed_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS idx_sec_queue_status ON sec_filings_queue(status);
+        CREATE INDEX IF NOT EXISTS idx_sec_queue_ticker ON sec_filings_queue(ticker);
+    """)
+    logger.info("Created/checked table sec_filings_queue")
+
+
     conn.commit()
     if hasattr(cur, "close"):
         cur.close()
