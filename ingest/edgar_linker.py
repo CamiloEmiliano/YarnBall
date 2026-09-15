@@ -306,4 +306,6 @@ def sync_sec_companies_from_sec(pg_conn, sp500_tickers: Optional[List[str]] = No
         logger.info(f"Successfully synced {len(records)} SEC master company records into sec_companies")
         return len(records)
     finally:
-        cur.close()
+        if hasattr(cur, "close"):
+            cur.close()
+

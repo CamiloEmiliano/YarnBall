@@ -1,0 +1,6 @@
+outs:
+- md5: 0c963a666fa01739f0c16e2518e68101.dir
+  size: 559844
+  nfiles: 20
+  hash: md5
+  path: sec_filings

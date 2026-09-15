@@ -3,11 +3,16 @@ architecture.md
 temp.pdf
 install.sql
 PLAN_OF_ACTION.md
-.session_checkpoint.md
-data/
+# Data directories (raw data ignored, DVC pointers and evaluation sets tracked)
+data/*
+!data/*.dvc
+!data/**/*.dvc
+!data/golden_evaluation_set.json
+!data/README.md
 .env
 .env.swp
 *.swp
+
 
 # Graphify codebase analysis artifacts
 graphify-out/

@@ -155,20 +155,34 @@ class EdgarClient:
     def _parse_subsidiaries_text(self, text: str) -> List[Dict[str, str]]:
         """Parse raw text/HTML table of subsidiaries into names and jurisdictions."""
         results = []
+        boilerplate_pattern = re.compile(
+            r"(exhibit\s*21|subsidiaries\s+of|following\s+is\s+a\s+list|omitting\s+subsidiaries|"
+            r"considered\s+in\s+the\s+aggregate|significant\s+subsidiary|jurisdiction\s+of|"
+            r"state\s+or\s+other|percent\s+owned|all\s+100%|item\s+\d+|table\s+of\s+contents|"
+            r"^\s*owned\)?\s*$)",
+            re.IGNORECASE,
+        )
+
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         for line in lines:
-            # Skip obvious header rows
+            # Skip boilerplate and header rows
+            if boilerplate_pattern.search(line):
+                continue
             if re.search(r"\b(name|state|jurisdiction|country|incorporation|subsidiary)\b", line, re.I) and len(line) < 60:
                 continue
-            # Simple heuristic splitting by multiple spaces or tabs
-            parts = re.split(r"\t+|\s{3,}", line)
+
+            # Split by tabs or 2+ spaces
+            parts = re.split(r"\t+|\s{2,}", line)
             if len(parts) >= 2:
-                name = parts[0].strip()
-                jurisdiction = parts[1].strip()
-                if len(name) > 2 and len(name) < 150:
-                    results.append({"name": name, "jurisdiction": jurisdiction})
-            elif len(parts) == 1 and len(parts[0]) > 3 and len(parts[0]) < 120:
-                results.append({"name": parts[0].strip(), "jurisdiction": "Unknown"})
+                name = parts[0].strip(" -:;,")
+                jurisdiction = parts[1].strip(" -:;,")
+                if len(name) >= 3 and len(name) < 120 and not boilerplate_pattern.search(name):
+                    results.append({"name": name, "jurisdiction": jurisdiction or "Unknown"})
+            elif len(parts) == 1:
+                name = parts[0].strip(" -:;,")
+                # Avoid single word fragments or numbers
+                if len(name) >= 4 and len(name) < 100 and " " in name and not boilerplate_pattern.search(name):
+                    results.append({"name": name, "jurisdiction": "Unknown"})
         return results
 
     def fetch_recent_8k(self, ticker_or_cik: str, limit: int = 5) -> List[Dict[str, Any]]:

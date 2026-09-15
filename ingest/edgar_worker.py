@@ -51,7 +51,75 @@ Allowed relationship types:
 Do not include any explanation or markdown formatting. Output raw JSON only."""
 
 
-def extract_sec_relationships(text: str) -> Dict[str, Any]:
+def select_salient_sec_context(text: str, max_chars: int = 2500) -> str:
+    """
+    Select the most relationally dense paragraphs from SEC filing text (e.g. Item 1 or Item 1A).
+
+    Prioritizes paragraphs containing explicit corporate relationship and risk keywords:
+    - Supply chain: supplier, supply, customer, vendor, manufacturer, client, distributor
+    - Competition & Strategy: compete, competitor, competition, peer, market share
+    - Alliances: partner, partnership, alliance, joint venture, license, licensing
+    - Corporate actions: acquire, acquisition, merger, subsidiary, parent
+    - Risk & Exposure: dependence, single source, reliance, geopolitical, supply disruption
+    """
+    if not text or len(text) <= max_chars:
+        return text
+
+    # Split by double newline or paragraph breaks
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n|\r\n\s*\r\n", text) if len(p.strip()) > 40]
+    if not paragraphs:
+        return text[:max_chars]
+
+    keywords = [
+        r"\bsuppl(y|ier|iers|ies)\b",
+        r"\bcustomer(s)?\b",
+        r"\bvendor(s)?\b",
+        r"\bmanufactur(er|ers|ing)\b",
+        r"\bclient(s)?\b",
+        r"\bdistribut(or|ors|ion)\b",
+        r"\bcompet(e|es|ing|itor|itors|ition)\b",
+        r"\bpartner(s|ship|ships)?\b",
+        r"\balliance(s)?\b",
+        r"\bjoint venture(s)?\b",
+        r"\blicens(e|es|ing|or|ee)\b",
+        r"\bacqui(re|red|sition|sitions)\b",
+        r"\bmerg(e|ed|er|ers)\b",
+        r"\bsubsidiar(y|ies)\b",
+        r"\bdependen(t|ce)\b",
+        r"\bsole source\b|\bsingle source\b",
+        r"\breliance\b",
+    ]
+    pattern = re.compile("|".join(keywords), re.IGNORECASE)
+
+    scored = []
+    for idx, p in enumerate(paragraphs):
+        matches = len(pattern.findall(p))
+        if matches > 0:
+            scored.append((matches, idx, p))
+
+    if not scored:
+        return text[:max_chars]
+
+    # Sort primarily by match score descending, then by position ascending
+    scored.sort(key=lambda x: (-x[0], x[1]))
+
+    # Select top paragraphs up to max_chars, keeping original document order
+    selected = []
+    total_len = 0
+    for _, idx, p in scored:
+        if total_len + len(p) + 2 <= max_chars:
+            selected.append((idx, p))
+            total_len += len(p) + 2
+        elif not selected:
+            selected.append((idx, p[:max_chars]))
+            break
+
+    # Restore reading order
+    selected.sort(key=lambda x: x[0])
+    return "\n\n".join(p for _, p in selected)
+
+
+def extract_sec_relationships(text: str, max_chars: int = 2500) -> Dict[str, Any]:
     """Extract entities and relationships from SEC text chunk using local Ollama LLM."""
     if not text or not text.strip():
         return {"nodes": [], "edges": []}
@@ -62,8 +130,8 @@ def extract_sec_relationships(text: str) -> Dict[str, Any]:
         logger.warning("httpx not available; skipping LLM extraction")
         return {"nodes": [], "edges": []}
 
-    # Limit text chunk size to fit model context safely (e.g. first 6,000 chars of section)
-    chunk = text[:6000]
+    # Extract salient relational paragraphs to fit LLM context and ensure fast inference
+    chunk = select_salient_sec_context(text, max_chars=max_chars)
     prompt = f"{SEC_EXTRACTION_PROMPT}\n\nSEC Text Section:\n{chunk}\n\nJSON:"
 
     gen_url = OLLAMA_API_BASE
@@ -71,7 +139,7 @@ def extract_sec_relationships(text: str) -> Dict[str, Any]:
         gen_url = gen_url.split("/v1")[0].rstrip("/") + "/api/generate"
 
     try:
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client(timeout=90.0) as client:
             resp = client.post(
                 gen_url,
                 json={

@@ -5,7 +5,7 @@ Unit tests for EdgarWorker end-to-end 10-K processing and graph extraction.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ingest.edgar_worker import EdgarWorker, extract_sec_relationships
+from ingest.edgar_worker import EdgarWorker, extract_sec_relationships, select_salient_sec_context
 
 
 class TestEdgarWorker(unittest.TestCase):
@@ -19,6 +19,19 @@ class TestEdgarWorker(unittest.TestCase):
         self.mock_driver.session.return_value.__enter__.return_value = self.mock_session
 
         self.worker = EdgarWorker(pg_conn=self.mock_pg_conn, memgraph_driver=self.mock_driver)
+
+    def test_select_salient_sec_context(self):
+        sample_text = (
+            "This is generic boilerplate introductory text with no corporate relations.\n\n"
+            "The Company relies on Taiwan Semiconductor Manufacturing Company (TSMC) as a key supplier for advanced chip fabrication.\n\n"
+            "Another filler paragraph discussing routine internal administrative policies.\n\n"
+            "We compete directly with Advanced Micro Devices (AMD) and Intel Corporation in the high-performance computing market.\n\n"
+            "Routine legal risk statements that are standard across all corporate filings."
+        )
+        salient = select_salient_sec_context(sample_text, max_chars=300)
+        self.assertIn("Taiwan Semiconductor Manufacturing Company", salient)
+        self.assertIn("Advanced Micro Devices", salient)
+        self.assertNotIn("Routine legal risk statements", salient)
 
     def test_extract_sec_relationships_fallback(self):
         # Empty text should return empty dict
@@ -77,9 +90,11 @@ class TestEdgarWorker(unittest.TestCase):
         # Verify Memgraph session was called with temporal parameters
         self.assertGreater(self.mock_session.run.call_count, 0)
 
+    @patch("ingest.edgar_worker.extract_sec_relationships")
     @patch.object(EdgarWorker, "_persist_sec_graph_data")
     @patch.object(EdgarWorker, "_persist_subsidiaries")
-    def test_process_company_10k_flow(self, mock_subs, mock_graph):
+    def test_process_company_10k_flow(self, mock_subs, mock_graph, mock_extract):
+        mock_extract.return_value = {"nodes": [{"id": "TSM"}], "edges": [{"source": "TSM", "target": "Apple Inc.", "type": "SUPPLIES_TO"}]}
         mock_subs.return_value = (["Apple Operations"], [{"source": "Apple Operations", "target": "Apple Inc.", "type": "SUBSIDIARY_OF"}])
         mock_graph.return_value = (["TSM"], [{"source": "TSM", "target": "Apple Inc.", "type": "SUPPLIES_TO"}])
 
