@@ -11,7 +11,7 @@
 | :--- | :--- | :--- | :--- |
 | **High-Volume Scale** | 5,000 Nodes / 15,000 Edges UNWIND | Export: `1.008s`, Restore: `28.215s` | **PASSED** |
 | **Data Integrity** | Zero data loss across Parquet export/import | DB Nodes: `5000`, Edges: `14490` | **PASSED** |
-| **Concurrency Load** | 20 Workers Parallel Throughput | `11.14 QPS` ($p_{95}=4994.7\text{ ms}$) | **PASSED** |
+| **Concurrency Load** | 20 Workers Parallel Throughput | `11.14 QPS` (p95 = 4994.7 ms) | **PASSED** |
 | **Adversarial Security** | 25+ Malicious Cypher AST Payloads | `100.0%` Defense Rate (`25/25`) | **PASSED** |
 | **Pathological Topologies** | 30-Node Clique (870 edges), 15-hop Chain | Clique Limit Clamped: `True`, Recursion Clamped: `True` | **PASSED** |
 | **Path Recovery (2-Hop)** | Ground-Truth Graph Traversal Recall | `75.0%` Edge Path Recall | **PASSED** |
@@ -38,9 +38,9 @@
 | **Total Requests** | `100` |
 | **Total Duration** | `8.97s` |
 | **Throughput (QPS)** | `11.14 queries/sec` |
-| **Median Latency ($p_{50}$)** | `1002.6 ms` |
-| **95th Percentile ($p_{95}$)** | `4994.7 ms` |
-| **99th Percentile ($p_{99}$)** | `5047.1 ms` |
+| **Median Latency (p50)** | `1002.6 ms` |
+| **95th Percentile (p95)** | `4994.7 ms` |
+| **99th Percentile (p99)** | `5047.1 ms` |
 | **Error Rate** | `0 / 100` |
 
 ---

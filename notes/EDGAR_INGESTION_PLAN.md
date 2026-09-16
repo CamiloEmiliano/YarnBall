@@ -19,15 +19,15 @@ This document provides the complete, exhaustive technical design, database schem
 
 | Filing Type | Section / Exhibit | Extracted Intelligence & Graph Relationships |
 | :--- | :--- | :--- |
-| **10-K (Annual)** | **Item 1 (Business)** | - **Customer Concentration**: Under ASC 280, companies must disclose any customer representing $\ge 10\%$ of revenue $\to$ $100\%$ verified `CUSTOMER_OF` and `SUPPLIES_TO` edges.<br>- **Supplier & Foundry Dependencies**: Disclosures of sole-source suppliers (e.g. TSMC, ASML).<br>- **Product Lines**: Hardware, software, and cloud revenue categories $\to$ `PRODUCES` edges. |
-| **10-K (Annual)** | **Item 1A (Risk Factors)** | - Discrete corporate and macroeconomic vulnerabilities (e.g., geopolitical supply chain chokepoints, raw material pricing, regulatory scrutiny) $\to$ `EXPOSED_TO` edges and risk nodes. |
+| **10-K (Annual)** | **Item 1 (Business)** | - **Customer Concentration**: Under ASC 280, companies must disclose any customer representing >= 10% of revenue -> 100% verified `CUSTOMER_OF` and `SUPPLIES_TO` edges.<br>- **Supplier & Foundry Dependencies**: Disclosures of sole-source suppliers (e.g. TSMC, ASML).<br>- **Product Lines**: Hardware, software, and cloud revenue categories -> `PRODUCES` edges. |
+| **10-K (Annual)** | **Item 1A (Risk Factors)** | - Discrete corporate and macroeconomic vulnerabilities (e.g., geopolitical supply chain chokepoints, raw material pricing, regulatory scrutiny) -> `EXPOSED_TO` edges and risk nodes. |
 | **10-K (Annual)** | **Item 7 (MD&A)** | - Capital expenditures (CapEx), supply commitments, research and development (R&D) investments. |
-| **10-K (Annual)** | **Exhibit 21** | - Complete legal corporate subsidiary tree $\to$ `SUBSIDIARY_OF` edges with ownership percentage and jurisdiction. |
-| **8-K (Material Events)** | **Item 1.01** | - Entry into a Material Definitive Agreement (Joint Ventures, Multi-Year Supply Contracts, Strategic Alliances) $\to$ `PARTNERED_WITH` edges with effective and expiration dates. |
-| **8-K (Material Events)** | **Item 2.01** | - Completion of Acquisition or Disposition of Assets (M&A) $\to$ `ACQUIRED` edges with transaction value and closing date. |
-| **8-K (Material Events)** | **Item 5.02** | - Departure or Appointment of Principal Officers or Directors $\to$ `LEADS`, `SERVES_ON_BOARD_OF`, `RESIGNED_FROM` edges. |
-| **Form 4** | **Table I & II** | - Insider transactions (CEOs, CFOs, Board Members buying/selling equity) $\to$ `TRANSACTED` edges with share count and price. |
-| **13F / 13D** | **Holdings Table** | - Institutional fund holdings (Vanguard, BlackRock, Berkshire Hathaway) $\to$ `INVESTS_IN` and `HOLDS_STAKE` edges ($>5\%$ activist stakes). |
+| **10-K (Annual)** | **Exhibit 21** | - Complete legal corporate subsidiary tree -> `SUBSIDIARY_OF` edges with ownership percentage and jurisdiction. |
+| **8-K (Material Events)** | **Item 1.01** | - Entry into a Material Definitive Agreement (Joint Ventures, Multi-Year Supply Contracts, Strategic Alliances) -> `PARTNERED_WITH` edges with effective and expiration dates. |
+| **8-K (Material Events)** | **Item 2.01** | - Completion of Acquisition or Disposition of Assets (M&A) -> `ACQUIRED` edges with transaction value and closing date. |
+| **8-K (Material Events)** | **Item 5.02** | - Departure or Appointment of Principal Officers or Directors -> `LEADS`, `SERVES_ON_BOARD_OF`, `RESIGNED_FROM` edges. |
+| **Form 4** | **Table I & II** | - Insider transactions (CEOs, CFOs, Board Members buying/selling equity) -> `TRANSACTED` edges with share count and price. |
+| **13F / 13D** | **Holdings Table** | - Institutional fund holdings (Vanguard, BlackRock, Berkshire Hathaway) -> `INVESTS_IN` and `HOLDS_STAKE` edges (> 5% activist stakes). |
 
 ---
 
@@ -278,9 +278,9 @@ CREATE INDEX IF NOT EXISTS idx_sec_filings_status ON sec_filings_queue(status);
 ### Automated Unit Tests
 1. **`tests/test_edgar_linker.py`**:
    - `test_sync_sec_companies_populates_postgres`: Verifies bulk sync into `sec_companies`.
-   - `test_tier_1_ticker_exact_match`: Verifies `AAPL` $\to$ `0000320193`.
-   - `test_tier_2_suffix_normalization`: Verifies `"Alphabet Inc."`, `"Microsoft Corporation"`, `"Tesla, LLC"` resolve to their official CIKs.
-   - `test_tier_3_trigram_fuzzy_match`: Verifies `"Taiwan Semi"` $\to$ `0001046179` and `"JPMorgan"` $\to$ `0000019617`.
+   - `test_tier_1_ticker_exact_match`: Verifies `AAPL` -> `0000320193`.
+   - `test_tier_2_exact_name_match`: Verifies `"Apple Inc."` -> `0000320193`.
+   - `test_tier_3_trigram_fuzzy_match`: Verifies `"Taiwan Semi"` -> `0001046179` and `"JPMorgan"` -> `0000019617`.
    - `test_tier_4_subsidiary_resolution`: Verifies `"Waymo"` resolves to Alphabet CIK `0001652044`.
 2. **`tests/test_edgar_client.py`**:
    - `test_edgartools_initialization`: Verifies User-Agent and identity compliance.
