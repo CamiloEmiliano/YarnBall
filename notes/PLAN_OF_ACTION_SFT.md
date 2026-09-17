@@ -22,10 +22,13 @@ The plan decouples the **GraphRAG production runtime** (`YarnBall`) from the **d
 │    - Form 8-K (Material Events, M&A, Defaults, Leadership Departures)  │
 │    - Form 4 (Insider Transactions & Options Exercises)                 │
 │                                                                        │
-│ 2. Historical & Real-Time Financial News (2018–2025)                   │
-│    - Historical News Archives (Kaggle/HuggingFace 2018–2025 financial) │
-│    - Real-time Finnhub, RSS Feeds (Reuters, Investing.com, Yahoo)      │
-│    - GDELT Event Stream (Global supply chain & geopolitical events)    │
+│ 2. Uncapped Historical & Real-Time Financial News (2018–2025)          │
+│    - FNSPID Hugging Face Dataset (>29M S&P 500 articles 2010–2024)     │
+│    - SEC Form 8-K Material Event Disclosures (Item 1.01/2.01 press)    │
+│    - Real-Time Harvesters: `yfinance` Ticker News, Google News RSS,     │
+│      PR Newswire / BusinessWire Direct Corporate RSS Streams           │
+│    - GDELT 2.0 Global Corporate & Supply Chain Event Stream            │
+│    - Auxiliary Fallback: Finnhub API (ticker metadata & quote lookup)  │
 │                                                                        │
 │ 3. Earnings Call Transcripts & Corporate Guidance                      │
 │    - Quarterly Earnings Conference Calls (Executive Remarks + Q&A)     │
@@ -70,12 +73,13 @@ The plan decouples the **GraphRAG production runtime** (`YarnBall`) from the **d
   - Primary universe is strictly bounded to the **500 S&P 500 constituents** per year (~80% of total US market capitalization).
   - External counterparties (e.g. key international foundries like `TSM`, `ASML` or major private partners like `OpenAI`) are linked when explicitly disclosed by S&P 500 filers.
 - **Key Deliverables**:
-  1. **S&P 500 Historical Constituent Registry**: Map point-in-time S&P 500 membership (2018–2025) to account for index additions/deletions and avoid survivorship bias.
+  1. **S&P 500 Historical Constituent Registry (`tools/sp500_universe.py`)**: Map point-in-time S&P 500 membership (2018–2025) to account for index additions/deletions and avoid survivorship bias.
   2. **SEC EDGAR Downloader (`tools/download_historical_sec.py`)**:
      - Batch fetch 10-K, 10-Q, 8-K, Form 4 across 2018–2025 for S&P 500 constituents (~500 10-Ks and ~1,500 10-Qs per year).
-     - Extract plain-text sections (`item_1_business.txt`, `item_1a_risk_factors.txt`, `subsidiaries.json`).
-  3. **Financial News Archive Ingestion (`tools/ingest_historical_news.py`)**:
-     - Ingest 2018–2025 historical financial news corpora into PostgreSQL `financial_news_queue` filtered by S&P 500 tickers.
+     - Extract plain-text sections (`item_1_business.txt`, `item_1a_risk_factors.txt`, `subsidiaries.json`, `form8k_events.json`).
+  3. **Generous Multi-Source News Ingestion (`tools/ingest_historical_news.py` & `ingest/news_harvester.py`)**:
+     - **Bulk Historical (2018–2025)**: Stream and filter the open **FNSPID** Hugging Face dataset (>29M financial articles mapped to S&P 500 tickers) and SEC Form 8-K material event releases directly into PostgreSQL `financial_news_queue` with zero API rate limits.
+     - **Live & Ongoing Ingestion**: Direct ticker news via `yfinance`, Google News RSS, and PR Newswire RSS streams (with Finnhub relegated to an auxiliary metadata fallback).
   4. **Earnings Call Transcript Ingestion (`tools/ingest_transcripts.py`)**:
      - Download and stage quarterly earnings call transcripts and 8-K earnings releases.
   5. **Market Context Integrator (`tools/fetch_market_context.py`)**:
