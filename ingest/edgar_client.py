@@ -185,8 +185,8 @@ class EdgarClient:
                     results.append({"name": name, "jurisdiction": "Unknown"})
         return results
 
-    def fetch_recent_8k(self, ticker_or_cik: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Fetch recent 8-K material event filings."""
+    def fetch_recent_8k(self, ticker_or_cik: str, limit: int = 5, year: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Fetch recent or year-specific 8-K material event filings."""
         company = self.get_company(ticker_or_cik)
         if not company:
             return []
@@ -196,19 +196,56 @@ class EdgarClient:
             filings = company.get_filings(form="8-K")
             if not filings:
                 return []
-            for filing in filings[:limit]:
+            count = 0
+            for filing in filings:
+                filing_date_str = str(getattr(filing, "filing_date", ""))
+                if year and str(year) not in filing_date_str:
+                    continue
                 results.append({
                     "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
-                    "filing_date": str(getattr(filing, "filing_date", "")),
+                    "filing_date": filing_date_str,
                     "form": "8-K",
                     "items": getattr(filing, "items", []),
                     "text": filing.text()[:10000] if hasattr(filing, "text") else "",
                 })
+                count += 1
+                if count >= limit:
+                    break
         except Exception as e:
             logger.error(f"Error fetching 8-K for '{ticker_or_cik}': {e}")
         return results
 
-    def fetch_form4_transactions(self, ticker_or_cik: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def fetch_10q_filings(self, ticker_or_cik: str, year: Optional[int] = None, limit: int = 4) -> List[Dict[str, Any]]:
+        """Fetch Form 10-Q quarterly reports for a company."""
+        company = self.get_company(ticker_or_cik)
+        if not company:
+            return []
+
+        results = []
+        try:
+            filings = company.get_filings(form="10-Q")
+            if not filings:
+                return []
+            count = 0
+            for filing in filings:
+                filing_date_str = str(getattr(filing, "filing_date", ""))
+                if year and str(year) not in filing_date_str:
+                    continue
+                results.append({
+                    "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
+                    "filing_date": filing_date_str,
+                    "report_date": str(getattr(filing, "report_date", "")),
+                    "form": "10-Q",
+                    "text": filing.text()[:15000] if hasattr(filing, "text") else "",
+                })
+                count += 1
+                if count >= limit:
+                    break
+        except Exception as e:
+            logger.error(f"Error fetching 10-Q for '{ticker_or_cik}': {e}")
+        return results
+
+    def fetch_form4_transactions(self, ticker_or_cik: str, limit: int = 20, year: Optional[int] = None) -> List[Dict[str, Any]]:
         """Fetch Form 4 insider transactions."""
         company = self.get_company(ticker_or_cik)
         if not company:
@@ -219,12 +256,19 @@ class EdgarClient:
             filings = company.get_filings(form="4")
             if not filings:
                 return []
-            for filing in filings[:limit]:
+            count = 0
+            for filing in filings:
+                filing_date_str = str(getattr(filing, "filing_date", ""))
+                if year and str(year) not in filing_date_str:
+                    continue
                 results.append({
                     "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
-                    "filing_date": str(getattr(filing, "filing_date", "")),
+                    "filing_date": filing_date_str,
                     "form": "4",
                 })
+                count += 1
+                if count >= limit:
+                    break
         except Exception as e:
             logger.error(f"Error fetching Form 4 for '{ticker_or_cik}': {e}")
         return results
