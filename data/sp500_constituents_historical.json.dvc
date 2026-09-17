@@ -1,5 +1,5 @@
 outs:
-- md5: f3d56ce6c83ccc5e6432590256aa21be
-  size: 40960
+- md5: 284fadb85f0d9327cc82feeb759f7a2a
+  size: 24299
   hash: md5
   path: sp500_constituents_historical.json

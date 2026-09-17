@@ -9,14 +9,16 @@ Database initialisation for the Financial - RAG ingestion pipeline.
 
 import logging
 import os
+from pathlib import Path
+import sys
+
 try:
     from dotenv import load_dotenv
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    if env_file.is_file():
+        load_dotenv(dotenv_path=env_file)
 except ImportError:
-    # dotenv not available; define no-op
-    def load_dotenv(*args, **kwargs):
-        pass
-import sys
-from pathlib import Path
+    pass
 
 # ----------------------------------------------------------------------
 # Import psycopg2 – prefer the real library from site‑packages.
