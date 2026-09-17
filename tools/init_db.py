@@ -336,6 +336,28 @@ def create_queue_table(db_name: str = "financial_rag"):
     """)
     logger.info("Created/checked table sec_filings_queue")
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sp500_historical_constituents (
+            id SERIAL PRIMARY KEY,
+            ticker VARCHAR(12) NOT NULL,
+            cik VARCHAR(10),
+            company_name TEXT NOT NULL,
+            gics_sector VARCHAR(64) NOT NULL,
+            gics_sub_industry VARCHAR(128),
+            headquarters_location TEXT,
+            date_added DATE,
+            date_removed DATE,
+            reason_for_change TEXT,
+            is_current BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_sp500_ticker ON sp500_historical_constituents(ticker);
+        CREATE INDEX IF NOT EXISTS idx_sp500_cik ON sp500_historical_constituents(cik);
+        CREATE INDEX IF NOT EXISTS idx_sp500_gics_sector ON sp500_historical_constituents(gics_sector);
+        CREATE INDEX IF NOT EXISTS idx_sp500_dates ON sp500_historical_constituents(date_added, date_removed);
+        CREATE INDEX IF NOT EXISTS idx_sp500_is_current ON sp500_historical_constituents(is_current);
+    """)
+    logger.info("Created/checked table sp500_historical_constituents")
 
     conn.commit()
     if hasattr(cur, "close"):
