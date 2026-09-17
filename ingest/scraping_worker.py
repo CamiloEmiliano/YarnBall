@@ -212,13 +212,35 @@ def record_domain_failure(domain: str, failure_threshold: int = 3, conn=None) ->
             conn.close()
 
 
+# Editorial boilerplate and stock recommendation disclosure patterns to strip from article tails
+DISCLAIMER_BOILERPLATE_PATTERNS = [
+    re.compile(r"(?:the\s+)?motley\s+fool\s+(?:has\s+positions\s+in|owns\s+shares\s+of|recommends|transacts).*", re.IGNORECASE | re.DOTALL),
+    re.compile(r"disclosure:\s*(?:the\s+author|the\s+motley\s+fool|seeking\s+alpha|zacks|investorplace|fool\.com).*", re.IGNORECASE | re.DOTALL),
+    re.compile(r"disclaimer:\s*(?:past\s+performance\s+is\s+no\s+guarantee|the\s+opinions\s+expressed\s+herein|this\s+article\s+represents\s+the\s+opinion).*", re.IGNORECASE | re.DOTALL),
+    re.compile(r"seeking\s+alpha\s+contributor.*", re.IGNORECASE | re.DOTALL),
+    re.compile(r"zacks\s+investment\s+research\s+disclaimer.*", re.IGNORECASE | re.DOTALL),
+    re.compile(r"the\s+views\s+and\s+opinions\s+expressed\s+herein\s+are\s+the\s+views\s+and\s+opinions\s+of\s+the\s+author.*", re.IGNORECASE | re.DOTALL),
+]
+
+
+def strip_publisher_boilerplates(text: str) -> str:
+    """Strip editorial disclosures and publisher stock recommendations from article tail."""
+    if not text:
+        return ""
+    cleaned = text
+    for pattern in DISCLAIMER_BOILERPLATE_PATTERNS:
+        cleaned = pattern.sub("", cleaned)
+    return cleaned.strip()
+
+
 # ----------------------------------------------------------------------
 # Text Extraction
 # ----------------------------------------------------------------------
 def extract_text_from_html(html: str) -> Optional[str]:
-    """Extract clean body text from HTML using Trafilatura (or regex fallback)."""
+    """Extract clean body text from HTML using Trafilatura (or regex fallback) with boilerplate stripping."""
     if not html:
         return None
+    raw_text = None
     if trafilatura is not None:
         extracted = trafilatura.extract(
             html,
@@ -228,13 +250,19 @@ def extract_text_from_html(html: str) -> Optional[str]:
             favor_precision=True,
         )
         if extracted:
-            return extracted.strip()
+            raw_text = extracted.strip()
 
-    # Fallback: simple tag stripper
-    clean = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-    clean = re.sub(r"<[^>]+>", " ", clean)
-    clean = re.sub(r"\s+", " ", clean).strip()
-    return clean if clean else None
+    if not raw_text:
+        # Fallback: simple tag stripper
+        clean = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r"<[^>]+>", " ", clean)
+        clean = re.sub(r"\s+", " ", clean).strip()
+        raw_text = clean if clean else None
+
+    if raw_text:
+        cleaned_text = strip_publisher_boilerplates(raw_text)
+        return cleaned_text if cleaned_text else None
+    return None
 
 
 def fetch_and_extract(url: str, raw_html: Optional[str] = None) -> Tuple[Optional[str], Dict[str, Any]]:

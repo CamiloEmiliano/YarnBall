@@ -40,6 +40,33 @@ CORPORATE_SUFFIXES = [
     "group", "holdings", "technologies", "tech", "semiconductor",
 ]
 
+# Media, news publishers, and syndication platforms that must never become economic graph nodes
+PUBLISHER_STOPLIST: Set[str] = {
+    "motley fool", "the motley fool", "fool", "foolcom", "fool.com",
+    "seeking alpha", "seekingalpha", "zacks", "zacks investment research",
+    "benzinga", "investorplace", "marketwatch", "thestreet", "investopedia",
+    "cnbc", "bloomberg", "reuters", "associated press", "ap news",
+    "pr newswire", "businesswire", "globe newswire", "accesswire",
+    "yahoo finance", "tipranks", "barrons", "wall street journal", "wsj",
+    "financial times", "ft.com", "forbes", "morningstar", "investing.com",
+    "alpha spreading", "24/7 wall st", "insider monkey", "fxstreet",
+}
+
+
+def is_blacklisted_publisher(name: Optional[str]) -> bool:
+    """Check if an entity name matches a news publisher or media aggregator."""
+    if not name:
+        return False
+    norm = name.lower().strip()
+    norm_clean = "".join(c for c in norm if c.isalnum() or c.isspace()).strip()
+    if norm_clean in PUBLISHER_STOPLIST or norm in PUBLISHER_STOPLIST:
+        return True
+    # Check if any publisher stopword is a distinct token sequence
+    for pub in PUBLISHER_STOPLIST:
+        if pub in norm_clean and (len(pub) >= 6 or norm_clean == pub):
+            return True
+    return False
+
 
 def _normalize_name(name: str) -> str:
     """Normalize company/entity name for fuzzy matching."""
@@ -150,9 +177,20 @@ class EntityResolver:
             if root_u != root_v:
                 parent[root_u] = root_v
 
+        # Filter out blacklisted media publishers / news syndicators
+        filtered_raw_nodes = [
+            n for n in nodes
+            if n.get("id")
+            and not is_blacklisted_publisher(str(n.get("id", "")))
+            and not is_blacklisted_publisher(str(n.get("name", "")))
+        ]
+
+        if not filtered_raw_nodes:
+            return {}, []
+
         # Index nodes by category, ticker, and normalized name
         nodes_by_id: Dict[str, Dict[str, Any]] = {
-            str(n["id"]): n for n in nodes if n.get("id")
+            str(n["id"]): n for n in filtered_raw_nodes if n.get("id")
         }
         all_ids = list(nodes_by_id.keys())
 
@@ -311,6 +349,10 @@ class EntityResolver:
 
             canonical_src = node_mapping.get(raw_src, raw_src)
             canonical_tgt = node_mapping.get(raw_tgt, raw_tgt)
+
+            # Drop edges connected to blacklisted publishers / media syndicators
+            if is_blacklisted_publisher(canonical_src) or is_blacklisted_publisher(canonical_tgt):
+                continue
 
             # Eliminate self-loops
             if canonical_src == canonical_tgt:
