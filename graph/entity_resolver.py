@@ -53,6 +53,17 @@ PUBLISHER_STOPLIST: Set[str] = {
 }
 
 
+from .quality_controls import (
+    is_generic_placeholder,
+    validate_and_orient_triple,
+    compute_edge_confidence,
+    detect_and_break_ownership_cycles,
+    validate_temporal_consistency,
+    resolve_edge_state_transitions,
+    check_degree_anomaly_quarantine,
+)
+
+
 def is_blacklisted_publisher(name: Optional[str]) -> bool:
     """Check if an entity name matches a news publisher or media aggregator."""
     if not name:
@@ -144,7 +155,7 @@ class EntityResolver:
         self.snapshot_mgr = snapshot_manager or SnapshotManager()
 
     # ----------------------------------------------------------------------
-    # 1. Node Resolution & Clustering
+    # 1. Node Resolution & Clustering (Quality Controls 1 & 6)
     # ----------------------------------------------------------------------
     def resolve_nodes(
         self, nodes: List[Dict[str, Any]]
@@ -177,12 +188,14 @@ class EntityResolver:
             if root_u != root_v:
                 parent[root_u] = root_v
 
-        # Filter out blacklisted media publishers / news syndicators
+        # Control 1: Filter out blacklisted media publishers and generic pronouns/nouns
         filtered_raw_nodes = [
             n for n in nodes
             if n.get("id")
             and not is_blacklisted_publisher(str(n.get("id", "")))
             and not is_blacklisted_publisher(str(n.get("name", "")))
+            and not is_generic_placeholder(str(n.get("id", "")))
+            and not is_generic_placeholder(str(n.get("name", "")))
         ]
 
         if not filtered_raw_nodes:
@@ -259,19 +272,15 @@ class EntityResolver:
         resolved_nodes: List[Dict[str, Any]] = []
 
         for root, cluster_ids in clusters.items():
-            # Pick canonical ID:
-            # - Highest priority: longest formal name containing corporate suffix or longest token length
             def score_candidate(name: str) -> Tuple[int, int]:
                 has_suffix = int(any(s in name.lower() for s in CORPORATE_SUFFIXES))
                 return (has_suffix, len(name))
 
             canonical_id = max(cluster_ids, key=score_candidate)
 
-            # Map all cluster members to the canonical ID
             for raw_id in cluster_ids:
                 node_mapping[raw_id] = canonical_id
 
-            # Aggregate tickers, source hashes, and custom properties
             canonical_ticker = None
             primary_label = nodes_by_id[canonical_id].get("label") or "Entity"
             all_source_hashes = set()
@@ -286,7 +295,6 @@ class EntityResolver:
                 if n.get("source_hash"):
                     all_source_hashes.add(n["source_hash"])
 
-                # Merge custom props
                 if n.get("properties_json"):
                     try:
                         p = json.loads(n["properties_json"])
@@ -317,26 +325,28 @@ class EntityResolver:
         return node_mapping, resolved_nodes
 
     # ----------------------------------------------------------------------
-    # 2. Edge Rewiring & Canonicalization
+    # 2. Edge Rewiring, Ontology Validation, & DAG Enforcement (Controls 1..5)
     # ----------------------------------------------------------------------
     def rewire_edges(
         self,
         edges: List[Dict[str, Any]],
         node_mapping: Dict[str, str],
+        node_label_map: Optional[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
-        """Rewire edge endpoints to canonical nodes and canonicalize symmetric edges.
+        """Rewire edge endpoints to canonical nodes, validate ontologies, and break ownership cycles.
 
         Args:
             edges: List of raw edge dictionaries.
             node_mapping: Mapping of raw_id -> canonical_id.
+            node_label_map: Optional mapping of canonical_id -> entity label (e.g. Company, Person).
 
         Returns:
-            List of deduplicated, rewired edge dictionaries.
+            List of deduplicated, validated canonical edge dictionaries.
         """
         if not edges:
             return []
 
-        # Group edges by (source, target, rel_type) to combine parallel evidence
+        labels = node_label_map or {}
         edge_groups: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
 
         for edge in edges:
@@ -347,44 +357,87 @@ class EntityResolver:
             if not raw_src or not raw_tgt:
                 continue
 
+            # Control 5: Validate temporal bounds (valid_from <= valid_to)
+            if not validate_temporal_consistency(edge):
+                continue
+
             canonical_src = node_mapping.get(raw_src, raw_src)
             canonical_tgt = node_mapping.get(raw_tgt, raw_tgt)
 
-            # Drop edges connected to blacklisted publishers / media syndicators
-            if is_blacklisted_publisher(canonical_src) or is_blacklisted_publisher(canonical_tgt):
+            # Control 1: Drop edges connected to blacklisted publishers or generic placeholders
+            if (
+                is_blacklisted_publisher(canonical_src)
+                or is_blacklisted_publisher(canonical_tgt)
+                or is_generic_placeholder(canonical_src)
+                or is_generic_placeholder(canonical_tgt)
+            ):
                 continue
 
             # Eliminate self-loops
             if canonical_src == canonical_tgt:
                 continue
 
+            src_label = labels.get(canonical_src, "Entity")
+            tgt_label = labels.get(canonical_tgt, "Entity")
+
+            # Control 2: Ontological Domain & Range Schema Validator (with Auto-Orientation)
+            validated_triple = validate_and_orient_triple(
+                canonical_src, src_label, canonical_tgt, tgt_label, rel_type
+            )
+            if not validated_triple:
+                continue
+
+            v_src, _, v_tgt, _, v_rel = validated_triple
+
             # Canonicalize symmetric edge orientations (e.g. COMPETES_WITH, PARTNERED_WITH)
-            if rel_type in SYMMETRIC_RELATIONSHIPS:
-                src, tgt = sorted([canonical_src, canonical_tgt])
+            if v_rel in SYMMETRIC_RELATIONSHIPS:
+                final_src, final_tgt = sorted([v_src, v_tgt])
             else:
-                src, tgt = canonical_src, canonical_tgt
+                final_src, final_tgt = v_src, v_tgt
 
-            edge_groups[(src, tgt, rel_type)].append(edge)
+            edge_groups[(final_src, final_tgt, v_rel)].append(edge)
 
-        # Merge parallel edges
+        # Merge parallel edges and compute Control 3 calibrated evidence confidence
         resolved_edges: List[Dict[str, Any]] = []
 
         for (src, tgt, rel_type), group in edge_groups.items():
             source_hashes = set()
             merged_props: Dict[str, Any] = {}
+            primary_provenance = None
+            max_base_conf = 0.0
 
             for e in group:
                 sh = e.get("source_hash")
                 if sh:
                     source_hashes.add(sh)
+                prov = e.get("provenance")
+                if prov and not primary_provenance:
+                    primary_provenance = prov
+                base_c = float(e.get("confidence", 0.0))
+                if base_c > max_base_conf:
+                    max_base_conf = base_c
+
                 if e.get("properties_json"):
                     try:
                         p = json.loads(e["properties_json"])
                         merged_props.update(p)
+                        if "provenance" in p and not primary_provenance:
+                            primary_provenance = p["provenance"]
                     except Exception:
                         pass
 
-            merged_props["evidence_count"] = len(group)
+            # Control 3: Multi-Source Evidence Weighting & Confidence Calibration
+            evidence_count = len(group)
+            calibrated_conf = compute_edge_confidence(
+                provenance=primary_provenance,
+                mention_count=evidence_count,
+                base_confidence=max_base_conf if max_base_conf > 0 else None,
+            )
+
+            merged_props["evidence_count"] = evidence_count
+            merged_props["confidence"] = calibrated_conf
+            if primary_provenance:
+                merged_props["provenance"] = primary_provenance
             if source_hashes:
                 merged_props["source_hashes"] = list(source_hashes)
 
@@ -394,34 +447,41 @@ class EntityResolver:
                 "source_id": src,
                 "target_id": tgt,
                 "rel_type": rel_type,
+                "confidence": calibrated_conf,
+                "provenance": primary_provenance,
                 "source_hash": primary_hash,
                 "properties_json": json.dumps(merged_props, default=str),
             })
 
+        # Control 4: Corporate Ownership DAG & Circular Reference Guard
+        dag_clean_edges = detect_and_break_ownership_cycles(resolved_edges)
+
         logger.info(
-            "Rewired %d raw edges into %d canonical edges (deduplication: %.1f%%)",
+            "Rewired %d raw edges into %d canonical edges (deduplication & DAG guard: %.1f%%)",
             len(edges),
-            len(resolved_edges),
-            (1.0 - len(resolved_edges) / max(1, len(edges))) * 100.0,
+            len(dag_clean_edges),
+            (1.0 - len(dag_clean_edges) / max(1, len(edges))) * 100.0,
         )
 
-        return resolved_edges
+        return dag_clean_edges
 
     # ----------------------------------------------------------------------
-    # 3. Snapshot Resolution Pipeline
+    # 3. Snapshot Resolution Pipeline (Controls 1..6)
     # ----------------------------------------------------------------------
     def resolve_snapshot(
         self,
         source_snapshot_id: str = "G_raw",
         target_snapshot_id: str = "G_resolved",
-        description: str = "Splink-deduplicated canonical graph",
+        description: str = "Splink-deduplicated canonical graph with institutional quality controls",
+        quarantine_queue_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
-        """Load G_raw, resolve entities and edges, and export G_resolved.
+        """Load G_raw, resolve entities and edges, apply 6 quality controls, and export G_resolved.
 
         Args:
             source_snapshot_id: Snapshot to read (default 'G_raw').
             target_snapshot_id: Snapshot to create (default 'G_resolved').
             description: Description for the resolved snapshot.
+            quarantine_queue_path: Path to write quarantined degree anomaly records.
 
         Returns:
             Dictionary summarizing the resolution and compression statistics.
@@ -444,7 +504,17 @@ class EntityResolver:
 
         # 2. Resolve nodes and rewire edges
         node_mapping, resolved_nodes = self.resolve_nodes(raw_nodes)
-        resolved_edges = self.rewire_edges(raw_edges, node_mapping)
+        label_map = {n["id"]: n.get("label", "Entity") for n in resolved_nodes}
+        resolved_edges = self.rewire_edges(raw_edges, node_mapping, node_label_map=label_map)
+
+        # Control 6: Degree Anomaly Quarantine Gate (Hallucination Circuit Breaker)
+        q_path = quarantine_queue_path or (self.snapshot_mgr.base_dir / "quarantine_queue.jsonl")
+        final_nodes, final_edges, quarantined = check_degree_anomaly_quarantine(
+            nodes=resolved_nodes,
+            edges=resolved_edges,
+            degree_burst_threshold=25,
+            quarantine_queue_path=q_path,
+        )
 
         # 3. Save resolved Parquet tables to target snapshot directory
         target_dir = self.snapshot_mgr.base_dir / target_snapshot_id
@@ -469,8 +539,8 @@ class EntityResolver:
             ("properties_json", pa.string()),
         ])
 
-        res_node_table = pa.Table.from_pylist(resolved_nodes, schema=node_schema) if resolved_nodes else pa.Table.from_batches([], schema=node_schema)
-        res_edge_table = pa.Table.from_pylist(resolved_edges, schema=edge_schema) if resolved_edges else pa.Table.from_batches([], schema=edge_schema)
+        res_node_table = pa.Table.from_pylist(final_nodes, schema=node_schema) if final_nodes else pa.Table.from_batches([], schema=node_schema)
+        res_edge_table = pa.Table.from_pylist(final_edges, schema=edge_schema) if final_edges else pa.Table.from_batches([], schema=edge_schema)
 
         pq.write_table(res_node_table, target_nodes_path, compression="snappy")
         pq.write_table(res_edge_table, target_edges_path, compression="snappy")
@@ -479,11 +549,12 @@ class EntityResolver:
         metadata = {
             "source_snapshot": source_snapshot_id,
             "raw_node_count": len(raw_nodes),
-            "resolved_node_count": len(resolved_nodes),
+            "resolved_node_count": len(final_nodes),
             "raw_edge_count": len(raw_edges),
-            "resolved_edge_count": len(resolved_edges),
-            "node_compression_ratio": round(len(resolved_nodes) / max(1, len(raw_nodes)), 4),
-            "edge_compression_ratio": round(len(resolved_edges) / max(1, len(raw_edges)), 4),
+            "resolved_edge_count": len(final_edges),
+            "quarantined_count": len(quarantined),
+            "node_compression_ratio": round(len(final_nodes) / max(1, len(raw_nodes)), 4),
+            "edge_compression_ratio": round(len(final_edges) / max(1, len(raw_edges)), 4),
         }
 
         now_ts = datetime.now(timezone.utc)
