@@ -137,6 +137,10 @@ class SP500UniverseManager:
                 return True
         return False
 
+    def is_constituent(self, identifier: str, target_date: Optional[str | date | datetime] = None) -> bool:
+        """Alias for is_sp500."""
+        return self.is_sp500(identifier, target_date=target_date)
+
     def sync_to_postgres(self, db_name: str = "financial_rag") -> int:
         """
         Upsert historical S&P 500 constituents into `sp500_historical_constituents`

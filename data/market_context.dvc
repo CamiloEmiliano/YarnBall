@@ -1,0 +1,6 @@
+outs:
+- md5: 31d2c57d088232c42ef8c1c5b559d1cb.dir
+  size: 1979
+  nfiles: 1
+  hash: md5
+  path: market_context

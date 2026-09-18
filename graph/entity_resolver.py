@@ -64,8 +64,30 @@ from .quality_controls import (
 )
 
 
+CLICKBAIT_ARTICLE_STOPLIST: Set[str] = {
+    "motley fool", "the motley fool", "fool", "foolcom", "fool.com",
+    "seeking alpha", "seekingalpha", "zacks", "zacks investment research",
+    "benzinga", "investorplace", "thestreet", "tipranks", "insider monkey",
+    "24/7 wall st", "alpha spreading", "fxstreet",
+}
+
+
+def is_clickbait_article_source(name: Optional[str]) -> bool:
+    """Check if an article source is an opinion blog or clickbait publisher."""
+    if not name:
+        return False
+    norm = name.lower().strip()
+    norm_clean = "".join(c for c in norm if c.isalnum() or c.isspace()).strip()
+    if norm_clean in CLICKBAIT_ARTICLE_STOPLIST or norm in CLICKBAIT_ARTICLE_STOPLIST:
+        return True
+    for pub in CLICKBAIT_ARTICLE_STOPLIST:
+        if pub in norm_clean and (len(pub) >= 6 or norm_clean == pub):
+            return True
+    return False
+
+
 def is_blacklisted_publisher(name: Optional[str]) -> bool:
-    """Check if an entity name matches a news publisher or media aggregator."""
+    """Check if an entity name matches a news publisher or media aggregator (must not be a Company node)."""
     if not name:
         return False
     norm = name.lower().strip()
