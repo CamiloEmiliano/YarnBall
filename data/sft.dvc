@@ -1,0 +1,6 @@
+outs:
+- md5: a990c7b1a16d333b2810016da1f01aa4.dir
+  size: 5956
+  nfiles: 7
+  hash: md5
+  path: sft
