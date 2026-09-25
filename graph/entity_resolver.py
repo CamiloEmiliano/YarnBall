@@ -479,15 +479,17 @@ class EntityResolver:
                     except Exception:
                         pass
 
-            # Control 3: Multi-Source Evidence Weighting & Confidence Calibration
-            evidence_count = len(group)
+            # Control 3: Multi-Source Evidence Weighting & Confidence Calibration (deduplicated by distinct source_hashes)
+            distinct_sources = len(source_hashes) if source_hashes else 1
             calibrated_conf = compute_edge_confidence(
                 provenance=primary_provenance,
-                mention_count=evidence_count,
+                mention_count=len(group),
+                distinct_sources_count=distinct_sources,
                 base_confidence=max_base_conf if max_base_conf > 0 else None,
             )
 
-            merged_props["evidence_count"] = evidence_count
+            merged_props["evidence_count"] = distinct_sources
+            merged_props["mention_count"] = len(group)
             merged_props["confidence"] = calibrated_conf
             if primary_provenance:
                 merged_props["provenance"] = primary_provenance

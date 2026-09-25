@@ -125,6 +125,27 @@ def test_corporate_ownership_dag_cycle_breaker():
     assert len(dropped) == 0
 
 
+def test_ownership_cycle_slicing_with_upstream_tail():
+    """Verify ISSUE-03 fix: an upstream non-cyclical parent edge is NEVER pruned even if it has lowest confidence."""
+    edges = [
+        # Upstream tail: HoldingCo -> Sub_A with low confidence (0.2)
+        {"source_id": "HoldingCo", "target_id": "Sub_A", "rel_type": "PARENT_OF", "confidence": 0.20},
+        # Cycle: Sub_A -> Sub_B -> Sub_C -> Sub_A with higher confidence
+        {"source_id": "Sub_A", "target_id": "Sub_B", "rel_type": "SUBSIDIARY_OF", "confidence": 0.90},
+        {"source_id": "Sub_B", "target_id": "Sub_C", "rel_type": "SUBSIDIARY_OF", "confidence": 0.85},
+        {"source_id": "Sub_C", "target_id": "Sub_A", "rel_type": "SUBSIDIARY_OF", "confidence": 0.70},
+    ]
+
+    cleaned_edges = detect_and_break_ownership_cycles(edges)
+
+    # The cycle edge Sub_C -> Sub_A (0.70) must be dropped, NOT HoldingCo -> Sub_A (0.20)
+    assert len(cleaned_edges) == 3
+    parent_edges = [e for e in cleaned_edges if e.get("rel_type") == "PARENT_OF"]
+    assert len(parent_edges) == 1
+    assert parent_edges[0]["source_id"] == "HoldingCo"
+    assert parent_edges[0]["target_id"] == "Sub_A"
+
+
 # ----------------------------------------------------------------------
 # Control 5: Temporal Consistency & State Transition Guard
 # ----------------------------------------------------------------------
