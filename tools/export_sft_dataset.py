@@ -203,7 +203,7 @@ class SFTDatasetExporter:
                 "difficulty_score": 0.88,
                 "graph_hops": 3,
                 "gics_sector": "Information Technology",
-                "provenance": "FRONTIER_MULTI_TEACHER_CONSENSUS",
+                "provenance": "SYNTHETIC_TEMPLATE_SKELETON",
             },
         )
 
@@ -251,7 +251,7 @@ class SFTDatasetExporter:
                 "difficulty_score": 0.82,
                 "graph_hops": 2,
                 "gics_sector": "Cross-Sector",
-                "provenance": "FRONTIER_MULTI_TEACHER_CONSENSUS",
+                "provenance": "SYNTHETIC_TEMPLATE_SKELETON",
             },
         )
 

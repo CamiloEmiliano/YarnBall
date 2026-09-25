@@ -80,7 +80,54 @@ def test_hard_negative_synthesis(mock_universe_mgr, tmp_path: Path):
     neg = negs[0]
     assert neg.is_hard_negative is True
     assert neg.grounded_triples == [] # Target is empty!
+    assert neg.provenance == "HEURISTIC_HARD_NEGATIVE"
+    assert neg.confidence == 0.65 # Capped heuristic negative confidence
     assert neg.difficulty_score >= 0.80
+
+
+def test_ticker_word_collision_guard(mock_universe_mgr, tmp_path: Path):
+    """Verify ISSUE-11 fix: common English words matching tickers (e.g. 'SO', 'ON', 'IT') do not mine false hard negatives without cashtags."""
+    sampler = ManifoldTargetedSampler(output_dir=tmp_path, universe_mgr=mock_universe_mgr)
+
+    # Passage with ordinary English words "so", "on", "it" but only 1 real company "Apple Inc."
+    commentary = [
+        {
+            "raw_text": (
+                "So, on Thursday the market focused on broader inflation data. It was clear that Apple Inc. "
+                "outperformed peers while bond yields surged across global markets in extended trading."
+            ),
+        }
+    ]
+
+    negs = sampler.synthesize_hard_negatives(
+        market_commentary_passages=commentary,
+        known_active_pairs=set(),
+        target_count=5,
+    )
+
+    # Since only 1 company (Apple) was mentioned without colliding 'SO'/'ON', no 2-company hard negative is synthesized
+    assert len(negs) == 0
+
+    # If cashtags are present: "$SO and $AAPL" -> correctly synthesized
+    cashtag_commentary = [
+        {
+            "raw_text": (
+                "Trading updates showed both $SO and $AAPL moved in opposite directions today following "
+                "diverging sector rotation between regulated utilities and large cap consumer technology. "
+                "Portfolio managers adjusted allocations across benchmark index components ahead of the closing bell."
+            ),
+        }
+    ]
+
+    mock_universe_mgr.get_current_constituents.return_value.append(
+        SP500Constituent(ticker="SO", cik="0000092122", company_name="Southern Company", gics_sector="Utilities")
+    )
+    negs_cashtag = sampler.synthesize_hard_negatives(
+        market_commentary_passages=cashtag_commentary,
+        known_active_pairs=set(),
+        target_count=5,
+    )
+    assert len(negs_cashtag) == 1
 
 
 def test_manifold_class_balancing_floors_and_caps(mock_universe_mgr, tmp_path: Path):

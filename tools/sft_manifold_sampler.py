@@ -110,6 +110,11 @@ class ManifoldSample:
         return asdict(self)
 
 
+COMMON_ENGLISH_WORD_TICKERS: Set[str] = {
+    "SO", "ON", "V", "T", "A", "IT", "ALL", "BE", "CAN", "FOR", "NOW", "OR", "ARE", "IN", "IS", "AT", "DO", "AN", "AM", "GO",
+}
+
+
 class ManifoldTargetedSampler:
     """Curates balanced, boundary-targeted training sets across the economic manifold."""
 
@@ -177,12 +182,18 @@ class ManifoldTargetedSampler:
             if len(text.split()) < 30:
                 continue
 
-            # Identify S&P 500 companies mentioned
+            # Identify S&P 500 companies mentioned with word-collision protection (ISSUE-11)
             mentioned_tickers: Set[str] = set()
             for word in text.split():
-                clean_w = "".join(c for c in word if c.isalnum()).upper()
-                if clean_w in ticker_set and len(clean_w) >= 2:
-                    mentioned_tickers.add(clean_w)
+                if word.startswith("$"):
+                    clean_t = "".join(c for c in word[1:] if c.isalnum()).upper()
+                    if clean_t in ticker_set:
+                        mentioned_tickers.add(clean_t)
+                else:
+                    clean_w = "".join(c for c in word if c.isalnum()).upper()
+                    if clean_w in ticker_set:
+                        if clean_w not in COMMON_ENGLISH_WORD_TICKERS and len(clean_w) >= 3:
+                            mentioned_tickers.add(clean_w)
 
             # Look for company names in text
             text_lower = text.lower()
@@ -218,8 +229,8 @@ class ManifoldTargetedSampler:
                             hop_count=0,
                             is_hard_negative=True,
                             gics_sector="Cross-Sector",
-                            provenance=item.get("provider", "MARKET_COMMENTARY"),
-                            confidence=1.0,
+                            provenance="HEURISTIC_HARD_NEGATIVE",
+                            confidence=0.65, # Capped below 1.0 (heuristic negative)
                             difficulty_score=0.85, # High difficulty for small LLMs
                         )
                     )

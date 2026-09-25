@@ -104,6 +104,7 @@ def test_format_task_d_contagion_reasoning(mock_universe_mgr, tmp_path: Path):
 
     assert record.metadata["task_type"] == "CONTAGION_REASONING"
     assert record.metadata["assigned_student"] == "QWEN_3_8B_REASONER"
+    assert record.metadata["provenance"] == "SYNTHETIC_TEMPLATE_SKELETON"
     assert "<think>" in record.target_completion
     assert "</think>" in record.target_completion
     assert "**Contagion Analysis Summary**" in record.target_completion
@@ -121,6 +122,7 @@ def test_format_task_e_portfolio_recommendation(mock_universe_mgr, tmp_path: Pat
 
     assert record.metadata["task_type"] == "PORTFOLIO_RECOMMENDATION"
     assert record.metadata["assigned_student"] == "QWEN_3_8B_REASONER"
+    assert record.metadata["provenance"] == "SYNTHETIC_TEMPLATE_SKELETON"
     assert "<think>" in record.target_completion
     assert "Strategic Portfolio Recommendation" in record.target_completion
 
