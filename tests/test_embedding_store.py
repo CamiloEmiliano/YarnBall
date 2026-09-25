@@ -11,8 +11,10 @@ from graph.embedding_store import store_node_embeddings
 # ----------------------------------------------------------------------
 @pytest.fixture(scope="session")
 def pg_conn():
-    dsn = os.getenv("POSTGRES_URL")
-    conn = psycopg2.connect(dsn, cursor_factory=RealDictCursor)
+    from tools.init_db import _connect_db
+    conn = _connect_db("financial_rag")
+    if hasattr(conn, "cursor_factory"):
+        conn.cursor_factory = RealDictCursor
     # Ensure the pgvector extension and table exist
     with conn.cursor() as cur:
         cur.execute(
