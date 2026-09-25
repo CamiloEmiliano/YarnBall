@@ -236,6 +236,29 @@ class EntityResolver:
         }
         all_ids = list(nodes_by_id.keys())
 
+        def get_node_cik(nid: str) -> str:
+            node = nodes_by_id.get(nid, {})
+            cik = str(node.get("cik", "") or "").strip()
+            if not cik and "properties_json" in node:
+                try:
+                    props = json.loads(node["properties_json"])
+                    cik = str(props.get("cik", "") or "").strip()
+                except Exception:
+                    pass
+            return cik
+
+        def safe_union(u: str, v: str) -> bool:
+            cik_u = get_node_cik(u)
+            cik_v = get_node_cik(v)
+            if cik_u and cik_v and cik_u != cik_v:
+                return False
+            t_u = str(nodes_by_id.get(u, {}).get("ticker", "") or "").strip().upper()
+            t_v = str(nodes_by_id.get(v, {}).get("ticker", "") or "").strip().upper()
+            if t_u and t_v and t_u not in ("NONE", "NULL") and t_v not in ("NONE", "NULL") and t_u != t_v:
+                return False
+            union(u, v)
+            return True
+
         # 1. Exact Ticker Clustering
         ticker_groups: Dict[str, List[str]] = defaultdict(list)
         for nid, node in nodes_by_id.items():
@@ -246,7 +269,7 @@ class EntityResolver:
         for ticker, group in ticker_groups.items():
             first = group[0]
             for other in group[1:]:
-                union(first, other)
+                safe_union(first, other)
 
         # 2. Normalized Name & High Jaro-Winkler Similarity Clustering
         label_groups: Dict[str, List[str]] = defaultdict(list)
@@ -268,27 +291,28 @@ class EntityResolver:
 
                     # Exact normalized name match (e.g. "Apple Inc" == "Apple Inc.")
                     if norm_i and norm_j and norm_i == norm_j:
-                        union(id_i, id_j)
+                        safe_union(id_i, id_j)
                         continue
 
                     # Direct ticker match as name (e.g. name is "AAPL" and other node has ticker "AAPL")
                     if (ticker_i and ticker_i == id_j.upper()) or (ticker_j and ticker_j == id_i.upper()):
-                        union(id_i, id_j)
+                        safe_union(id_i, id_j)
                         continue
 
-                    # Substring containment with corporate suffix (e.g. "Apple" in "Apple Inc.")
-                    if len(norm_i) >= 4 and len(norm_j) >= 4:
-                        if norm_i in norm_j or norm_j in norm_i:
-                            # Verify high prefix similarity
+                    # Substring containment with corporate suffix and word boundary check
+                    if len(norm_i) >= 6 and len(norm_j) >= 6:
+                        tokens_i = set(norm_i.split())
+                        tokens_j = set(norm_j.split())
+                        if tokens_i.issubset(tokens_j) or tokens_j.issubset(tokens_i):
                             if norm_i[:4] == norm_j[:4]:
-                                union(id_i, id_j)
+                                safe_union(id_i, id_j)
                                 continue
 
                     # Jaro-Winkler similarity >= 0.88 on normalized names
                     if norm_i and norm_j and norm_i[:1] == norm_j[:1]:
                         score = _jaro_winkler_similarity(norm_i, norm_j)
                         if score >= 0.88:
-                            union(id_i, id_j)
+                            safe_union(id_i, id_j)
 
         # 3. Group nodes into clusters
         clusters: Dict[str, List[str]] = defaultdict(list)

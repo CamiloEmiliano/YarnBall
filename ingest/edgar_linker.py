@@ -75,25 +75,36 @@ def normalize_company_name(name: Optional[str]) -> str:
     return text
 
 
+from collections import OrderedDict
+
 class EdgarEntityLinker:
     """4-Tier Hierarchical Entity Linker for SEC EDGAR and Financial Graph Entities.
     
     Cascade Tiers:
     - Tier 1: Exact Ticker match in `sec_companies`
     - Tier 2: Exact normalized name match in `sec_companies`
-    - Tier 3: Trigram similarity match in `sec_companies` (similarity >= threshold)
+    - Tier 3: Trigram similarity match in `sec_companies` (similarity >= threshold, calibrated to 0.40)
     - Tier 4: Subsidiary lookup in `sec_subsidiaries` (exact or trigram)
     """
 
-    def __init__(self, pg_conn=None, trigram_threshold: float = 0.88):
+    def __init__(
+        self,
+        pg_conn=None,
+        trigram_threshold: float = 0.40,
+        max_cache_size: int = 10000,
+    ):
         self.pg_conn = pg_conn
+        # Calibrated pg_trgm similarity threshold (distinct from Jaro-Winkler 0.88 metric)
         self.trigram_threshold = trigram_threshold
-        self._cache: Dict[str, Optional[Dict[str, Any]]] = {}
+        self.max_cache_size = max_cache_size
+        self._cache: OrderedDict[str, Optional[Dict[str, Any]]] = OrderedDict()
+        self.tier3_failures_total: int = 0
 
     def link_entity(
         self,
         name: Optional[str] = None,
         ticker: Optional[str] = None,
+        event_date: Optional[str] = None,
         cursor=None,
     ) -> Optional[Dict[str, Any]]:
         """Resolve an entity mention to its canonical SEC master registry record.
@@ -101,14 +112,21 @@ class EdgarEntityLinker:
         Returns dict with keys:
             cik, ticker, company_name, normalized_name, sic, is_sp500, match_tier, match_score, resolved_via
         """
-        cache_key = f"{ticker or ''}::{name or ''}".strip(":")
+        norm_ticker = ticker.strip().upper() if ticker else ""
+        norm_name = normalize_company_name(name) if name else ""
+        date_part = f"::{event_date.strip()}" if event_date else ""
+        cache_key = f"{norm_ticker}::{norm_name}{date_part}".strip(":")
         if not cache_key:
             return None
         
         if cache_key in self._cache:
+            self._cache.move_to_end(cache_key)
             return self._cache[cache_key]
 
-        res = self._resolve_db(name=name, ticker=ticker, cursor=cursor)
+        res = self._resolve_db(name=name, ticker=ticker, event_date=event_date, cursor=cursor)
+        
+        if len(self._cache) >= self.max_cache_size:
+            self._cache.popitem(last=False)
         self._cache[cache_key] = res
         return res
 
@@ -116,6 +134,7 @@ class EdgarEntityLinker:
         self,
         name: Optional[str] = None,
         ticker: Optional[str] = None,
+        event_date: Optional[str] = None,
         cursor=None,
     ) -> Optional[Dict[str, Any]]:
         if not self.pg_conn and cursor is None:
@@ -211,7 +230,8 @@ class EdgarEntityLinker:
                                 "resolved_via": "trigram_similarity",
                             }
                     except Exception as e:
-                        logger.debug(f"Trigram query fallback/skipped: {e}")
+                        self.tier3_failures_total += 1
+                        logger.warning(f"[EDGAR_LINKER_TRGM_ERR] Tier 3 trigram query failed (total_failures={self.tier3_failures_total}): {e}")
 
                     # --- Tier 4: Exhibit 21 Subsidiary Matching ---
                     cursor.execute(

@@ -115,6 +115,45 @@ class TestEdgarEntityLinker(unittest.TestCase):
         # Database query should only run once due to cache
         self.assertEqual(mock_cursor.execute.call_count, 1)
 
+    def test_lru_cache_eviction_and_normalization(self):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        mock_cursor.fetchone.return_value = (
+            "0000320193", "AAPL", "Apple Inc.", "apple", "3571", "Electronic Computers", True
+        )
+
+        # LRU with max size 2
+        linker = EdgarEntityLinker(pg_conn=mock_conn, max_cache_size=2)
+        # "Apple Inc." and "apple inc" normalize to same key
+        res1 = linker.link_entity(name="Apple Inc.")
+        res2 = linker.link_entity(name="apple inc")
+        self.assertEqual(mock_cursor.execute.call_count, 1)
+
+        # Add 2 more entries to cause eviction of apple
+        linker.link_entity(ticker="MSFT")
+        linker.link_entity(ticker="NVDA")
+        self.assertEqual(len(linker._cache), 2)
+        self.assertNotIn("::apple", linker._cache)
+
+    def test_tier3_error_telemetry(self):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        # Simulate exception during trigram similarity query (e.g., missing pg_trgm extension)
+        mock_cursor.fetchone.side_effect = [
+            None,  # Tier 2 exact match misses
+            Exception("function similarity(text, text) does not exist"),  # Tier 3 raises
+            None,  # Tier 4 misses
+        ]
+
+        linker = EdgarEntityLinker(pg_conn=mock_conn)
+        res = linker.link_entity(name="NonExistent Company")
+        self.assertIsNone(res)
+        self.assertEqual(linker.tier3_failures_total, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

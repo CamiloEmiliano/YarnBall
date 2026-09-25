@@ -32,6 +32,7 @@ from graph.quality_controls import (
     compute_edge_confidence,
     is_generic_placeholder,
 )
+from graph.entity_resolver import _jaro_winkler_similarity
 from tools.sp500_universe import SP500UniverseManager
 
 logger = logging.getLogger("taxonomy_annotator")
@@ -149,9 +150,14 @@ class FinancialTaxonomyAnnotator:
         self.name_to_constituent = {c.company_name.lower(): c for c in constituents}
         self.cik_to_constituent = {c.cik.zfill(10): c for c in constituents if c.cik}
 
-    def infer_entity_typology(self, name: str, explicit_type: Optional[str] = None) -> Tuple[str, Optional[str], Optional[str]]:
+    def infer_entity_typology(
+        self,
+        name: str,
+        explicit_type: Optional[str] = None,
+        event_date: Optional[str] = None,
+    ) -> Tuple[str, Optional[str], Optional[str]]:
         """
-        Axis 1: Determine Entity Typology, Ticker, and CIK.
+        Axis 1: Determine Entity Typology, Ticker, and CIK with Point-in-Time and Best-Score Fuzzy Selection.
         Returns: (entity_type, ticker, cik)
         """
         if not name or is_generic_placeholder(name):
@@ -161,19 +167,48 @@ class FinancialTaxonomyAnnotator:
         name_lower = clean_name.lower()
         clean_upper = clean_name.upper()
 
+        # Build point-in-time constituent lookups if event_date provided
+        if event_date:
+            active_constituents = self.universe_mgr.get_constituents_at_date(event_date)
+            ticker_map = {c.ticker.upper(): c for c in active_constituents}
+            name_map = {c.company_name.lower(): c for c in active_constituents}
+        else:
+            ticker_map = self.ticker_to_constituent
+            name_map = self.name_to_constituent
+
         # 1. Direct Ticker Match
-        if clean_upper in self.ticker_to_constituent:
-            c = self.ticker_to_constituent[clean_upper]
+        if clean_upper in ticker_map:
+            c = ticker_map[clean_upper]
             return ("Company", c.ticker, c.cik)
 
         # 2. Direct Company Name Match
-        if name_lower in self.name_to_constituent:
-            c = self.name_to_constituent[name_lower]
+        if name_lower in name_map:
+            c = name_map[name_lower]
             return ("Company", c.ticker, c.cik)
 
-        # 3. Fuzzy S&P 500 Match
-        for c_name, c in self.name_to_constituent.items():
+        # 3. Best-Score Fuzzy S&P 500 Match (Max similarity ranking, not dict iteration order)
+        best_match = None
+        best_score = 0.0
+
+        for c_name, c in name_map.items():
             if len(c_name) >= 5 and (c_name in name_lower or name_lower in c_name):
+                containment_score = len(c_name) / max(len(c_name), len(name_lower))
+                if containment_score > best_score:
+                    best_score = containment_score
+                    best_match = c
+            else:
+                sim = _jaro_winkler_similarity(name_lower, c_name)
+                if sim >= 0.88 and sim > best_score:
+                    best_score = sim
+                    best_match = c
+
+        if best_match is not None and best_score >= 0.60:
+            return ("Company", best_match.ticker, best_match.cik)
+
+        # Fallback to general universe if event_date was restrictive
+        if event_date and (clean_upper in self.ticker_to_constituent or name_lower in self.name_to_constituent):
+            c = self.ticker_to_constituent.get(clean_upper) or self.name_to_constituent.get(name_lower)
+            if c:
                 return ("Company", c.ticker, c.cik)
 
         # 4. Infer Non-Company Typologies
@@ -274,8 +309,8 @@ class FinancialTaxonomyAnnotator:
         Validates schema, links identifiers, calibrates confidence, and formats DSL.
         """
         # Axis 1: Entity Typology & Grounding
-        src_type, src_ticker, src_cik = self.infer_entity_typology(raw_source, explicit_source_type)
-        tgt_type, tgt_ticker, tgt_cik = self.infer_entity_typology(raw_target, explicit_target_type)
+        src_type, src_ticker, src_cik = self.infer_entity_typology(raw_source, explicit_source_type, event_date=event_date)
+        tgt_type, tgt_ticker, tgt_cik = self.infer_entity_typology(raw_target, explicit_target_type, event_date=event_date)
 
         # Axis 2: Relational Ontology Validation & Auto-Orientation
         validated = validate_and_orient_triple(

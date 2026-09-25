@@ -60,6 +60,34 @@ def test_resolve_nodes_fuzzy_name_matching(temp_resolver):
     assert resolved[0]["ticker"] == "NVDA"
 
 
+def test_resolve_nodes_cik_disagreement_prevents_merge(temp_resolver):
+    """Test that two companies with conflicting CIKs are NEVER merged despite similar names."""
+    raw_nodes = [
+        {"id": "Alpha Corp", "label": "Company", "ticker": "ALPH", "cik": "0001111111", "source_hash": "h1"},
+        {"id": "Alpha Corporation", "label": "Company", "ticker": "ALPH2", "cik": "0002222222", "source_hash": "h2"},
+    ]
+
+    mapping, resolved = temp_resolver.resolve_nodes(raw_nodes)
+
+    assert mapping["Alpha Corp"] == "Alpha Corp"
+    assert mapping["Alpha Corporation"] == "Alpha Corporation"
+    assert len(resolved) == 2
+
+
+def test_resolve_nodes_short_substring_guard(temp_resolver):
+    """Test that generic short substring collision (e.g. 'Delta' vs 'Delta Air Lines') does not trigger false merge without ticker/CIK."""
+    raw_nodes = [
+        {"id": "Delta", "label": "Company", "ticker": None, "source_hash": "h1"},
+        {"id": "Delta Air Lines", "label": "Company", "ticker": "DAL", "source_hash": "h2"},
+    ]
+
+    mapping, resolved = temp_resolver.resolve_nodes(raw_nodes)
+
+    assert mapping["Delta"] == "Delta"
+    assert mapping["Delta Air Lines"] == "Delta Air Lines"
+    assert len(resolved) == 2
+
+
 def test_rewire_edges_remaps_and_drops_self_loops(temp_resolver):
     """Test that edge endpoints are remapped and internal self-loops are dropped."""
     node_mapping = {
