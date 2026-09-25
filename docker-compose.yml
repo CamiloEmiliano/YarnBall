@@ -61,6 +61,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: ["CMD-SHELL", "/bin/kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Sidecar service that runs DB initialisation once
   db_init:
@@ -109,8 +115,10 @@ services:
     restart: unless-stopped
     env_file: .env
     depends_on:
-      - postgres
-      - memgraph
+      postgres:
+        condition: service_healthy
+      memgraph:
+        condition: service_started
     ports:
       - "8000:8000"
   scraper:
@@ -122,9 +130,12 @@ services:
     restart: unless-stopped
     env_file: .env
     depends_on:
-      - kafka
-      - postgres
-      - db_init
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      db_init:
+        condition: service_completed_successfully
     command: ["python", "-m", "ingest.scraping_worker"]
 
 volumes:

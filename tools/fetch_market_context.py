@@ -101,6 +101,8 @@ class MarketContextIntegrator:
             return {
                 "ticker": clean_ticker,
                 "event_date": event_date_str,
+                "window_days": window_days,
+                "window_truncated": True,
                 "event_return_pct": 0.0,
                 "car_abnormal_return_pct": 0.0,
                 "volatility_zscore": 0.0,
@@ -119,6 +121,8 @@ class MarketContextIntegrator:
             anchor_date = event_date_str
 
         anchor_idx = sorted_dates.index(anchor_date)
+        window_truncated = (anchor_idx - window_days < 0) or (anchor_idx + window_days >= len(sorted_dates))
+
         pre_idx = max(0, anchor_idx - window_days)
         post_idx = min(len(sorted_dates) - 1, anchor_idx + window_days)
 
@@ -130,7 +134,6 @@ class MarketContextIntegrator:
         # Compute benchmark market return
         market_return = 0.0
         if bench_to_price:
-            b_dates = sorted(bench_to_price.keys())
             if sorted_dates[pre_idx] in bench_to_price and sorted_dates[post_idx] in bench_to_price:
                 b_pre = bench_to_price[sorted_dates[pre_idx]]
                 b_post = bench_to_price[sorted_dates[post_idx]]
@@ -138,12 +141,31 @@ class MarketContextIntegrator:
 
         car = raw_return - market_return
 
-        # Assign 5-Axis directional polarity
-        if car >= 0.05:
+        # Compute daily return baseline volatility for z-score scaling
+        daily_returns: List[float] = []
+        for i in range(1, len(sorted_dates)):
+            p_prev = date_to_price[sorted_dates[i - 1]]
+            p_curr = date_to_price[sorted_dates[i]]
+            if p_prev > 0:
+                daily_returns.append((p_curr - p_prev) / p_prev)
+
+        if len(daily_returns) >= 2:
+            mean_ret = sum(daily_returns) / len(daily_returns)
+            variance = sum((r - mean_ret) ** 2 for r in daily_returns) / (len(daily_returns) - 1)
+            daily_vol = math.sqrt(max(1e-8, variance))
+        else:
+            daily_vol = 0.02  # Fallback 2% daily volatility baseline
+
+        k_days = max(1, post_idx - pre_idx)
+        window_vol = daily_vol * math.sqrt(k_days)
+        volatility_zscore = car / window_vol if window_vol > 0 else 0.0
+
+        # Assign 5-Axis directional polarity scaled by volatility z-score
+        if volatility_zscore >= 2.0:
             polarity = "EXPANDING_BULLISH"
-        elif car <= -0.08:
+        elif volatility_zscore <= -3.0:
             polarity = "DISRUPTIVE_SHOCK"
-        elif car <= -0.03:
+        elif volatility_zscore <= -1.5:
             polarity = "CONTRACTING_BEARISH"
         else:
             polarity = "NEUTRAL_STABLE"
@@ -152,8 +174,10 @@ class MarketContextIntegrator:
             "ticker": clean_ticker,
             "event_date": event_date_str,
             "window_days": window_days,
+            "window_truncated": window_truncated,
             "event_return_pct": round(raw_return * 100.0, 2),
             "car_abnormal_return_pct": round(car * 100.0, 2),
+            "volatility_zscore": round(volatility_zscore, 2),
             "polarity_sentiment": polarity,
         }
 
@@ -167,8 +191,10 @@ class MarketContextIntegrator:
             ("ticker", pa.string()),
             ("event_date", pa.string()),
             ("window_days", pa.int32()),
+            ("window_truncated", pa.bool_()),
             ("event_return_pct", pa.float64()),
             ("car_abnormal_return_pct", pa.float64()),
+            ("volatility_zscore", pa.float64()),
             ("polarity_sentiment", pa.string()),
         ])
 

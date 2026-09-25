@@ -195,8 +195,12 @@ class HistoricalSECHarvester:
     ) -> List[Dict[str, Any]]:
         """Harvest filings for all point-in-time S&P 500 constituents in a given year."""
         logger.info(f"=== Starting S&P 500 SEC Historical Harvest for Year {year} ===")
-        point_in_time_date = f"{year}-06-30"
-        constituents = self.universe_manager.get_constituents_at_date(point_in_time_date)
+        # Union constituents active across start, mid, or end of year to prevent intra-year turnover bias
+        constituent_map: Dict[str, SP500Constituent] = {}
+        for anchor_date in [f"{year}-01-01", f"{year}-06-30", f"{year}-12-31"]:
+            for c in self.universe_manager.get_constituents_at_date(anchor_date):
+                constituent_map[c.ticker.upper()] = c
+        constituents = list(constituent_map.values())
 
         if tickers:
             ticker_set = {t.upper() for t in tickers}
@@ -205,7 +209,7 @@ class HistoricalSECHarvester:
         if max_companies:
             constituents = constituents[:max_companies]
 
-        logger.info(f"Targeting {len(constituents)} constituents for year {year} as of {point_in_time_date}")
+        logger.info(f"Targeting {len(constituents)} unique constituents active at any point in year {year}")
 
         results = []
         for i, c in enumerate(constituents, 1):

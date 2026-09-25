@@ -108,9 +108,8 @@ class ScrapingWorkerTests(unittest.TestCase):
         mock_cur.execute.assert_called()
         mock_conn.commit.assert_called()
 
-    @patch("ingest.scraping_worker.publish_graph_message")
     @patch("ingest.scraping_worker.fetch_and_extract")
-    def test_process_scraping_message_success(self, mock_fetch, mock_pub):
+    def test_process_scraping_message_success(self, mock_fetch):
         mock_fetch.return_value = (
             "A long valid article text about tech earnings with plenty of words and facts... " * 10,
             {},

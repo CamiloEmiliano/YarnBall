@@ -37,6 +37,7 @@ KafkaConsumer = KafkaConsumerType
 
 from tools.utils import KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC, logger
 from .graph_store import store_graph_entities
+from kafka_pipeline.kafka_producer import send_to_dlt, get_producer
 
 # Dedicated consumer group for Memgraph to allow independent scaling & offset tracking
 KAFKA_MEMGRAPH_GROUP_ID = os.getenv(
@@ -48,11 +49,19 @@ KAFKA_MEMGRAPH_GROUP_ID = os.getenv(
 def _deserialize_message(value: bytes | None) -> dict[str, Any] | None:
     if value is None:
         return None
-    return json.loads(value.decode("utf-8"))
+    try:
+        return json.loads(value.decode("utf-8"))
+    except Exception as exc:
+        logger.warning("Malformed message in deserializer: %s", exc)
+        return {"__malformed__": True, "raw": repr(value), "error": str(exc)}
 
 
 def process_graph_message(payload: dict[str, Any]) -> bool:
     """Extract raw payload text and persist entities/relations to Memgraph."""
+    if payload.get("__malformed__"):
+        logger.warning("Skipping malformed message payload: %s", payload)
+        return False
+
     source_hash = payload.get("source_hash")
     raw_payload = payload.get("raw_payload")
 
@@ -88,6 +97,12 @@ def run_memgraph_consumer() -> None:
         value_deserializer=_deserialize_message,
     )
 
+    try:
+        producer = get_producer()
+    except Exception as e:
+        logger.warning("Could not initialize producer for DLT fallback: %s", e)
+        producer = None
+
     logger.info(
         "Memgraph standalone consumer started (group: %s, topic: %s)",
         KAFKA_MEMGRAPH_GROUP_ID,
@@ -101,12 +116,31 @@ def run_memgraph_consumer() -> None:
                 consumer.commit()
                 continue
 
+            if payload.get("__malformed__"):
+                send_to_dlt(
+                    producer=producer,
+                    message=message,
+                    payload=payload,
+                    reason="malformed_json_deserialization",
+                    error=payload.get("error"),
+                )
+                consumer.commit()
+                continue
+
             try:
                 success = process_graph_message(payload)
                 if success:
                     logger.info(
                         "Extracted and stored Memgraph entities for source_hash: %s",
                         payload.get("source_hash"),
+                    )
+                else:
+                    send_to_dlt(
+                        producer=producer,
+                        message=message,
+                        payload=payload,
+                        reason="missing_required_fields",
+                        error="Missing source_hash or raw_payload",
                     )
                 consumer.commit()
             except Exception as exc:
@@ -115,7 +149,14 @@ def run_memgraph_consumer() -> None:
                     payload.get("source_hash"),
                     exc,
                 )
-                # Do not commit offset so the message can be retried on next consumer run
+                send_to_dlt(
+                    producer=producer,
+                    message=message,
+                    payload=payload,
+                    reason="memgraph_processing_exception",
+                    error=str(exc),
+                )
+                consumer.commit()
     finally:
         consumer.close()
         logger.info("Memgraph consumer shut down")

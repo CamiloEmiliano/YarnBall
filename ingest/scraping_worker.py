@@ -113,8 +113,8 @@ def is_paywall_or_stub(text: Optional[str], min_word_count: int = 40) -> bool:
 # ----------------------------------------------------------------------
 # Dynamic Domain Blacklist (PostgreSQL)
 # ----------------------------------------------------------------------
-def is_domain_blacklisted(domain: str, conn=None) -> bool:
-    """Check whether a domain is currently blacklisted in PostgreSQL domain_status."""
+def is_domain_blacklisted(domain: str, conn=None, cooldown_minutes: int = 60) -> bool:
+    """Check whether a domain is currently blacklisted in PostgreSQL domain_status with cool-down support."""
     if not domain:
         return False
     close_after = False
@@ -129,13 +129,24 @@ def is_domain_blacklisted(domain: str, conn=None) -> bool:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT status FROM domain_status WHERE domain = %s;",
-                (domain,),
+                """
+                SELECT status, updated_at, 
+                       (now() > updated_at + ( %s || ' minutes')::interval) AS cooldown_expired
+                FROM domain_status 
+                WHERE domain = %s;
+                """,
+                (str(cooldown_minutes), domain),
             )
             row = cur.fetchone()
             if row:
-                status = row[0] if isinstance(row, (tuple, list)) else row.get("status")
-                return status == "blacklisted"
+                status = row[0]
+                cooldown_expired = row[2] if len(row) > 2 else False
+                if status == "blacklisted":
+                    if cooldown_expired:
+                        # Half-open probe: allow one request through to test if domain recovered
+                        logger.info(f"Domain {domain} blacklist cooldown expired; allowing half-open probe.")
+                        return False
+                    return True
             return False
     except Exception as exc:
         logger.warning(f"Error checking domain status for {domain}: {exc}")
@@ -177,7 +188,7 @@ def record_domain_success(domain: str, conn=None) -> None:
 
 
 def record_domain_failure(domain: str, failure_threshold: int = 3, conn=None) -> None:
-    """Increment failure count and auto-blacklist if threshold reached."""
+    """Increment failure count and auto-blacklist with timestamp if threshold reached."""
     if not domain:
         return
     close_after = False

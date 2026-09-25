@@ -65,6 +65,26 @@ def test_compute_event_window_metrics(mock_universe_mgr, tmp_path: Path):
     )
 
     assert metrics["ticker"] == "NVDA"
+    assert metrics["window_truncated"] is False
     assert metrics["event_return_pct"] > 0
     assert metrics["car_abnormal_return_pct"] > 5.0
+    assert metrics["volatility_zscore"] > 0
     assert metrics["polarity_sentiment"] == "EXPANDING_BULLISH"
+
+    # Test truncated window
+    trunc_metrics = integrator.compute_event_window_metrics(
+        ticker="NVDA",
+        event_date_str="2024-01-10",
+        price_history=price_history,
+        window_days=2,
+    )
+    assert trunc_metrics["window_truncated"] is True
+
+    # Test parquet serialization
+    p_path = integrator.stage_market_context_to_parquet([metrics, trunc_metrics])
+    assert p_path.exists()
+    import pyarrow.parquet as pq
+    read_table = pq.read_table(p_path)
+    assert "window_truncated" in read_table.column_names
+    assert "volatility_zscore" in read_table.column_names
+    assert len(read_table) == 2
