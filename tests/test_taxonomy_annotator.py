@@ -70,6 +70,31 @@ def test_directional_polarity_classification(mock_universe_mgr):
     pol_stable = annotator.infer_directional_polarity(stable_text, "SUPPLIES_TO")
     assert pol_stable == "NEUTRAL_STABLE"
 
+    # 5. Negated trigger (ISSUE-10): "avoided breach", "not defaulted"
+    negated_text = "The Company avoided a covenant breach and has not defaulted on its obligations."
+    pol_negated = annotator.infer_directional_polarity(negated_text, "SUPPLIES_TO")
+    assert pol_negated == "NEUTRAL_STABLE"
+
+
+def test_status_decoupled_from_sentiment_polarity(mock_universe_mgr):
+    """Verify ISSUE-10 fix: negative macro context does NOT auto-terminate intact commercial edges."""
+    annotator = FinancialTaxonomyAnnotator(universe_mgr=mock_universe_mgr)
+
+    # Passage mentions supply relationship alongside negative stock/guidance shock
+    passage = "Taiwan Semiconductor supplies advanced GPUs to NVIDIA; market sentiment suffered a disruptive shock on macro tariffs."
+    triple = annotator.annotate_triple(
+        raw_source="TSMC",
+        raw_target="NVIDIA Corporation",
+        raw_rel="SUPPLIES_TO",
+        context_text=passage,
+        provenance="FINANCIAL_NEWS_VERIFIED",
+    )
+
+    assert triple is not None
+    # Relationship itself is active, not terminated
+    assert triple.status == "ACTIVE_CURRENT"
+    assert triple.rel_type == "SUPPLIES_TO"
+
 
 def test_financial_materiality_scoring(mock_universe_mgr):
     annotator = FinancialTaxonomyAnnotator(universe_mgr=mock_universe_mgr)
