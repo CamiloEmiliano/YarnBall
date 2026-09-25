@@ -118,11 +118,14 @@ class ManifoldTargetedSampler:
         output_dir: Optional[Path] = None,
         universe_mgr: Optional[SP500UniverseManager] = None,
         null_sample_ratio: float = 0.20,
+        seed: int = 42,
     ):
         self.output_dir = output_dir or DEFAULT_SFT_DIR
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.universe_mgr = universe_mgr or SP500UniverseManager()
         self.null_sample_ratio = null_sample_ratio
+        self.seed = seed
+        self.rng = random.Random(seed)
 
     def mine_rare_relation_candidates(
         self,
@@ -257,8 +260,8 @@ class ManifoldTargetedSampler:
             cap = DOMINANT_CLASS_CAP
 
             if len(samples) > cap:
-                # Subsample dominant class
-                curated.extend(random.sample(samples, cap))
+                # Subsample dominant class using deterministic RNG
+                curated.extend(self.rng.sample(samples, cap))
             elif len(samples) < floor and len(samples) > 0:
                 # Oversample to meet floor
                 curated.extend(samples)
@@ -274,8 +277,7 @@ class ManifoldTargetedSampler:
         selected_negs = hard_negatives[:target_neg_count] if len(hard_negatives) >= target_neg_count else hard_negatives
         curated.extend(selected_negs)
 
-        random.seed(42)
-        random.shuffle(curated)
+        self.rng.shuffle(curated)
 
         logger.info(
             f"Manifold curation complete: {len(curated)} samples "
@@ -299,13 +301,13 @@ class ManifoldTargetedSampler:
             return augmented
 
         for i in range(target_count):
-            base = random.choice(seed_samples)
+            base = self.rng.choice(seed_samples)
             if not base.grounded_triples:
                 continue
 
             # Pick replacement peer companies from S&P 500
-            peer_a = random.choice(constituents)
-            peer_b = random.choice([c for c in constituents if c.ticker != peer_a.ticker])
+            peer_a = self.rng.choice(constituents)
+            peer_b = self.rng.choice([c for c in constituents if c.ticker != peer_a.ticker])
 
             old_triples = base.grounded_triples
             new_triples = []

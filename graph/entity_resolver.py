@@ -33,24 +33,39 @@ SYMMETRIC_RELATIONSHIPS: Set[str] = {
     "COLLABORATES_WITH",
 }
 
-# Common corporate suffixes for name normalization
-CORPORATE_SUFFIXES = [
-    "inc.", "inc", "corp.", "corp", "corporation", "co.", "co",
-    "ltd.", "ltd", "limited", "llc", "plc", "nv", "ag", "sa",
-    "group", "holdings", "technologies", "tech", "semiconductor",
+# Common corporate suffixes for name normalization (singular & plural variants synchronized)
+CORPORATE_SUFFIXES: List[str] = [
+    "inc.", "inc", "corp.", "corp", "corporation", "co.", "co", "company",
+    "ltd.", "ltd", "limited", "llc", "plc", "nv", "ag", "sa", "gmbh", "b.v.", "bv",
+    "group", "holding", "holdings", "technology", "technologies", "tech",
+    "system", "systems", "solution", "solutions", "semiconductor", "semiconductors",
+    "international", "intl", "enterprises", "enterprise", "industries", "industry",
 ]
 
-# Media, news publishers, and syndication platforms that must never become economic graph nodes
-PUBLISHER_STOPLIST: Set[str] = {
+# Canonical set of all known media, news publishers, and syndication platforms
+KNOWN_PUBLISHER_NAMES: Set[str] = {
+    # Mainstream Financial Media & Wire Services
+    "cnbc", "bloomberg", "reuters", "associated press", "ap news", "dow jones",
+    "pr newswire", "businesswire", "globe newswire", "accesswire", "marketwired",
+    "yahoo finance", "barrons", "wall street journal", "wsj", "financial times",
+    "ft.com", "forbes", "morningstar", "investopedia", "marketwatch",
+    # Opinion Blogs, Clickbait & Retail Aggregators
     "motley fool", "the motley fool", "fool", "foolcom", "fool.com",
     "seeking alpha", "seekingalpha", "zacks", "zacks investment research",
-    "benzinga", "investorplace", "marketwatch", "thestreet", "investopedia",
-    "cnbc", "bloomberg", "reuters", "associated press", "ap news",
-    "pr newswire", "businesswire", "globe newswire", "accesswire",
-    "yahoo finance", "tipranks", "barrons", "wall street journal", "wsj",
-    "financial times", "ft.com", "forbes", "morningstar", "investing.com",
-    "alpha spreading", "24/7 wall st", "insider monkey", "fxstreet",
+    "benzinga", "investorplace", "thestreet", "tipranks", "insider monkey",
+    "24/7 wall st", "alpha spreading", "fxstreet", "investing.com",
 }
+
+# Retail clickbait / promotional blogs specifically filtered out during article ingestion
+CLICKBAIT_ARTICLE_STOPLIST: Set[str] = {
+    "motley fool", "the motley fool", "fool", "foolcom", "fool.com",
+    "seeking alpha", "seekingalpha", "zacks", "zacks investment research",
+    "benzinga", "investorplace", "thestreet", "tipranks", "insider monkey",
+    "24/7 wall st", "alpha spreading", "fxstreet",
+}
+
+# All publishers must be prevented from becoming :Company graph nodes
+PUBLISHER_STOPLIST: Set[str] = KNOWN_PUBLISHER_NAMES
 
 
 from .quality_controls import (
@@ -62,14 +77,6 @@ from .quality_controls import (
     resolve_edge_state_transitions,
     check_degree_anomaly_quarantine,
 )
-
-
-CLICKBAIT_ARTICLE_STOPLIST: Set[str] = {
-    "motley fool", "the motley fool", "fool", "foolcom", "fool.com",
-    "seeking alpha", "seekingalpha", "zacks", "zacks investment research",
-    "benzinga", "investorplace", "thestreet", "tipranks", "insider monkey",
-    "24/7 wall st", "alpha spreading", "fxstreet",
-}
 
 
 def is_clickbait_article_source(name: Optional[str]) -> bool:

@@ -47,6 +47,7 @@ class SFTRecord:
     prompt: str
     target_completion: str
     metadata: Dict[str, Any]
+    schema_version: str = "1.0.0"
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -59,11 +60,13 @@ class SFTDatasetExporter:
         self,
         output_dir: Optional[Path] = None,
         universe_mgr: Optional[SP500UniverseManager] = None,
+        seed: int = 42,
     ):
         self.output_dir = output_dir or DEFAULT_SFT_DIR
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.universe_mgr = universe_mgr or SP500UniverseManager()
-        self.sampler = ManifoldTargetedSampler(output_dir=self.output_dir, universe_mgr=self.universe_mgr)
+        self.seed = seed
+        self.sampler = ManifoldTargetedSampler(output_dir=self.output_dir, universe_mgr=self.universe_mgr, seed=seed)
         self.annotator = FinancialTaxonomyAnnotator(universe_mgr=self.universe_mgr)
 
     # ----------------------------------------------------------------------
@@ -301,6 +304,7 @@ class SFTDatasetExporter:
         write_jsonl(self.output_dir / "reasoner_8b_test.jsonl", rea_test)
 
         summary = {
+            "schema_version": "1.0.0",
             "created_at": datetime.now().isoformat(),
             "extractor_3b": {
                 "total": len(extractor_records),

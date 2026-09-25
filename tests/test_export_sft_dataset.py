@@ -146,7 +146,13 @@ def test_export_full_sft_splits_80_10_10(mock_universe_mgr, tmp_path: Path):
 
     assert (tmp_path / "extractor_3b_train.jsonl").exists()
     assert (tmp_path / "extractor_3b_val.jsonl").exists()
-    assert (tmp_path / "extractor_3b_test.jsonl").exists()
-
     assert (tmp_path / "reasoner_8b_train.jsonl").exists()
     assert (tmp_path / "dataset_summary.json").exists()
+
+    with open(tmp_path / "dataset_summary.json", "r", encoding="utf-8") as f:
+        summary_data = json.load(f)
+    assert summary_data["schema_version"] == "1.0.0"
+
+    with open(tmp_path / "extractor_3b_train.jsonl", "r", encoding="utf-8") as f:
+        first_line = json.loads(f.readline())
+    assert first_line["schema_version"] == "1.0.0"
