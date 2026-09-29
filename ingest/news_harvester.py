@@ -1,11 +1,10 @@
 """
-Multi-Source Financial News Harvester (yfinance, Google News RSS, and Fallback Feeds).
+Multi-Source Financial News Harvester (yfinance Direct Ticker News and Wire Ingestion).
 
-Provides an uncapped, rate-resilient news ingestion engine supporting:
+Provides a rate-resilient, canonical news ingestion engine supporting:
 1. `yfinance.Ticker.news` (Direct publisher links, ticker tags, timestamps)
-2. Google News RSS for high-impact corporate actions (M&A, supply deals, executive changes)
-3. Auxiliary fallback to Finnhub metadata
-4. Built-in publisher stoplist & boilerplate stripping
+2. Auxiliary fallback to Finnhub metadata
+3. Built-in publisher stoplist & boilerplate stripping
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ from pathlib import Path
 import re
 import time
 from typing import Any, Dict, List, Optional, Set
-import xml.etree.ElementTree as ET
 
 # Load environment
 try:
@@ -27,8 +25,6 @@ try:
     load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
-
-import httpx
 
 from graph.db import pg_connection
 from graph.entity_resolver import is_clickbait_article_source, is_generic_placeholder
@@ -103,112 +99,14 @@ class MultiSourceNewsHarvester:
 
         return results
 
-    def harvest_google_news_rss(
-        self,
-        query: str,
-        ticker: Optional[str] = None,
-        max_items: int = 15,
-    ) -> List[Dict[str, Any]]:
-        """
-        Harvest corporate news from Google News RSS search endpoint.
-        Example query: 'Apple TSMC supply agreement' or 'NVIDIA acquisition'.
-        """
-        results: List[Dict[str, Any]] = []
-        encoded_q = httpx.URL(f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en")
-
-        headers = {"User-Agent": self.user_agent}
-        try:
-            with httpx.Client(timeout=15.0, headers=headers) as client:
-                resp = client.get(str(encoded_q))
-                if resp.status_code != 200:
-                    return results
-
-                root = ET.fromstring(resp.content)
-                channel = root.find("channel")
-                if channel is None:
-                    return results
-
-                items = channel.findall("item")[:max_items]
-                for item in items:
-                    title_elem = item.find("title")
-                    link_elem = item.find("link")
-                    pub_date_elem = item.find("pubDate")
-                    source_elem = item.find("source")
-
-                    title = title_elem.text if title_elem is not None and title_elem.text else ""
-                    link = link_elem.text if link_elem is not None and link_elem.text else ""
-                    source_name = source_elem.text if source_elem is not None and source_elem.text else "Google News RSS"
-
-                    if not title or not link:
-                        continue
-
-                    if is_clickbait_article_source(source_name) or is_clickbait_article_source(title):
-                        continue
-
-                    # Parse RSS date format: "Mon, 18 Sep 2026 04:12:00 GMT"
-                    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    if pub_date_elem is not None and pub_date_elem.text:
-                        try:
-                            # Strip timezone name if needed
-                            clean_d = re.sub(r"\s+[A-Z]+$", "", pub_date_elem.text.strip())
-                            dt = datetime.strptime(clean_d, "%a, %d %b %Y %H:%M:%S")
-                            date_str = dt.strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-
-                    sh = compute_source_hash(link)
-                    tickers = [ticker.strip().upper()] if ticker else []
-
-                    results.append({
-                        "source_hash": sh,
-                        "source_url": link,
-                        "title": title,
-                        "raw_text": title,
-                        "published_at": date_str,
-                        "ticker_symbols": tickers,
-                        "provider": source_name,
-                        "category": "rss_financial_news",
-                        "status": "pending",
-                    })
-        except Exception as exc:
-            logger.debug(f"Google News RSS harvest failed for query '{query}': {exc}")
-
-        return results
-
     def harvest_ticker_events(
         self,
         ticker: str,
         company_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Harvest combined live news and event signals for an S&P 500 company."""
+        """Harvest live news and event signals for an S&P 500 company."""
         clean_ticker = ticker.strip().upper()
-        c_name = company_name or clean_ticker
-
-        combined: List[Dict[str, Any]] = []
-        seen_hashes: Set[str] = set()
-
-        # 1. yfinance direct news
-        yf_items = self.harvest_yfinance_news(clean_ticker)
-        for item in yf_items:
-            sh = item["source_hash"]
-            if sh not in seen_hashes:
-                seen_hashes.add(sh)
-                combined.append(item)
-
-        # 2. Google News RSS for material corporate triggers
-        rss_queries = [
-            f'"{c_name}" acquisition OR merger OR "acquired"',
-            f'"{c_name}" "supply agreement" OR supplier OR partnership',
-        ]
-        for q in rss_queries:
-            rss_items = self.harvest_google_news_rss(q, ticker=clean_ticker, max_items=5)
-            for item in rss_items:
-                sh = item["source_hash"]
-                if sh not in seen_hashes:
-                    seen_hashes.add(sh)
-                    combined.append(item)
-
-        return combined
+        return self.harvest_yfinance_news(clean_ticker)
 
     def sync_to_postgres_queue(self, records: List[Dict[str, Any]]) -> int:
         """Persist harvested live news records into PostgreSQL `financial_news_queue`."""

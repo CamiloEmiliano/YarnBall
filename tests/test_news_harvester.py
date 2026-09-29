@@ -47,37 +47,24 @@ def test_harvest_yfinance_news(mock_yf_ticker, mock_universe_mgr):
     assert "NVDA" in results[0]["ticker_symbols"]
 
 
-@patch("httpx.Client.get")
-def test_harvest_google_news_rss(mock_get, mock_universe_mgr):
-    sample_rss_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
-    <rss version="2.0">
-        <channel>
-            <title>Google News</title>
-            <item>
-                <title>Apple and Broadcom Announce Multi-Billion Dollar Agreement</title>
-                <link>https://news.google.com/articles/CAIiE12345</link>
-                <pubDate>Mon, 18 Mar 2024 14:30:00 GMT</pubDate>
-                <source url="https://bloomberg.com">Bloomberg</source>
-            </item>
-            <item>
-                <title>Top Stocks to Watch Today</title>
-                <link>https://news.google.com/articles/CAIiE99999</link>
-                <pubDate>Mon, 18 Mar 2024 14:30:00 GMT</pubDate>
-                <source url="https://seekingalpha.com">Seeking Alpha</source>
-            </item>
-        </channel>
-    </rss>
-    """
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.content = sample_rss_xml
-    mock_get.return_value = mock_resp
+@patch("yfinance.Ticker")
+def test_harvest_ticker_events(mock_yf_ticker, mock_universe_mgr):
+    mock_ticker_instance = MagicMock()
+    mock_ticker_instance.news = [
+        {
+            "title": "Apple Signs Major Silicon Fabrication Expansion",
+            "publisher": "Bloomberg",
+            "link": "https://bloomberg.com/news/apple-silicon-expansion",
+            "providerPublishTime": 1710500000,
+            "relatedTickers": ["AAPL"],
+        }
+    ]
+    mock_yf_ticker.return_value = mock_ticker_instance
 
     harvester = MultiSourceNewsHarvester(universe_mgr=mock_universe_mgr)
-    results = harvester.harvest_google_news_rss("Apple Broadcom deal", ticker="AAPL")
+    results = harvester.harvest_ticker_events("AAPL", "Apple Inc.")
 
-    # Only Bloomberg article survives; Seeking Alpha must be dropped
     assert len(results) == 1
-    assert "Broadcom" in results[0]["title"]
+    assert "Silicon Fabrication" in results[0]["title"]
     assert results[0]["provider"] == "Bloomberg"
     assert results[0]["ticker_symbols"] == ["AAPL"]

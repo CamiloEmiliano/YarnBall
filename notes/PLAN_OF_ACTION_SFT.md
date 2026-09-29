@@ -25,8 +25,8 @@ The plan decouples the **GraphRAG production runtime** (`YarnBall`) from the **d
 │ 2. Uncapped Historical & Real-Time Financial News (2018–2025)          │
 │    - FNSPID Hugging Face Dataset (>29M S&P 500 articles 2010–2024)     │
 │    - SEC Form 8-K Material Event Disclosures (Item 1.01/2.01 press)    │
-│    - Real-Time Harvesters: `yfinance` Ticker News, Google News RSS,     │
-│      PR Newswire / BusinessWire Direct Corporate RSS Streams           │
+│    - Real-Time Harvesters: `yfinance` Ticker News, corporate wire feeds, │
+│      and direct publisher disclosures                                  │
 │    - GDELT 2.0 Global Corporate & Supply Chain Event Stream            │
 │    - Auxiliary Fallback: Finnhub API (ticker metadata & quote lookup)  │
 │                                                                        │
@@ -79,7 +79,7 @@ The plan decouples the **GraphRAG production runtime** (`YarnBall`) from the **d
      - Extract plain-text sections (`item_1_business.txt`, `item_1a_risk_factors.txt`, `subsidiaries.json`, `form8k_events.json`).
   3. **Generous Multi-Source News Ingestion (`tools/ingest_historical_news.py` & `ingest/news_harvester.py`)**:
      - **Bulk Historical (2018–2025)**: Stream and filter the open **FNSPID** Hugging Face dataset (>29M financial articles mapped to S&P 500 tickers) and SEC Form 8-K material event releases directly into PostgreSQL `financial_news_queue` with zero API rate limits.
-     - **Live & Ongoing Ingestion**: Direct ticker news via `yfinance`, Google News RSS, and PR Newswire RSS streams (with Finnhub relegated to an auxiliary metadata fallback).
+     - **Live & Ongoing Ingestion**: Direct ticker news and corporate wire streams via `yfinance` and publisher feeds (with Finnhub relegated to an auxiliary metadata fallback).
   4. **Earnings Call Transcript Ingestion (`tools/ingest_transcripts.py`)**:
      - Download and stage quarterly earnings call transcripts and 8-K earnings releases.
   5. **Market Context Integrator (`tools/fetch_market_context.py`)**:
