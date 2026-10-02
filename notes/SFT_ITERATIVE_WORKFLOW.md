@@ -69,7 +69,40 @@ Natural financial text exhibits extreme class imbalance (thousands of generic me
 - **Entity-Swapping Augmentation**: Takes verified legal sentence frames and swaps in S&P 500 peer pairs across all 11 GICS economic sectors.
 - **Boundary-Proximity Hard Negatives**: Extracts commentary passages mentioning two or more S&P 500 companies that share no economic edge. The target completion is explicitly set to `(none)`, training the model to resist co-occurrence hallucinations.
 
-### 2.3 Serialization & Dataset Partitioning
+### 2.3 Algorithmic Data Cartography, Deduplication & Core-Set Selection Sequence
+To prevent model saturation on repetitive corporate boilerplates while preserving critical tail risks, the data curation pipeline applies a sequence of four algorithmic sampling filters:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ STEP 1: MinHash LSH Deduplication (Near-Exact Match Pruning)           │
+│ • 5-gram tokenization with 128 permutation hashes (Jaccard >= 0.85)    │
+│ • Removes syndicated wire duplicates and identical 10-K risk disclosures│
+├────────────────────────────────────────────────────────────────────────┤
+│ STEP 2: Semantic Embedding Clustering (all-mpnet-base-v2)              │
+│ • Dense vector clustering with cosine threshold >= 0.88                │
+│ • Collapses redundant corporate governance boilerplates into centroids │
+├────────────────────────────────────────────────────────────────────────┤
+│ STEP 3: Dataset Cartography (Training Dynamics Diagnostic)             │
+│ • Confidence (Mean true-token prob) vs Variability (Epoch variance)    │
+│ • Prune 80% of "Easy-to-Learn" boilerplates                            │
+│ • Retain 100% of "Ambiguous / Boundary" samples (the learning engine)  │
+│ • Quarantine "Hard-to-Learn" samples for automated label audit         │
+├────────────────────────────────────────────────────────────────────────┤
+│ STEP 4: Submodular Core-Set Selection (Facility Location Function)     │
+│ • Maximizes geometric coverage of the 11-sector relational manifold    │
+│ • Selects an information-dense training subset S without mode collapse │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Locality-Sensitive Hashing (MinHash LSH Deduplication)** (*Broder, 1997; Lee et al., ACL 2022*): Eliminates syndicated financial news wire duplicates (e.g. identical Reuters/AP headlines across 50 regional outlets) and verbatim forward-looking statement disclaimers across consecutive filing years.
+2. **Dense Semantic Embedding Clustering** (*Song et al., NeurIPS 2020; Abbas et al., 2023 - SemDeDup*): Embeds raw passages into 768-dimensional space using `sentence-transformers/all-mpnet-base-v2`. Identifies high-density boilerplate clusters (e.g., standard ERISA or revolving credit facility text) and retains only representative centroid exemplars.
+3. **Dataset Cartography & Training Dynamics Mapping** (*Swayamdipta et al., EMNLP 2020; Toneva et al., ICLR 2019*):
+   - **Easy-to-Learn Region (High Confidence, Low Variability)**: Repetitive, simple patterns (e.g., basic subsidiary mentions). Pruned by ~80% to save compute and avoid over-memorization (*Toneva et al., 2019*).
+   - **Ambiguous / Boundary Region (Moderate Confidence, High Variability)**: Complex transitive supply links, passive-voice news clauses, and near-boundary hard negatives. **Retained at 100%** because these drive out-of-distribution generalizability.
+   - **Hard-to-Learn Region (Low Confidence, Low Variability)**: Quarantined to automated error logs to catch corrupted accession files or unresolvable company acronyms.
+4. **Submodular Core-Set Selection** (*Mirzasoleiman et al., ICML 2020 - CRAIG; Wei et al., ICML 2015; Sener & Savarese, ICLR 2018*): Employs a Facility Location objective to select a subset S that maximizes coverage across all 11 GICS sectors and 5-axis relation combinations, achieving optimal scaling efficiency.
+
+### 2.4 Serialization & Dataset Partitioning
 The dataset is exported via [SFTDatasetExporter](graphrag_finance/tools/export_sft_dataset.py#L56-L328) into standard Schema `v1.0.0` JSONL files:
 - `extractor_3b_train.jsonl` (80%), `extractor_3b_val.jsonl` (10%), `extractor_3b_test.jsonl` (10%)
 - `reasoner_8b_train.jsonl` (80%), `reasoner_8b_val.jsonl` (10%), `reasoner_8b_test.jsonl` (10%)
@@ -295,3 +328,41 @@ The design of the YarnBall SFT generation, active learning loop, and dual-model 
     *Natural Language Processing for Financial Market Forecasting: A Survey.*  
     ACM Computing Surveys, 51(6), 1–35.  
     *(Surveys semantic alignment between textual corporate disclosures and quantitative price volatility).*
+
+### 8.6 Data Cartography, Semantic Deduplication & Core-Set Selection
+19. **Broder, A. Z. (1997).**  
+    *On the Resemblance and Containment of Documents.*  
+    Proceedings of the Compression and Complexity of Sequences (SEQUENCES 1997), IEEE, 21–29.  
+    *(Mathematical foundation of MinHash and Locality-Sensitive Hashing for syntactic near-duplicate elimination across large corpora).*
+20. **Lee, K., Ippolito, D., Nystrom, A., Zhang, C., Eck, D., Callison-Burch, C., & Carlini, N. (2022).**  
+    *Deduplicating Training Data Makes Language Models Better.*  
+    Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (ACL 2022), 8424–8445.  
+    *(Demonstrates that removing syntactic duplicates dramatically reduces memorization, improves sample efficiency, and mitigates verbatim generation).*
+21. **Song, K., Tan, X., Qin, T., Lu, J., & Liu, T. Y. (2020).**  
+    *MPNet: Masked and Permuted Pre-training for Language Understanding.*  
+    Advances in Neural Information Processing Systems (NeurIPS 2020), 33, 16857–16867.  
+    *(Unified pre-training architecture powering `all-mpnet-base-v2` dense semantic representations).*
+22. **Abbas, A., Tirumala, K., Simig, D., Ganguli, S., & Morcos, A. S. (2023).**  
+    *SemDeDup: Data-Efficient Learning at Scale through Semantic Deduplication.*  
+    arXiv preprint arXiv:2303.09540.  
+    *(Establishes the methodology for using dense embedding clustering and cosine similarity thresholds to prune semantically redundant training examples).*
+23. **Swayamdipta, S., Schwartz, R., Lourie, N., Wang, Y., Hajishirzi, H., Smith, N. A., & Choi, Y. (2020).**  
+    *Dataset Cartography: Mapping and Diagnosing Datasets with Training Dynamics.*  
+    Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP 2020), 9275–9293.  
+    *(Foundational framework for mapping training dynamics via confidence and variability to identify easy-to-learn, ambiguous, and hard-to-learn partitions).*
+24. **Toneva, M., Sordoni, A., des Combes, R. T., Trischler, A., Bengio, Y., & Gordon, G. J. (2019).**  
+    *An Empirical Investigation of Catastrophic Forgetting in Gradient-Based Neural Networks.*  
+    International Conference on Learning Representations (ICLR 2019).  
+    *(Introduces forgetting events in training dynamics, proving that unforgettable easy samples can be aggressively pruned without degrading generalization).*
+25. **Mirzasoleiman, B., Bilmes, J., & Leskovec, J. (2020).**  
+    *Coresets for Data-Efficient Training of Machine Learning Models (CRAIG).*  
+    Proceedings of the 37th International Conference on Machine Learning (ICML 2020), PMLR 119, 6950–6960.  
+    *(Proves that submodular facility location core-sets approximate the full gradient while speeding up training and preventing representation collapse).*
+26. **Wei, K., Iyer, R., & Bilmes, J. (2015).**  
+    *Submodularity in Data Subset Selection and Active Learning.*  
+    Proceedings of the 32nd International Conference on Machine Learning (ICML 2015), PMLR 37, 1954–1963.  
+    *(Theoretical formulation for submodular optimization in diverse dataset curation).*
+27. **Sener, O., & Savarese, S. (2018).**  
+    *Active Learning for Convolutional Neural Networks: A Core-Set Approach.*  
+    International Conference on Learning Representations (ICLR 2018).  
+    *(Formulates geometric core-set coverage as a minimax facility location problem for efficient model training).*

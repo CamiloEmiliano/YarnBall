@@ -186,11 +186,13 @@ To prevent catastrophic forgetting and ensure balanced capability:
 }
 ```
 
-#### 3.5 Statistical Balancing Pipeline
-- Stratified sampling across all 11 GICS economic sectors.
-- Embedding clustering (`all-mpnet-base-v2`) to deduplicate legal/journalistic boilerplate.
-- Automated Python partitioning into Qwen 2.5 (3B) and Qwen 3 (8B) training sets.
-- Train / Validation / Test split (80% / 10% / 10%).
+#### 3.5 Statistical Balancing, Deduplication & Data Cartography Pipeline
+To eliminate redundant boilerplates and optimize sample efficiency without losing tail risks:
+1. **MinHash LSH Deduplication** (*Broder, 1997; Lee et al., ACL 2022*): 5-gram tokenization with 128 permutation hashes (Jaccard >= 0.85) to eliminate syndicated news wire copies and identical 10-K legal text.
+2. **Dense Semantic Embedding Clustering** (*Song et al., NeurIPS 2020; Abbas et al., 2023 - SemDeDup*): 768-dim `all-mpnet-base-v2` clustering (cosine threshold >= 0.88) collapsing boilerplate disclosures into centroid exemplars.
+3. **Dataset Cartography & Training Dynamics** (*Swayamdipta et al., EMNLP 2020; Toneva et al., ICLR 2019*): Prunes ~80% of "Easy-to-Learn" samples, retains 100% of "Ambiguous / Boundary" samples, and quarantines "Hard-to-Learn" noisy data.
+4. **Submodular Core-Set Selection** (*Mirzasoleiman et al., ICML 2020; Sener & Savarese, ICLR 2018*): Facility location optimization guaranteeing uniform geometric coverage across all 11 GICS economic sectors and 5-axis types.
+5. **Deterministic Split**: Train / Validation / Test partitioning (80% / 10% / 10%).
 
 #### 3.6 Rare Relationship Over-Sampling & Lexical Trigger Harvesting
 To prevent class collapse where the model only predicts common relationships (`SUBSIDIARY_OF`, `SUPPLIES_TO`) while missing high-value risk edges:
