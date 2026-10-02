@@ -70,7 +70,7 @@ class SFTDatasetExporter:
         self.annotator = FinancialTaxonomyAnnotator(universe_mgr=self.universe_mgr)
 
     # ----------------------------------------------------------------------
-    # 3B Extractor Task Formatters
+    # Task Formatters (Unified Qwen2.5-7B Model: Tasks A, B, C, D, E)
     # ----------------------------------------------------------------------
     def format_task_a_sec_graph(self, sample: ManifoldSample, annotated_triples: List[AnnotatedTriple]) -> SFTRecord:
         """Task A: <|extract_sec_graph|> SEC Filing text -> OpenCypher Triples DSL."""
@@ -87,7 +87,7 @@ class SFTDatasetExporter:
             target_completion=target,
             metadata={
                 "task_type": "EXTRACT_SEC_GRAPH",
-                "assigned_student": "QWEN_2.5_3B_EXTRACTOR",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
                 "cognitive_tier": "LOW",
                 "difficulty_score": sample.difficulty_score,
                 "is_hard_negative": sample.is_hard_negative,
@@ -111,7 +111,7 @@ class SFTDatasetExporter:
             target_completion=target,
             metadata={
                 "task_type": "EXTRACT_NEWS_EVENT",
-                "assigned_student": "QWEN_2.5_3B_EXTRACTOR",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
                 "cognitive_tier": "LOW",
                 "difficulty_score": sample.difficulty_score,
                 "is_hard_negative": sample.is_hard_negative,
@@ -142,7 +142,7 @@ class SFTDatasetExporter:
             target_completion=target,
             metadata={
                 "task_type": "TEXT_TO_CYPHER",
-                "assigned_student": "QWEN_2.5_3B_EXTRACTOR",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
                 "cognitive_tier": "LOW",
                 "difficulty_score": 0.35,
                 "is_hard_negative": False,
@@ -151,9 +151,6 @@ class SFTDatasetExporter:
             },
         )
 
-    # ----------------------------------------------------------------------
-    # 8B Reasoner Task Formatters
-    # ----------------------------------------------------------------------
     def format_task_d_contagion_reasoning(
         self,
         focal_company: str,
@@ -198,7 +195,7 @@ class SFTDatasetExporter:
             target_completion=completion,
             metadata={
                 "task_type": "CONTAGION_REASONING",
-                "assigned_student": "QWEN_3_8B_REASONER",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
                 "cognitive_tier": "HIGH",
                 "difficulty_score": 0.88,
                 "graph_hops": 3,
@@ -246,7 +243,7 @@ class SFTDatasetExporter:
             target_completion=completion,
             metadata={
                 "task_type": "PORTFOLIO_RECOMMENDATION",
-                "assigned_student": "QWEN_3_8B_REASONER",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
                 "cognitive_tier": "HIGH",
                 "difficulty_score": 0.82,
                 "graph_hops": 2,
@@ -266,7 +263,8 @@ class SFTDatasetExporter:
         val_ratio: float = 0.10,
     ) -> Dict[str, Any]:
         """
-        Split records into Train (80%), Val (10%), Test (10%) and export JSONL files.
+        Split records into Train (80%), Val (10%), Test (10%) and export unified
+        and modular JSONL files for Qwen2.5-7B fine-tuning.
         """
         random.seed(42)
 
@@ -282,10 +280,19 @@ class SFTDatasetExporter:
             test_set = shuffled[n_train + n_val:]
             return train_set, val_set, test_set
 
-        # Split Extractor 3B
+        # Split Extraction Tasks (Tasks A, B, C)
         ext_train, ext_val, ext_test = split_list(extractor_records)
-        # Split Reasoner 8B
+        # Split Reasoning Tasks (Tasks D, E)
         rea_train, rea_val, rea_test = split_list(reasoner_records)
+
+        # Combined Unified Dataset for Qwen2.5-7B
+        unified_train = ext_train + rea_train
+        unified_val = ext_val + rea_val
+        unified_test = ext_test + rea_test
+
+        random.shuffle(unified_train)
+        random.shuffle(unified_val)
+        random.shuffle(unified_test)
 
         def write_jsonl(filepath: Path, recs: List[SFTRecord]) -> None:
             with open(filepath, "w", encoding="utf-8") as f:
@@ -293,30 +300,45 @@ class SFTDatasetExporter:
                     f.write(json.dumps(r.to_dict()) + "\n")
             logger.info(f"Wrote {len(recs)} records to {filepath}")
 
-        # Write Extractor 3B files
-        write_jsonl(self.output_dir / "extractor_3b_train.jsonl", ext_train)
-        write_jsonl(self.output_dir / "extractor_3b_val.jsonl", ext_val)
-        write_jsonl(self.output_dir / "extractor_3b_test.jsonl", ext_test)
+        # 1. Primary Unified Splits for Qwen2.5-7B
+        write_jsonl(self.output_dir / "yarnball_sft_train.jsonl", unified_train)
+        write_jsonl(self.output_dir / "yarnball_sft_val.jsonl", unified_val)
+        write_jsonl(self.output_dir / "yarnball_sft_test.jsonl", unified_test)
 
-        # Write Reasoner 8B files
-        write_jsonl(self.output_dir / "reasoner_8b_train.jsonl", rea_train)
-        write_jsonl(self.output_dir / "reasoner_8b_val.jsonl", rea_val)
-        write_jsonl(self.output_dir / "reasoner_8b_test.jsonl", rea_test)
+        # 2. Modular Task-Domain Splits
+        write_jsonl(self.output_dir / "extraction_tasks_train.jsonl", ext_train)
+        write_jsonl(self.output_dir / "extraction_tasks_val.jsonl", ext_val)
+        write_jsonl(self.output_dir / "extraction_tasks_test.jsonl", ext_test)
+
+        write_jsonl(self.output_dir / "reasoning_tasks_train.jsonl", rea_train)
+        write_jsonl(self.output_dir / "reasoning_tasks_val.jsonl", rea_val)
+        write_jsonl(self.output_dir / "reasoning_tasks_test.jsonl", rea_test)
 
         summary = {
             "schema_version": "1.0.0",
             "created_at": datetime.now().isoformat(),
-            "extractor_3b": {
-                "total": len(extractor_records),
-                "train": len(ext_train),
-                "val": len(ext_val),
-                "test": len(ext_test),
+            "target_model": "Qwen2.5-7B-Instruct (Unified Extractor & Reasoner)",
+            "unified_splits": {
+                "total": len(unified_train) + len(unified_val) + len(unified_test),
+                "train": len(unified_train),
+                "val": len(unified_val),
+                "test": len(unified_test),
             },
-            "reasoner_8b": {
-                "total": len(reasoner_records),
-                "train": len(rea_train),
-                "val": len(rea_val),
-                "test": len(rea_test),
+            "task_breakdown": {
+                "extraction_tasks": {
+                    "tasks": ["Task A: SEC Graph DSL", "Task B: News Event Edges", "Task C: Text-to-Cypher"],
+                    "total": len(extractor_records),
+                    "train": len(ext_train),
+                    "val": len(ext_val),
+                    "test": len(ext_test),
+                },
+                "reasoning_tasks": {
+                    "tasks": ["Task D: Contagion Reasoning (<think>)", "Task E: Portfolio Hedging (<think>)"],
+                    "total": len(reasoner_records),
+                    "train": len(rea_train),
+                    "val": len(rea_val),
+                    "test": len(rea_test),
+                },
             },
             "output_directory": str(self.output_dir),
         }

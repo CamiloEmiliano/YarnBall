@@ -1,12 +1,16 @@
 """
 Comprehensive Full S&P 500 Multi-Task SFT Dataset Generation Engine.
 
-Generates large-scale, 11-sector balanced, point-in-time grounded instruction datasets for:
-1. Qwen2.5-3B Extractor: Task A (SEC DSL), Task B (News Events), Task C (Text-to-Cypher)
-2. Qwen3-8B Reasoner: Task D (Contagion Reasoning), Task E (Portfolio Hedging) with <think> CoT
+Generates large-scale, 11-sector balanced, point-in-time grounded instruction datasets
+for a unified Qwen2.5-7B Financial Intelligence Model spanning all 5 tasks:
+- Task A: SEC OpenCypher Triples DSL (<|extract_sec_graph|>)
+- Task B: Breaking News Event Edges (<|extract_news_event|>)
+- Task C: Text-to-Cypher (<|text_to_cypher|>)
+- Task D: Contagion Reasoning with <think> (<|contagion_reasoning|>)
+- Task E: Portfolio Hedging & Allocation with <think> (<|portfolio_recommendation|>)
 
 Applies Manifold Boundary Hard Negative Mining, representation floors (>= 200) for rare risk relations,
-and 80/10/10 Train/Val/Test partitioning into data/sft/.
+and 80/10/10 Train/Val/Test partitioning into data/sft/ (yarnball_sft_*.jsonl).
 """
 
 from __future__ import annotations

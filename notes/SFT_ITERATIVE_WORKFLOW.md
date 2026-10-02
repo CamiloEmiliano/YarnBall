@@ -4,9 +4,8 @@
 
 This document specifies the end-to-end Supervised Fine-Tuning (SFT) workflow loop for the **YarnBall** Financial GraphRAG platform. 
 
-The system transitions raw, multi-source financial disclosures into high-precision, low-latency distilled models:
-- **Qwen2.5-3B Extractor** (~2.1 GB vRAM, ~120 tok/s): High-throughput information extraction converting unstructured filings and news into validated OpenCypher DSL.
-- **Qwen3-8B Reasoner** (~5.2 GB vRAM, ~40 tok/s): High-cognitive financial reasoning calculating multi-hop contagion cascades and institutional portfolio hedging strategies using `<think>` Chain-of-Thought (CoT).
+The system transitions raw, multi-source financial disclosures into a high-precision, low-latency unified model:
+- **`yarnball-qwen:7b` (`Qwen2.5-7B-Instruct` 4-bit Q4_K_M)** (~4.7 GB vRAM, ~60-75 tok/s, fits 100% in 8 GB laptop GPU vRAM): Unified information extraction (converting unstructured filings and news into validated OpenCypher DSL) and high-cognitive financial reasoning (calculating multi-hop contagion cascades and institutional portfolio hedging strategies using `<think>` Chain-of-Thought).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -14,14 +13,14 @@ The system transitions raw, multi-source financial disclosures into high-precisi
 │ • SEC Form 10-K (Item 1, 1A, Exhibit 21) & Form 8-K disclosures        │
 │ • Historical daily OHLCV prices, CAR, and volatility z-scores          │
 │ • Manifold class-balancing floors (>= 200) & hard negative synthesis   │
-│ • Deterministic 80/10/10 Train/Val/Test partitioning                   │
+│ • Deterministic 80/10/10 Train/Val/Test partitioning (yarnball_sft_*)  │
 └────────────────────────────────────────────────────────────────────────┘
                                    │
                                    ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ STAGE 2: Dual-Model Supervised Fine-Tuning Execution                   │
-│ • 3B Extractor: Tasks A (SEC), B (News), C (Text-to-Cypher)            │
-│ • 8B Reasoner: Tasks D (Contagion), E (Portfolio Hedging) with <think> │
+│ STAGE 2: Unified Qwen2.5-7B Supervised Fine-Tuning Execution           │
+│ • Task A (SEC DSL), Task B (News Events), Task C (Text-to-Cypher)      │
+│ • Task D (Contagion Cascades), Task E (Portfolio Hedging) with <think> │
 │ • Cross-entropy loss computed strictly over target completion tokens   │
 └────────────────────────────────────────────────────────────────────────┘
                                    │
@@ -104,25 +103,24 @@ To prevent model saturation on repetitive corporate boilerplates while preservin
 
 ### 2.4 Serialization & Dataset Partitioning
 The dataset is exported via [SFTDatasetExporter](graphrag_finance/tools/export_sft_dataset.py#L56-L328) into standard Schema `v1.0.0` JSONL files:
-- `extractor_3b_train.jsonl` (80%), `extractor_3b_val.jsonl` (10%), `extractor_3b_test.jsonl` (10%)
-- `reasoner_8b_train.jsonl` (80%), `reasoner_8b_val.jsonl` (10%), `reasoner_8b_test.jsonl` (10%)
-- `dataset_summary.json` containing total counts, sector balance, and provenance metadata.
+- `yarnball_sft_train.jsonl` (80%), `yarnball_sft_val.jsonl` (10%), `yarnball_sft_test.jsonl` (10%)
+- Modular domain splits: `extraction_tasks_*.jsonl` (Tasks A, B, C) and `reasoning_tasks_*.jsonl` (Tasks D, E)
+- `dataset_summary.json` containing total counts, sector balance, target model, and provenance metadata.
 
 ---
 
 ## 3. Phase 2: Supervised Fine-Tuning Execution
 
-### 3.1 Model Specialization & Task Partitioning
+### 3.1 Unified Model Architecture & Task Specialization
 
-| Model Student | Parameter Size | vRAM Footprint | Target Tasks | Primary Objective |
-| :--- | :--- | :--- | :--- | :--- |
-| **Qwen2.5-3B Extractor** | 3 Billion | ~2.1 GB (4-bit/8-bit) | **Task A**: SEC Graph DSL<br>**Task B**: News Event Edges<br>**Task C**: Text-to-Cypher | High-throughput sequence-to-sequence translation into OpenCypher DSL; strict refusal on non-causal pairs. |
-| **Qwen3-8B Reasoner** | 8 Billion | ~5.2 GB (4-bit/8-bit) | **Task D**: Contagion Cascades<br>**Task E**: Portfolio Hedging | Deep economic chain-of-thought (`<think>`) calculating 2nd/3rd-order margin and supply shock elasticities. |
+| Model Student | Base Model | Parameter Size | vRAM Footprint | Target Tasks | Primary Objective |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`yarnball-qwen:7b`** | `Qwen/Qwen2.5-7B-Instruct` | 7.6 Billion | ~4.7 GB (4-bit Q4_K_M) | **Task A**: SEC Graph DSL<br>**Task B**: News Event Edges<br>**Task C**: Text-to-Cypher<br>**Task D**: Contagion Cascades<br>**Task E**: Portfolio Hedging | Unified high-throughput extraction into OpenCypher DSL and multi-hop economic chain-of-thought (`<think>`) reasoning. |
 
 ### 3.2 Training Hyperparameters & Prompt Loss Masking
-- **LoRA Config**: Rank r = 32 (or 64 for 8B), Alpha = 128, Target Modules = `[q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]`, Dropout = 0.05.
+- **LoRA Config**: Rank r = 32, Alpha = 64, Target Modules = `[q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]`, Dropout = 0.05.
 - **Loss Masking**: Crucially, cross-entropy loss is computed **only on completion tokens** (after the delimiter `Triples:`, `Directional Event:`, or `Question:`). The prompt tokens are masked with label `-100` so the model does not waste capacity memorizing input text.
-- **Sequence Length**: 2,048 tokens for 3B Extractor; 4,096 tokens for 8B Reasoner (to accommodate extensive `<think>` CoT traces).
+- **Sequence Length**: Clamped to 2,048 tokens.
 
 ---
 
@@ -212,10 +210,10 @@ Before promoting a model checkpoint to the live streaming Kafka consumer ([kafka
 | **Hard Negative Refusal Accuracy** | >= 96.0% | 200 Market Commentary Negatives |
 | **Macro Relational F1 Score** | >= 0.90 | All 11 GICS Sector Test Splits |
 | **Entity Grounding Accuracy (CIK Match)** | >= 95.0% | S&P 500 Constituent Universe |
-| **CoT Reasoning Validity (8B Model)** | >= 92.0% | Multi-hop Contagion Ground Truth |
+| **CoT Reasoning Validity (Task D & E)** | >= 92.0% | Multi-hop Contagion Ground Truth |
 
 If all criteria are met:
-1. Model weights are serialized and tagged (e.g., `qwen2.5-3b-extractor-v1.2.0`).
+1. Model weights are serialized and tagged (e.g., `yarnball-qwen-7b-v1.0.0`).
 2. LoRA adapter is loaded into the Ollama / vLLM inference container.
 3. Live streaming ingestion worker begins routing real-time filings and news through the updated model.
 

@@ -53,7 +53,7 @@ def test_format_task_a_sec_graph(mock_universe_mgr, tmp_path: Path):
 
     record = exporter.format_task_a_sec_graph(sample, [triple])
     assert record.metadata["task_type"] == "EXTRACT_SEC_GRAPH"
-    assert record.metadata["assigned_student"] == "QWEN_2.5_3B_EXTRACTOR"
+    assert record.metadata["assigned_student"] == "QWEN_2.5_7B_UNIFIED"
     assert "<|extract_sec_graph|>" in record.prompt
     assert "(:Company" in record.target_completion
     assert '-[:SUPPLIES_TO {' in record.target_completion
@@ -77,6 +77,7 @@ def test_format_task_b_news_event_hard_negative(mock_universe_mgr, tmp_path: Pat
 
     record = exporter.format_task_b_news_event(sample, [])
     assert record.metadata["task_type"] == "EXTRACT_NEWS_EVENT"
+    assert record.metadata["assigned_student"] == "QWEN_2.5_7B_UNIFIED"
     assert record.target_completion == "(none)" # Hard negative target is strictly empty!
 
 
@@ -85,6 +86,7 @@ def test_format_task_c_text_to_cypher(mock_universe_mgr, tmp_path: Path):
 
     record = exporter.format_task_c_text_to_cypher("Apple Inc.", "AAPL")
     assert record.metadata["task_type"] == "TEXT_TO_CYPHER"
+    assert record.metadata["assigned_student"] == "QWEN_2.5_7B_UNIFIED"
     assert "<|text_to_cypher|>" in record.prompt
     assert "MATCH (s:Company)-[r:SUPPLIES_TO]->(t:Company)" in record.target_completion
     assert "t.ticker = 'AAPL'" in record.target_completion
@@ -103,7 +105,7 @@ def test_format_task_d_contagion_reasoning(mock_universe_mgr, tmp_path: Path):
     )
 
     assert record.metadata["task_type"] == "CONTAGION_REASONING"
-    assert record.metadata["assigned_student"] == "QWEN_3_8B_REASONER"
+    assert record.metadata["assigned_student"] == "QWEN_2.5_7B_UNIFIED"
     assert record.metadata["provenance"] == "SYNTHETIC_TEMPLATE_SKELETON"
     assert "<think>" in record.target_completion
     assert "</think>" in record.target_completion
@@ -121,7 +123,7 @@ def test_format_task_e_portfolio_recommendation(mock_universe_mgr, tmp_path: Pat
     )
 
     assert record.metadata["task_type"] == "PORTFOLIO_RECOMMENDATION"
-    assert record.metadata["assigned_student"] == "QWEN_3_8B_REASONER"
+    assert record.metadata["assigned_student"] == "QWEN_2.5_7B_UNIFIED"
     assert record.metadata["provenance"] == "SYNTHETIC_TEMPLATE_SKELETON"
     assert "<think>" in record.target_completion
     assert "Strategic Portfolio Recommendation" in record.target_completion
@@ -142,19 +144,24 @@ def test_export_full_sft_splits_80_10_10(mock_universe_mgr, tmp_path: Path):
 
     summary = exporter.export_full_sft_splits(extractor_recs, reasoner_recs, train_ratio=0.80, val_ratio=0.10)
 
-    assert summary["extractor_3b"]["train"] == 8
-    assert summary["extractor_3b"]["val"] == 1
-    assert summary["extractor_3b"]["test"] == 1
+    assert summary["unified_splits"]["train"] == 16
+    assert summary["unified_splits"]["val"] == 2
+    assert summary["unified_splits"]["test"] == 2
+    assert summary["task_breakdown"]["extraction_tasks"]["train"] == 8
+    assert summary["task_breakdown"]["reasoning_tasks"]["train"] == 8
 
-    assert (tmp_path / "extractor_3b_train.jsonl").exists()
-    assert (tmp_path / "extractor_3b_val.jsonl").exists()
-    assert (tmp_path / "reasoner_8b_train.jsonl").exists()
+    assert (tmp_path / "yarnball_sft_train.jsonl").exists()
+    assert (tmp_path / "yarnball_sft_val.jsonl").exists()
+    assert (tmp_path / "yarnball_sft_test.jsonl").exists()
+    assert (tmp_path / "extraction_tasks_train.jsonl").exists()
+    assert (tmp_path / "reasoning_tasks_train.jsonl").exists()
     assert (tmp_path / "dataset_summary.json").exists()
 
     with open(tmp_path / "dataset_summary.json", "r", encoding="utf-8") as f:
         summary_data = json.load(f)
     assert summary_data["schema_version"] == "1.0.0"
+    assert summary_data["target_model"] == "Qwen2.5-7B-Instruct (Unified Extractor & Reasoner)"
 
-    with open(tmp_path / "extractor_3b_train.jsonl", "r", encoding="utf-8") as f:
+    with open(tmp_path / "yarnball_sft_train.jsonl", "r", encoding="utf-8") as f:
         first_line = json.loads(f.readline())
     assert first_line["schema_version"] == "1.0.0"

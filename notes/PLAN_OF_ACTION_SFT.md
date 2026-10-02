@@ -1,12 +1,16 @@
-# Master Plan of Action: Multi-Source Financial Graph & Quantized Dual-Model SFT Distillation (Qwen2.5-3B & Qwen3-8B)
+# Master Plan of Action: Multi-Source Financial Graph & Unified Qwen2.5-7B SFT Distillation
 
 ## Executive Overview
-This document outlines the end-to-end plan for building **YarnBall's Dual-Model Intelligence Engine**—a pair of task-specialized, quantized financial models trained via supervised fine-tuning (SFT) and teacher distillation across a multi-source financial corpus spanning 2018 to 2025+:
+This document outlines the end-to-end plan for building **YarnBall's Unified Financial Intelligence Model**—a task-specialized, quantized 7B financial model (`Qwen2.5-7B-Instruct`) trained via supervised fine-tuning (SFT) and teacher distillation across a multi-source financial corpus spanning 2018 to 2025+:
 
-1. **`Qwen2.5-3b_YarnBall_Extractor` (4-bit Q4_K_M)**: Low-cognitive workhorse for high-throughput, syntax-constrained entity extraction, CIK normalization, and Text-to-Cypher generation (**~2.1 GB vRAM**, **~110-130 tok/s**).
-2. **`Qwen3-8b_YarnBall_Reasoner` (4-bit Q4_K_M)**: High-cognitive analyst for multi-hop shock propagation, systemic risk contagion, and portfolio hedging synthesis (**~5.2 GB vRAM**, **~35-48 tok/s**).
+- **`yarnball-qwen:7b` (`Qwen2.5-7B-Instruct` 4-bit Q4_K_M GGUF)**: Unified high-throughput extraction and high-cognitive reasoning engine (**~4.7 GB vRAM**, **~60-75 tok/s**, fitting 100% inside 8 GB laptop GPU vRAM) spanning all 5 core tasks:
+  - **Task A (`<|extract_sec_graph|>`)**: SEC Form 10-K/10-Q/8-K parsing into validated OpenCypher DSL.
+  - **Task B (`<|extract_news_event|>`)**: Breaking news and press releases into 5-axis directional graph edges.
+  - **Task C (`<|text_to_cypher|>`)**: Natural language financial queries into executable Memgraph CQL.
+  - **Task D (`<|contagion_reasoning|>`)**: Multi-hop supply chain contagion and shock propagation with `<think>` Chain-of-Thought (CoT).
+  - **Task E (`<|portfolio_recommendation|>`)**: Risk synthesis and institutional portfolio hedging strategies with `<think>` CoT.
 
-The plan decouples the **GraphRAG production runtime** (`YarnBall`) from the **dedicated ML training lab** (`Qwen_YarnBall_SFT`), establishes multi-year S&P 500 point-in-time snapshot archives tracked by DVC, incorporates 4 complementary data layers (SEC Filings, Historical News, Earnings Transcripts, Market/Macro series), and enforces a rigorous 5-tier Ground Truth verification protocol.
+The plan decouples the **GraphRAG production runtime** (`graphrag_finance` / `YarnBall`) from the **dedicated ML training lab** (`Qwen_YarnBall_SFT`), establishes multi-year S&P 500 point-in-time snapshot archives tracked by DVC, incorporates 4 complementary data layers (SEC Filings, Historical News, Earnings Transcripts, Market/Macro series), and enforces a rigorous 5-tier Ground Truth verification protocol.
 
 ---
 
@@ -129,35 +133,23 @@ Every extracted triple is classified across 5 orthogonal dimensions:
 - **Axis 4 (Financial Materiality & Criticality)**: `CRITICAL_TIER_1` (>10% revenue / sole-source), `MATERIAL_TIER_2` (major multi-year), `COMMODITY_TIER_3` (interchangeable off-the-shelf).
 - **Axis 5 (Temporal Provenance & Lifecycle)**: Status (`ACTIVE_CURRENT`, `TERMINATED`), `valid_from`, `valid_to`, `source_provenance` (`SEC_10K_ITEM1`, `SEC_8K`, `REUTERS_NEWS`).
 
-#### 3.3 Cognitive Load Task Classification & Quantized Dual-Model Architecture
-Tasks are partitioned by **Cognitive Load** and topological hop distance (k <= 2 vs k >= 3):
+#### 3.3 Cognitive Load Task Classification & Unified Model Architecture
+All 5 financial tasks are unified under a single **Qwen2.5-7B** backbone using distinct control tokens:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ 1. LOW COGNITIVE LOAD WORKHORSE: Qwen2.5:3b_YarnBall_Extractor (Q4_K_M)│
+│ UNIFIED FINANCIAL INTELLIGENCE ENGINE: Qwen2.5-7B-Instruct (Q4_K_M)    │
 │ ────────────────────────────────────────────────────────────────────── │
-│ Role: High-throughput, deterministic syntax & parsing (k <= 2 hops)    │
-│ Quantization: 4-bit GGUF (Q4_K_M)                                      │
-│ Memory Footprint: ~2.1 GB vRAM (100% in GPU, 110-130 tokens/sec)       │
-│ Grammar Enforcement: GBNF Cypher Triples DSL Grammars                  │
-│ Teacher Pipeline: Gemini 2.0 Flash + Deterministic CIK Constraint Gates│
+│ Architecture: 7.6B Parameters, 28 Layers, 128k Context Window          │
+│ Quantization: 4-bit GGUF (Q4_K_M, ~4.7 GB Binary)                      │
+│ Hardware Fit: 100% in Laptop 8 GB vRAM (~60-75 tok/s, Zero Offload)    │
+│ Format: Task Control Tokens + Prompt Loss Masking                      │
 │                                                                        │
 │ - Task A (`<|extract_sec_graph|>`): SEC 10-K/10-Q/8-K -> Triples DSL   │
 │ - Task B (`<|extract_news_event|>`): Breaking News -> Directional Edge │
 │ - Task C (`<|text_to_cypher|>`): Query + Schema -> Valid Memgraph CQL  │
-└────────────────────────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────────────┐
-│ 2. HIGH COGNITIVE LOAD ANALYST: Qwen3:8b_YarnBall_Reasoner (Q4_K_M)    │
-│ ────────────────────────────────────────────────────────────────────── │
-│ Role: Multi-hop reasoning, shock propagation, hedging (k >= 3 hops)    │
-│ Quantization: 4-bit GGUF (Q4_K_M)                                      │
-│ Memory Footprint: ~5.2 GB vRAM (35-48 tokens/sec, fits 8GB vRAM)      │
-│ Reasoning Structure: Structured Chain-of-Thought (<think> blocks)      │
-│ Teacher Pipeline: Frontier Committee (Gemini 1.5 Pro + Claude 3.5 + O1)│
-│                                                                        │
-│ - Task D (`<|contagion_reasoning|>`): Subgraph -> 2nd/3rd order impact │
-│ - Task E (`<|portfolio_recommendation|>`): Risk synthesis -> Strategy  │
+│ - Task D (`<|contagion_reasoning|>`): Subgraph -> Multi-hop <think>    │
+│ - Task E (`<|portfolio_recommendation|>`): Risk -> Hedging <think>     │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -177,7 +169,7 @@ To prevent catastrophic forgetting and ensure balanced capability:
     "difficulty": "MEDIUM",
     "graph_hops": 2,
     "gics_sector": "Information Technology",
-    "assigned_student": "QWEN_2.5_3B_EXTRACTOR",
+    "assigned_student": "QWEN_2.5_7B_UNIFIED",
     "teacher_origin": "GEMINI_FLASH_CIK_GATE",
     "curriculum_weight": 1.0
   },
@@ -192,7 +184,7 @@ To eliminate redundant boilerplates and optimize sample efficiency without losin
 2. **Dense Semantic Embedding Clustering** (*Song et al., NeurIPS 2020; Abbas et al., 2023 - SemDeDup*): 768-dim `all-mpnet-base-v2` clustering (cosine threshold >= 0.88) collapsing boilerplate disclosures into centroid exemplars.
 3. **Dataset Cartography & Training Dynamics** (*Swayamdipta et al., EMNLP 2020; Toneva et al., ICLR 2019*): Prunes ~80% of "Easy-to-Learn" samples, retains 100% of "Ambiguous / Boundary" samples, and quarantines "Hard-to-Learn" noisy data.
 4. **Submodular Core-Set Selection** (*Mirzasoleiman et al., ICML 2020; Sener & Savarese, ICLR 2018*): Facility location optimization guaranteeing uniform geometric coverage across all 11 GICS economic sectors and 5-axis types.
-5. **Deterministic Split**: Train / Validation / Test partitioning (80% / 10% / 10%).
+5. **Deterministic Split**: Train / Validation / Test partitioning (`yarnball_sft_train.jsonl` 80%, `yarnball_sft_val.jsonl` 10%, `yarnball_sft_test.jsonl` 10%).
 
 #### 3.6 Rare Relationship Over-Sampling & Lexical Trigger Harvesting
 To prevent class collapse where the model only predicts common relationships (`SUBSIDIARY_OF`, `SUPPLIES_TO`) while missing high-value risk edges:
@@ -203,7 +195,7 @@ To prevent class collapse where the model only predicts common relationships (`S
    - `DEFAULTED_ON / TERMINATED`: Harvest `"terminated for cause"`, `"notice of default"`, `"covenant breach"`, `"contract cancellation"`.
 2. **Inverse-Frequency Floor Capping**:
    - Cap common relations (`SUBSIDIARY_OF`, generic `SUPPLIES_TO`) at a maximum of ~500 samples.
-   - Enforce a hard minimum floor of at least **250 verified training samples** for every rare relationship class.
+   - Enforce a hard minimum floor of at least **200 verified training samples** for every rare relationship class.
 3. **Targeted Form 8-K Event Item Mining**:
    - Specifically pull rare corporate disruption filings: Item 1.02 (Termination of Material Agreement), Item 1.03 (Bankruptcy), Item 2.04 (Acceleration of Direct Financial Obligation / Default).
 4. **Counterfactual Entity-Swap Augmentation**:
@@ -212,50 +204,44 @@ To prevent class collapse where the model only predicts common relationships (`S
 ---
 
 ### Phase 4: Cloud LoRA Training, Hardware Specs & Experiment Tracking
-- **Objective**: Fine-tune both `Qwen2.5-3B` and `Qwen3-8B` on cloud GPU compute (Vast.ai / RunPod).
+- **Objective**: Fine-tune `Qwen2.5-7B-Instruct` on cloud GPU compute (Vast.ai / RunPod).
 - **GPU Hardware & Compute Estimates**:
-  - **Workload**:
-    - Extractor: Base 3B model (`Qwen2.5-3B-Instruct`), ~4,000 extraction samples, 3 epochs.
-    - Reasoner: Base 8B model (`Qwen3-8B`), ~4,000 multi-hop reasoning samples, 3 epochs.
-  - **Training Compute Requirements (4-bit QLoRA via Unsloth)**:
-    - 3B Model Peak vRAM: **~5.5 to 6.5 GB vRAM** (Training time: **~30 to 45 min** on RTX 4090).
-    - 8B Model Peak vRAM: **~9.5 to 11.5 GB vRAM** (Training time: **~1.0 to 1.5 hours** on RTX 4090).
+  - **Workload**: Base model `Qwen/Qwen2.5-7B-Instruct`, ~3,000–5,000 unified multi-task samples, 3 epochs.
+  - **Training Compute Requirements (4-bit QLoRA via Unsloth / Hugging Face PEFT)**:
+    - 7B Model Peak vRAM during training: **~8.5 to 11.5 GB vRAM** (Training time: **~45 to 60 min** on RTX 4090).
   - **Recommended Hardware Tier**:
-    - **Primary Target**: **1x Nvidia RTX 4090 (24 GB vRAM)** — Total Combined Training Time: **~2.0 hours**, Total Cost: **~$1.00 to $1.50 USD** (via Vast.ai/RunPod).
+    - **Primary Target**: **1x Nvidia RTX 4090 (24 GB vRAM)** — Total Training Time: **~1.0 hour**, Total Cost: **~$0.40 to $0.75 USD** (via Vast.ai).
     - **System Specs**: 8 vCPUs, 32 GB System RAM, 50 GB NVMe storage.
 - **Key Deliverables**:
-  1. **Dual-Model LoRA Training Scripts (`train_extractor_3b.py`, `train_reasoner_8b.py`)**:
+  1. **Unified LoRA Training Script (`train_lora_vastai.py`)**:
      - Target: LoRA rank r=32, alpha=64, targeting attention (`q_proj`, `k_proj`, `v_proj`, `o_proj`) and MLP projections (`gate_proj`, `up_proj`, `down_proj`).
+     - Prompt loss masking with label `-100` on input prompt tokens.
      - Sequence Length: Clamped to 2,048 tokens.
   2. **Experiment Tracking (Weights & Biases)**:
-     - Real-time logging of train/eval loss per task, learning rate decay, gradient norms, and GPU memory telemetry.
+     - Real-time logging of train/eval loss across tasks, learning rate decay, gradient norms, and GPU memory telemetry.
   3. **Multi-Task Checkpoint Evaluation (`eval_checkpoint.py`)**:
      - Evaluated every 100 steps on held-out test set: JSON Validity %, Entity/Relation F1, Cypher Syntax Accuracy, Sentiment F1, Directional Accuracy.
 
 ---
 
 ### Phase 5: Hugging Face Model Registry, GGUF Quantization & YarnBall Integration
-- **Objective**: Host the trained models on Hugging Face Hub, quantize to 4-bit GGUF (`Q4_K_M`), package for Ollama, and integrate the dual-model router into `YarnBall`.
+- **Objective**: Host the trained adapter on Hugging Face Hub, quantize merged weights to 4-bit GGUF (`Q4_K_M`), package for Ollama, and serve in `graphrag_finance`.
 - **Hugging Face Hub Private Model Registry**:
-  - `hf.co/<username>/Qwen2.5-3B-YarnBall-Extractor`
-  - `hf.co/<username>/Qwen3-8B-YarnBall-Reasoner`
+  - `hf.co/<username>/yarnball-qwen-7b`
 - **Multi-Format Artifact Storage**:
-  - `adapter_model.safetensors` (~75MB for 3B, ~150MB for 8B): Lightweight LoRA weights.
-  - `Qwen2.5-3b-YarnBall-Extractor-Q4_K_M.gguf` (**~2.1 GB**): Fast extraction workhorse.
-  - `Qwen3-8b-YarnBall-Reasoner-Q4_K_M.gguf` (**~5.2 GB**): Deep multi-hop reasoner.
+  - `adapter_model.safetensors` (~140MB): Lightweight LoRA weights.
+  - `yarnball-qwen-7b-Q4_K_M.gguf` (**~4.7 GB**): Fast, unified extraction & reasoning engine.
 - **Key Deliverables**:
   1. **Quantization Pipeline**: Export `Q4_K_M` GGUF binaries using `llama.cpp`.
   2. **Hugging Face Hub Deployment**: Automated push of adapter, merged weights, and GGUF files to private HF repository.
   3. **Ollama Integration**:
-     - Pull commands:
-       - `ollama run hf.co/<username>/Qwen2.5-3B-YarnBall-Extractor:Q4_K_M`
-       - `ollama run hf.co/<username>/Qwen3-8B-YarnBall-Reasoner:Q4_K_M`
-     - Dedicated `Modelfile` configurations with GBNF grammar constraints for the 3B extractor.
-  4. **Dual-Model Router in `YarnBall` (`rag/llm_router.py`)**:
-     - Dispatches ingestion workers, filing parsers, and simple 1-hop lookups to `Qwen2.5-3B-Extractor` (~2.1 GB vRAM).
-     - Dispatches multi-hop contagion questions, supply chain shocks, and portfolio hedging to `Qwen3-8B-Reasoner` (~5.2 GB vRAM).
+     - Register local model: `ollama create yarnball-qwen:7b -f Modelfile`
+     - Test direct inference: `ollama run yarnball-qwen:7b "<|extract_sec_graph|>..."`
+  4. **GraphRAG Platform Integration (`rag/` & `kafka_pipeline/`)**:
+     - Ingestion workers route incoming SEC filings and news streams through `yarnball-qwen:7b`.
+     - Hybrid retriever and text-to-cypher queries invoke `yarnball-qwen:7b` for Cypher generation and multi-hop graph reasoning.
   5. **End-to-End Regression Verification in `YarnBall`**:
-     - Run full 84-test regression suite and 25-query golden benchmark harness (`rag/eval_harness.py`).
+     - Run full 134-test regression suite and 25-query golden benchmark harness (`rag/eval_harness.py`).
 
 ---
 
@@ -273,8 +259,8 @@ To prevent class collapse where the model only predicts common relationships (`S
 | Gate | Target | Verification Method |
 | :--- | :---: | :--- |
 | **1. Dataset Ground Truth** | **100% JSON valid, >90% CIK linked, Kappa >0.90** | 5-Tier Ground Truth Protocol (CIK gates + Committee Consensus) |
-| **2. Extraction F1 (3B Workhorse)** | **> 92% Entity F1, > 88% Relation F1** | 200-sample held-out golden test set with GBNF grammar |
-| **3. Text-to-CQL Accuracy (3B Workhorse)** | **> 96% Executable Cypher** | Automated Memgraph execution test suite |
-| **4. Contagion Reasoning (8B Analyst)** | **> 85% Directional & Propagation Accuracy** | Golden multi-hop scenario evaluation benchmark |
-| **5. Local Hardware Footprint** | **Extractor: ~2.1 GB vRAM (>100 tok/s)<br>Reasoner: ~5.2 GB vRAM (>35 tok/s)** | Measured under local Ollama on 8 GB vRAM laptop GPU |
+| **2. Extraction F1 (Task A & B)** | **> 92% Entity F1, > 88% Relation F1** | 200-sample held-out golden test set with GBNF grammar |
+| **3. Text-to-CQL Accuracy (Task C)** | **> 96% Executable Cypher** | Automated Memgraph execution test suite |
+| **4. Contagion Reasoning (Task D & E)** | **> 85% Directional & Propagation Accuracy** | Golden multi-hop scenario evaluation benchmark |
+| **5. Local Hardware Footprint** | **~4.7 GB vRAM (~60-75 tok/s, 100% GPU)** | Measured under local Ollama on 8 GB vRAM laptop GPU |
 
