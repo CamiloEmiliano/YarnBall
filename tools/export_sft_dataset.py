@@ -66,6 +66,7 @@ class SFTDatasetExporter:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.universe_mgr = universe_mgr or SP500UniverseManager()
         self.seed = seed
+        self.rng = random.Random(seed)
         self.sampler = ManifoldTargetedSampler(output_dir=self.output_dir, universe_mgr=self.universe_mgr, seed=seed)
         self.annotator = FinancialTaxonomyAnnotator(universe_mgr=self.universe_mgr)
 
@@ -120,36 +121,102 @@ class SFTDatasetExporter:
             },
         )
 
-    def format_task_c_text_to_cypher(self, company_name: str, ticker: str, rel_type: str = "SUPPLIES_TO") -> SFTRecord:
+    def format_task_c_text_to_cypher(
+        self,
+        company_name: str,
+        ticker: str,
+        variant_idx: int = 0,
+    ) -> SFTRecord:
         """Task C: <|text_to_cypher|> Financial natural language query -> Valid Memgraph Cypher query."""
+        variants = [
+            (
+                f"Find all Tier 1 suppliers providing critical components to {company_name} ({ticker}).",
+                f"MATCH (s:Company)-[r:SUPPLIES_TO]->(t:Company)\n"
+                f"WHERE (t.ticker = '{ticker}' OR t.name = '{company_name}') "
+                f"AND r.materiality = 'CRITICAL_TIER_1' AND r.status = 'ACTIVE_CURRENT'\n"
+                f"RETURN s.name AS supplier, s.ticker AS ticker, r.nature AS component, r.polarity AS sentiment;"
+            ),
+            (
+                f"Identify all sole-source risk dependencies where {company_name} ({ticker}) is vulnerable.",
+                f"MATCH (s:Company)<-[r:SOLE_SOURCE_DEPENDENT_ON]-(t:Company)\n"
+                f"WHERE (t.ticker = '{ticker}' OR t.name = '{company_name}')\n"
+                f"RETURN s.name AS critical_supplier, s.ticker AS ticker, r.nature AS chokepoint, r.materiality AS tier;"
+            ),
+            (
+                f"List all direct downstream enterprise customers for {company_name} ({ticker}).",
+                f"MATCH (s:Company {{ticker: '{ticker}'}})-[r:SUPPLIES_TO]->(c:Company)\n"
+                f"WHERE r.status = 'ACTIVE_CURRENT'\n"
+                f"RETURN c.name AS customer, c.ticker AS customer_ticker, r.materiality AS revenue_tier;"
+            ),
+            (
+                f"Retrieve all intellectual property and patent cross-licensing agreements involving {company_name} ({ticker}).",
+                f"MATCH (t:Company)-[r:LICENSES_FROM|LICENSES_TO]-(p:Company)\n"
+                f"WHERE (t.ticker = '{ticker}' OR t.name = '{company_name}')\n"
+                f"RETURN p.name AS licensor_partner, type(r) AS license_type, r.polarity AS sentiment;"
+            ),
+            (
+                f"Find all counterparties that have defaulted on agreements with {company_name} ({ticker}).",
+                f"MATCH (s:Company)-[r:DEFAULTED_ON]->(t:Company)\n"
+                f"WHERE (t.ticker = '{ticker}' OR t.name = '{company_name}')\n"
+                f"RETURN s.name AS defaulting_entity, r.nature AS breach_summary, r.status AS status;"
+            ),
+            (
+                f"Trace 2-hop upstream suppliers providing semiconductor or raw material inputs to {company_name} ({ticker}).",
+                f"MATCH (s2:Company)-[:SUPPLIES_TO]->(s1:Company)-[:SUPPLIES_TO]->(t:Company {{ticker: '{ticker}'}})\n"
+                f"RETURN s2.name AS tier_2_supplier, s1.name AS tier_1_supplier, t.name AS focal_company;"
+            ),
+            (
+                f"Query all active contractionary or bearish risk exposures for {company_name} ({ticker}).",
+                f"MATCH (t:Company {{ticker: '{ticker}'}})-[r]-(c:Company)\n"
+                f"WHERE r.polarity IN ['CONTRACTING_BEARISH', 'DISRUPTIVE_SHOCK']\n"
+                f"RETURN c.name AS entity, type(r) AS risk_type, r.polarity AS severity;"
+            ),
+            (
+                f"Find all strategic acquisitions and M&A transactions completed by {company_name} ({ticker}).",
+                f"MATCH (target:Company)-[r:ACQUIRED_BY]->(acquirer:Company)\n"
+                f"WHERE (acquirer.ticker = '{ticker}' OR acquirer.name = '{company_name}')\n"
+                f"RETURN target.name AS acquired_entity, r.polarity AS sentiment, r.valid_from AS transaction_date;"
+            ),
+            (
+                f"List all legal entity subsidiaries operating under {company_name} ({ticker}).",
+                f"MATCH (sub:Subsidiary)-[r:SUBSIDIARY_OF]->(parent:Company)\n"
+                f"WHERE (parent.ticker = '{ticker}' OR parent.name = '{company_name}')\n"
+                f"RETURN sub.name AS subsidiary_name, sub.jurisdiction AS jurisdiction;"
+            ),
+            (
+                f"Find the shortest supply chain path between {company_name} ({ticker}) and Taiwan Semiconductor (TSM).",
+                f"MATCH path = shortestPath((s:Company {{ticker: 'TSM'}})-[:SUPPLIES_TO*]-(t:Company {{ticker: '{ticker}'}}))\n"
+                f"RETURN path, length(path) AS hop_distance;"
+            ),
+        ]
+
+        query_text, cypher_target = variants[variant_idx % len(variants)]
         prompt = (
             f"<|text_to_cypher|>\n"
-            f"Schema: (:Company {{name, ticker, cik}})-[:{rel_type} {{polarity, materiality, status}}]->(:Company)\n"
-            f"Query: Find all Tier 1 suppliers providing critical components to {company_name} ({ticker}).\n\n"
+            f"Schema: (:Company {{name, ticker, cik}})-[:SUPPLIES_TO|SOLE_SOURCE_DEPENDENT_ON|LICENSES_FROM|ACQUIRED_BY|DEFAULTED_ON {{polarity, materiality, status}}]->(:Company)\n"
+            f"Query: {query_text}\n\n"
             f"Cypher:"
         )
-        target = (
-            f"MATCH (s:Company)-[r:SUPPLIES_TO]->(t:Company)\n"
-            f"WHERE (t.ticker = '{ticker}' OR t.name = '{company_name}') "
-            f"AND r.materiality = 'CRITICAL_TIER_1' AND r.status = 'ACTIVE_CURRENT'\n"
-            f"RETURN s.name AS supplier, s.ticker AS ticker, r.nature AS component, r.polarity AS sentiment;"
-        )
-        sample_id = f"TASK_C_{ticker}_{hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:12]}"
+        sample_id = f"TASK_C_{ticker}_{variant_idx:02d}_{hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:8]}"
 
         return SFTRecord(
             sample_id=sample_id,
             prompt=prompt,
-            target_completion=target,
+            target_completion=cypher_target,
             metadata={
                 "task_type": "TEXT_TO_CYPHER",
                 "assigned_student": "QWEN_2.5_7B_UNIFIED",
                 "cognitive_tier": "LOW",
-                "difficulty_score": 0.35,
+                "difficulty_score": 0.35 + (variant_idx * 0.03),
                 "is_hard_negative": False,
                 "gics_sector": "Universal",
-                "provenance": "SYNTHETIC_SCHEMA_DSL",
+                "provenance": f"SYNTHETIC_SCHEMA_DSL_VAR_{variant_idx}",
             },
         )
+
+    def format_task_c_variations(self, company_name: str, ticker: str, num_variations: int = 10) -> List[SFTRecord]:
+        """Generate multiple distinct Text-to-Cypher query variations for a given company."""
+        return [self.format_task_c_text_to_cypher(company_name, ticker, i) for i in range(num_variations)]
 
     def format_task_d_contagion_reasoning(
         self,
@@ -159,13 +226,17 @@ class SFTDatasetExporter:
         supplier_ticker: str,
         shock_scenario: str,
         impacted_customers: List[str],
+        gics_sector: str = "Information Technology",
+        supply_nature: str = "Mission-Critical Components",
+        timeline_quarters: str = "1–2 quarters",
     ) -> SFTRecord:
         """Task D: <|contagion_reasoning|> Multi-hop shock propagation with structured <think> CoT block."""
         prompt = (
             f"<|contagion_reasoning|>\n"
+            f"Sector: {gics_sector}\n"
             f"Scenario: {shock_scenario}\n"
             f"Knowledge Graph Subgraph Context:\n"
-            f"({supplier}:Company {{ticker: '{supplier_ticker}'}})-[:SUPPLIES_TO {{nature: 'Advanced Wafers', materiality: 'CRITICAL_TIER_1'}}]->({focal_company}:Company {{ticker: '{focal_ticker}'}})\n"
+            f"({supplier}:Company {{ticker: '{supplier_ticker}'}})-[:SUPPLIES_TO {{nature: '{supply_nature}', materiality: 'CRITICAL_TIER_1'}}]->({focal_company}:Company {{ticker: '{focal_ticker}'}})\n"
             f"({focal_company}:Company)-[:SUPPLIES_TO]->({', '.join(impacted_customers)})\n\n"
             f"Question: Analyze the 2nd- and 3rd-order supply chain contagion impact on downstream revenue and operating margins."
         )
@@ -183,8 +254,8 @@ class SFTDatasetExporter:
             f"{reasoning_thought}"
             f"**Contagion Analysis Summary**:\n"
             f"- **Primary Disruption**: {supplier} supply constraint immediately curtails {focal_company}'s production run rate.\n"
-            f"- **2nd-Order Exposure**: Key downstream partners ({', '.join(impacted_customers)}) face delayed deliveries across the next 1–2 quarters.\n"
-            f"- **Risk Classification**: `DISRUPTIVE_SHOCK` with high margin sensitivity across the semiconductor-hardware value chain."
+            f"- **2nd-Order Exposure**: Key downstream partners ({', '.join(impacted_customers)}) face delayed deliveries across the next {timeline_quarters}.\n"
+            f"- **Risk Classification**: `DISRUPTIVE_SHOCK` with high margin sensitivity across the {gics_sector.lower()} value chain."
         )
 
         sample_id = f"TASK_D_{focal_ticker}_{hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:12]}"
@@ -199,7 +270,7 @@ class SFTDatasetExporter:
                 "cognitive_tier": "HIGH",
                 "difficulty_score": 0.88,
                 "graph_hops": 3,
-                "gics_sector": "Information Technology",
+                "gics_sector": gics_sector,
                 "provenance": "SYNTHETIC_TEMPLATE_SKELETON",
             },
         )
@@ -210,11 +281,14 @@ class SFTDatasetExporter:
         focal_ticker: str,
         risk_exposure: str,
         recommended_hedge: str,
+        gics_sector: str = "Cross-Sector",
+        allocation_delta_bps: int = 175,
     ) -> SFTRecord:
         """Task E: <|portfolio_recommendation|> Risk synthesis -> Portfolio allocation and hedging strategy."""
         prompt = (
             f"<|portfolio_recommendation|>\n"
             f"Entity: {focal_company} ({focal_ticker})\n"
+            f"Sector: {gics_sector}\n"
             f"Graph Risk Factor: Exposed to {risk_exposure}.\n"
             f"Objective: Formulate an institutional risk-hedging and portfolio rebalancing strategy."
         )
@@ -230,7 +304,7 @@ class SFTDatasetExporter:
         completion = (
             f"{reasoning_thought}"
             f"**Strategic Portfolio Recommendation**:\n"
-            f"- **Action**: Reduce direct overweight exposure to {focal_ticker} by 150–200 bps.\n"
+            f"- **Action**: Reduce direct overweight exposure to {focal_ticker} by {allocation_delta_bps} bps.\n"
             f"- **Hedging Instrument**: {recommended_hedge}.\n"
             f"- **Rationale**: Mitigates 3rd-order downside tail risk without incurring prohibitive carry costs."
         )
@@ -247,7 +321,7 @@ class SFTDatasetExporter:
                 "cognitive_tier": "HIGH",
                 "difficulty_score": 0.82,
                 "graph_hops": 2,
-                "gics_sector": "Cross-Sector",
+                "gics_sector": gics_sector,
                 "provenance": "SYNTHETIC_TEMPLATE_SKELETON",
             },
         )
@@ -265,12 +339,11 @@ class SFTDatasetExporter:
         """
         Split records into Train (80%), Val (10%), Test (10%) and export unified
         and modular JSONL files for Qwen2.5-7B fine-tuning.
+        Enforces zero split leakage across train/val/test partitions.
         """
-        random.seed(42)
-
         def split_list(items: List[SFTRecord]) -> Tuple[List[SFTRecord], List[SFTRecord], List[SFTRecord]]:
             shuffled = list(items)
-            random.shuffle(shuffled)
+            self.rng.shuffle(shuffled)
             n_total = len(shuffled)
             n_train = int(n_total * train_ratio)
             n_val = int(n_total * val_ratio)
@@ -290,9 +363,26 @@ class SFTDatasetExporter:
         unified_val = ext_val + rea_val
         unified_test = ext_test + rea_test
 
-        random.shuffle(unified_train)
-        random.shuffle(unified_val)
-        random.shuffle(unified_test)
+        self.rng.shuffle(unified_train)
+        self.rng.shuffle(unified_val)
+        self.rng.shuffle(unified_test)
+
+        # Pre-export Split Leakage Assertion: verify zero overlap between partitions
+        train_sigs = {(r.prompt.strip(), r.target_completion.strip()) for r in unified_train}
+        val_sigs = {(r.prompt.strip(), r.target_completion.strip()) for r in unified_val}
+        test_sigs = {(r.prompt.strip(), r.target_completion.strip()) for r in unified_test}
+
+        train_val_leak = train_sigs.intersection(val_sigs)
+        train_test_leak = train_sigs.intersection(test_sigs)
+        val_test_leak = val_sigs.intersection(test_sigs)
+
+        if train_val_leak or train_test_leak or val_test_leak:
+            err_msg = (
+                f"Split leakage detected! Train/Val overlap: {len(train_val_leak)}, "
+                f"Train/Test overlap: {len(train_test_leak)}, Val/Test overlap: {len(val_test_leak)}"
+            )
+            logger.error(err_msg)
+            raise ValueError(err_msg)
 
         def write_jsonl(filepath: Path, recs: List[SFTRecord]) -> None:
             with open(filepath, "w", encoding="utf-8") as f:

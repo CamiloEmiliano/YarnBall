@@ -25,9 +25,14 @@ def mock_universe_mgr():
         SP500Constituent(ticker="NVDA", cik="0001045810", company_name="NVIDIA Corporation", gics_sector="Information Technology"),
         SP500Constituent(ticker="TSLA", cik="0001318605", company_name="Tesla Inc.", gics_sector="Consumer Discretionary"),
         SP500Constituent(ticker="JPM", cik="0000019617", company_name="JPMorgan Chase", gics_sector="Financials"),
+        SP500Constituent(ticker="GOOGL", cik="0001652044", company_name="Alphabet Inc.", gics_sector="Communication Services"),
+        SP500Constituent(ticker="AMZN", cik="0001018724", company_name="Amazon.com Inc.", gics_sector="Consumer Discretionary"),
+        SP500Constituent(ticker="META", cik="0001326801", company_name="Meta Platforms Inc.", gics_sector="Communication Services"),
+        SP500Constituent(ticker="XOM", cik="0000034088", company_name="Exxon Mobil Corp", gics_sector="Energy"),
+        SP500Constituent(ticker="BAC", cik="0000070858", company_name="Bank of America Corp", gics_sector="Financials"),
     ]
     mgr.get_current_constituents.return_value = mock_constituents
-    mgr.is_constituent.side_effect = lambda t, target_date=None: t in {"AAPL", "MSFT", "NVDA", "TSLA", "JPM"}
+    mgr.is_constituent.side_effect = lambda t, target_date=None: t in {c.ticker for c in mock_constituents}
     return mgr
 
 
@@ -133,7 +138,7 @@ def test_ticker_word_collision_guard(mock_universe_mgr, tmp_path: Path):
 def test_manifold_class_balancing_floors_and_caps(mock_universe_mgr, tmp_path: Path):
     sampler = ManifoldTargetedSampler(output_dir=tmp_path, universe_mgr=mock_universe_mgr, null_sample_ratio=0.20)
 
-    # 1. Create 800 dominant class samples (exceeds cap of 600)
+    # 1. Create 2000 dominant class samples (exceeds cap of 1500)
     dominant_samples = [
         ManifoldSample(
             sample_id=f"DOM_{i}",
@@ -147,14 +152,14 @@ def test_manifold_class_balancing_floors_and_caps(mock_universe_mgr, tmp_path: P
             confidence=1.0,
             difficulty_score=0.2,
         )
-        for i in range(800)
+        for i in range(2000)
     ]
 
     # 2. Create 10 rare class samples (below floor of 200, triggers augmentation)
     rare_samples = [
         ManifoldSample(
             sample_id=f"RARE_{i}",
-            text_passage="Company relies on sole source supplier for mission-critical parts.",
+            text_passage=f"Apple Inc. relies on sole source supplier NVIDIA Corporation for mission-critical parts {i}.",
             grounded_triples=[{"source_id": "Apple Inc.", "target_id": "NVIDIA Corporation", "rel_type": "SOLE_SOURCE_DEPENDENT_ON"}],
             entities_present=[],
             hop_count=1,

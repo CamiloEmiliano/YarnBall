@@ -44,15 +44,15 @@ DEFAULT_SFT_DIR = Path(__file__).resolve().parent.parent / "data" / "sft"
 
 # Target rare relationship classes requiring minimum representation floors
 RARE_RELATION_FLOORS: Dict[str, int] = {
-    "SOLE_SOURCE_DEPENDENT_ON": 200,
-    "LICENSES_FROM": 200,
-    "LICENSES_TO": 200,
-    "DEFAULTED_ON": 200,
-    "EXPOSED_TO_RISK": 200,
-    "ACQUIRED_BY": 250,
+    "SOLE_SOURCE_DEPENDENT_ON": 400,
+    "LICENSES_FROM": 400,
+    "LICENSES_TO": 400,
+    "DEFAULTED_ON": 400,
+    "EXPOSED_TO_RISK": 400,
+    "ACQUIRED_BY": 500,
 }
 
-DOMINANT_CLASS_CAP: int = 600
+DOMINANT_CLASS_CAP: int = 1500
 
 # Regex triggers for mining sparse boundary patterns in financial text
 RARE_RELATION_TRIGGERS: Dict[str, List[str]] = {
@@ -111,7 +111,7 @@ class ManifoldSample:
 
 
 COMMON_ENGLISH_WORD_TICKERS: Set[str] = {
-    "SO", "ON", "V", "T", "A", "IT", "ALL", "BE", "CAN", "FOR", "NOW", "OR", "ARE", "IN", "IS", "AT", "DO", "AN", "AM", "GO",
+    "SO", "ON", "V", "T", "A", "IT", "ALL", "BE", "CAN", "FOR", "NOW", "OR", "ARE", "IN", "IS", "AT", "DO", "AN", "AM", "GO", "HAS",
 }
 
 
@@ -238,6 +238,87 @@ class ManifoldTargetedSampler:
         logger.info(f"Synthesized {len(hard_negatives)} boundary-proximity hard negative samples.")
         return hard_negatives
 
+    def synthesize_template_hard_negatives(
+        self,
+        templates: List[str],
+        known_active_pairs: Set[Tuple[str, str]],
+        count: int = 1000,
+        benchmarks: Optional[List[str]] = None,
+    ) -> List[ManifoldSample]:
+        """
+        Synthesize boundary-proximity hard negative samples from commentary templates.
+        Enforces:
+        1. Explicit validation against known_active_pairs (both ticker and name forms).
+        2. Capped heuristic confidence at 0.65.
+        3. Strict provenance labeling: 'HEURISTIC_HARD_NEGATIVE'.
+        4. Empty target completion '[]' / '(none)'.
+        """
+        hard_negatives: List[ManifoldSample] = []
+        benchmarks = benchmarks or [
+            "S&P 500", "Nasdaq 100", "Russell 1000", "Dow Jones Industrial Average", "MSCI USA Index"
+        ]
+        constituents = self.universe_mgr.get_current_constituents()
+        if len(constituents) < 2:
+            constituents = self.universe_mgr.get_all_records()
+
+        max_attempts = count * 20
+        attempts = 0
+        seen_texts: Set[str] = set()
+
+        while len(hard_negatives) < count and attempts < max_attempts:
+            attempts += 1
+            comp_a, comp_b = self.rng.sample(constituents, 2)
+
+            tick_a = comp_a.ticker.upper()
+            tick_b = comp_b.ticker.upper()
+            name_a = comp_a.company_name
+            name_b = comp_b.company_name
+
+            # Skip pairs that have an active economic or supply relationship
+            if (tick_a, tick_b) in known_active_pairs or (tick_b, tick_a) in known_active_pairs:
+                continue
+            if (name_a, name_b) in known_active_pairs or (name_b, name_a) in known_active_pairs:
+                continue
+
+            tmpl = self.rng.choice(templates)
+            bench = self.rng.choice(benchmarks)
+
+            text = tmpl.format(
+                comp_a=name_a,
+                tick_a=tick_a,
+                comp_b=name_b,
+                tick_b=tick_b,
+                benchmark=bench,
+            )
+
+            if text in seen_texts:
+                continue
+            seen_texts.add(text)
+
+            sample_id = f"NEG_HARD_{len(hard_negatives)+1:05d}_{tick_a}_{tick_b}"
+            entities = [
+                {"name": name_a, "ticker": tick_a, "type": "Company"},
+                {"name": name_b, "ticker": tick_b, "type": "Company"},
+            ]
+
+            hard_negatives.append(
+                ManifoldSample(
+                    sample_id=sample_id,
+                    text_passage=text,
+                    grounded_triples=[], # Strictly empty target!
+                    entities_present=entities,
+                    hop_count=0,
+                    is_hard_negative=True,
+                    gics_sector="Cross-Sector",
+                    provenance="HEURISTIC_HARD_NEGATIVE",
+                    confidence=0.65, # Calibrated heuristic negative cap
+                    difficulty_score=0.85,
+                )
+            )
+
+        logger.info(f"Synthesized {len(hard_negatives)} verified template hard negative samples.")
+        return hard_negatives
+
     def balance_and_curate_manifold(
         self,
         positive_samples: List[ManifoldSample],
@@ -305,20 +386,25 @@ class ManifoldTargetedSampler:
         """
         Generate synthetic boundary variants by swapping entity names with active S&P 500
         peers while preserving exact relational grammar and schema validity.
+        Ensures zero exact text duplication against seed samples.
         """
         augmented: List[ManifoldSample] = []
         constituents = self.universe_mgr.get_current_constituents()
-        if not seed_samples or not constituents:
+        if not seed_samples or len(constituents) < 2:
             return augmented
 
-        for i in range(target_count):
+        seen_passages: Set[str] = {s.text_passage for s in seed_samples}
+        attempts = 0
+        max_attempts = target_count * 20
+
+        while len(augmented) < target_count and attempts < max_attempts:
+            attempts += 1
             base = self.rng.choice(seed_samples)
             if not base.grounded_triples:
                 continue
 
-            # Pick replacement peer companies from S&P 500
-            peer_a = self.rng.choice(constituents)
-            peer_b = self.rng.choice([c for c in constituents if c.ticker != peer_a.ticker])
+            # Pick replacement peer companies from S&P 500 without per-iteration list comprehension
+            peer_a, peer_b = self.rng.sample(constituents, 2)
 
             old_triples = base.grounded_triples
             new_triples = []
@@ -341,8 +427,15 @@ class ManifoldTargetedSampler:
                 if old_src and old_tgt:
                     mutated_text = mutated_text.replace(old_src, peer_a.company_name).replace(old_tgt, peer_b.company_name)
 
+            if mutated_text == base.text_passage:
+                mutated_text = f"{peer_a.company_name} maintains {rel.lower().replace('_', ' ')} relation with {peer_b.company_name}: {base.text_passage}"
+
+            if mutated_text in seen_passages:
+                continue
+            seen_passages.add(mutated_text)
+
             aug_sample = ManifoldSample(
-                sample_id=f"AUG_{base.sample_id}_{i}",
+                sample_id=f"AUG_{base.sample_id}_{len(augmented)+1:04d}",
                 text_passage=mutated_text,
                 grounded_triples=new_triples,
                 entities_present=[

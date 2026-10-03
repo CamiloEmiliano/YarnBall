@@ -59,13 +59,16 @@ OUTPUT_SFT_DIR = PROJECT_ROOT / "data" / "sft"
 
 
 # ----------------------------------------------------------------------
-# Multi-Sector Curated Relational Skeletons across 11 GICS Sectors
+# Multi-Sector Curated Relational Skeletons across all 11 GICS Sectors
 # ----------------------------------------------------------------------
 MULTI_SECTOR_RELATION_TEMPLATES = [
-    # Information Technology
+    # 1. Information Technology
     {
         "sector": "Information Technology",
         "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
         "passage_template": "{focal_name} ({focal_ticker}) contracts with {partner_name} ({partner_ticker}) as its sole source fabricator for advanced sub-3nm semiconductor wafer nodes under multi-year exclusive capacity reservation agreements.",
         "materiality": "CRITICAL_TIER_1",
         "polarity": "EXPANDING_BULLISH",
@@ -74,7 +77,22 @@ MULTI_SECTOR_RELATION_TEMPLATES = [
     },
     {
         "sector": "Information Technology",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{partner_name} ({partner_ticker}) is contracted by {focal_name} ({focal_ticker}) on an exclusive sole source basis for advanced sub-3nm semiconductor wafer fabrication under long-term capacity reservation agreements.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.50,
+    },
+    {
+        "sector": "Information Technology",
         "rel_type": "LICENSES_FROM",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
         "passage_template": "{focal_name} ({focal_ticker}) entered into a definitive cross-licensing patent framework with {partner_name} ({partner_ticker}) covering standard-essential cellular communications and RF modem architectures.",
         "materiality": "MATERIAL_TIER_2",
         "polarity": "NEUTRAL_STABLE",
@@ -83,17 +101,72 @@ MULTI_SECTOR_RELATION_TEMPLATES = [
     },
     {
         "sector": "Information Technology",
+        "rel_type": "LICENSES_FROM",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Standard-essential cellular communications and RF modem patent architectures owned by {partner_name} ({partner_ticker}) are licensed to {focal_name} ({focal_ticker}) under a definitive multi-year cross-licensing framework.",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.55,
+    },
+    {
+        "sector": "Information Technology",
         "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
         "passage_template": "{partner_name} ({partner_ticker}) manufactures specialized optical transceivers and high-bandwidth interconnects supplying the server infrastructure of {focal_name} ({focal_ticker}).",
         "materiality": "MATERIAL_TIER_2",
         "polarity": "NEUTRAL_STABLE",
         "hops": 1,
         "difficulty": 0.35,
     },
-    # Health Care
+    {
+        "sector": "Information Technology",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Specialized optical transceivers and high-bandwidth interconnects are supplied to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}) for hyperscale AI server cluster infrastructure.",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.45,
+    },
+    {
+        "sector": "Information Technology",
+        "rel_type": "EXPOSED_TO_RISK",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Export control regulations and packaging substrate bottlenecks at {partner_name} ({partner_ticker}) create critical operational delivery risks for the accelerator division of {focal_name} ({focal_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "CONTRACTING_BEARISH",
+        "hops": 1,
+        "difficulty": 0.60,
+    },
+    {
+        "sector": "Information Technology",
+        "rel_type": "EXPOSED_TO_RISK",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "The accelerator division of {focal_name} ({focal_ticker}) is severely exposed to delivery risk resulting from export control regulations and packaging substrate bottlenecks at {partner_name} ({partner_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "CONTRACTING_BEARISH",
+        "hops": 1,
+        "difficulty": 0.60,
+    },
+
+    # 2. Health Care
     {
         "sector": "Health Care",
         "rel_type": "LICENSES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
         "passage_template": "{partner_name} ({partner_ticker}) granted an exclusive worldwide commercial license to {focal_name} ({focal_ticker}) for proprietary antibody-drug conjugate oncology therapeutics.",
         "materiality": "CRITICAL_TIER_1",
         "polarity": "EXPANDING_BULLISH",
@@ -102,17 +175,72 @@ MULTI_SECTOR_RELATION_TEMPLATES = [
     },
     {
         "sector": "Health Care",
+        "rel_type": "LICENSES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "An exclusive worldwide commercial license for proprietary antibody-drug conjugate oncology therapeutics was granted to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.55,
+    },
+    {
+        "sector": "Health Care",
         "rel_type": "EXPOSED_TO_RISK",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
         "passage_template": "{focal_name} ({focal_ticker}) faces single-facility sterilization and supply chain dependencies with contract manufacturer {partner_name} ({partner_ticker}) for pre-filled biologic syringes.",
         "materiality": "CRITICAL_TIER_1",
         "polarity": "CONTRACTING_BEARISH",
         "hops": 1,
         "difficulty": 0.60,
     },
-    # Financials
+    {
+        "sector": "Health Care",
+        "rel_type": "EXPOSED_TO_RISK",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Critical operational dependency for pre-filled biologic syringes is concentrated at single-facility contract manufacturer {partner_name} ({partner_ticker}), exposing {focal_name} ({focal_ticker}) to potential regulatory halts.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "CONTRACTING_BEARISH",
+        "hops": 1,
+        "difficulty": 0.60,
+    },
+    {
+        "sector": "Health Care",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{focal_name} ({focal_ticker}) relies exclusively on {partner_name} ({partner_ticker}) for primary active pharmaceutical ingredient (API) synthesis under FDA-regulated purity specifications.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.50,
+    },
+    {
+        "sector": "Health Care",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Primary active pharmaceutical ingredient (API) synthesis under FDA purity specifications is exclusively provided to {focal_name} ({focal_ticker}) by sole-source manufacturer {partner_name} ({partner_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.50,
+    },
+
+    # 3. Financials
     {
         "sector": "Financials",
         "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
         "passage_template": "{partner_name} ({partner_ticker}) provides primary core banking mainframe clearing and automated payment processing infrastructure to {focal_name} ({focal_ticker}).",
         "materiality": "MATERIAL_TIER_2",
         "polarity": "NEUTRAL_STABLE",
@@ -121,17 +249,72 @@ MULTI_SECTOR_RELATION_TEMPLATES = [
     },
     {
         "sector": "Financials",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Primary core banking mainframe clearing and automated payment processing infrastructure are provided to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.40,
+    },
+    {
+        "sector": "Financials",
         "rel_type": "DEFAULTED_ON",
-        "passage_template": "{focal_name} ({focal_ticker}) issued a formal notice of default against borrower counterparty {partner_name} ({partner_ticker}) following senior credit facility covenant breaches.",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "{partner_name} ({partner_ticker}) breached senior credit facility covenants and defaulted on senior debt obligations owed to {focal_name} ({focal_ticker}).",
         "materiality": "CRITICAL_TIER_1",
         "polarity": "DISRUPTIVE_SHOCK",
         "hops": 1,
         "difficulty": 0.65,
     },
-    # Industrials & Aerospace
+    {
+        "sector": "Financials",
+        "rel_type": "DEFAULTED_ON",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "A formal notice of default was issued against borrower counterparty {partner_name} ({partner_ticker}) by {focal_name} ({focal_ticker}) following senior credit covenant breaches.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "DISRUPTIVE_SHOCK",
+        "hops": 1,
+        "difficulty": 0.65,
+    },
+    {
+        "sector": "Financials",
+        "rel_type": "ACQUIRED_BY",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{partner_name} ({partner_ticker}) completed the statutory all-cash acquisition of regional asset management assets from {focal_name} ({focal_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.45,
+    },
+    {
+        "sector": "Financials",
+        "rel_type": "ACQUIRED_BY",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Regional asset management subsidiary assets of {focal_name} ({focal_ticker}) were formally acquired by {partner_name} ({partner_ticker}) in a definitive statutory transaction.",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.45,
+    },
+
+    # 4. Industrials & Aerospace
     {
         "sector": "Industrials",
         "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
         "passage_template": "{focal_name} ({focal_ticker}) is solely dependent on {partner_name} ({partner_ticker}) for critical high-temperature titanium turbine forgings and fuselage sub-assemblies.",
         "materiality": "CRITICAL_TIER_1",
         "polarity": "CONTRACTING_BEARISH",
@@ -140,27 +323,122 @@ MULTI_SECTOR_RELATION_TEMPLATES = [
     },
     {
         "sector": "Industrials",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Critical high-temperature titanium turbine forgings and fuselage sub-assemblies are sourced exclusively by {focal_name} ({focal_ticker}) from single supplier {partner_name} ({partner_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "CONTRACTING_BEARISH",
+        "hops": 1,
+        "difficulty": 0.50,
+    },
+    {
+        "sector": "Industrials",
         "rel_type": "ACQUIRED_BY",
-        "passage_template": "{partner_name} ({partner_ticker}) finalized the definitive all-cash statutory merger under which it acquired {focal_name} ({focal_ticker}) for enterprise expansion.",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{partner_name} ({partner_ticker}) finalized the definitive statutory merger under which it acquired {focal_name} ({focal_ticker}) for enterprise industrial automation expansion.",
         "materiality": "CRITICAL_TIER_1",
         "polarity": "EXPANDING_BULLISH",
         "hops": 1,
         "difficulty": 0.45,
     },
-    # Consumer Discretionary & Automotive
+    {
+        "sector": "Industrials",
+        "rel_type": "ACQUIRED_BY",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{focal_name} ({focal_ticker}) was acquired by {partner_name} ({partner_ticker}) following unanimous regulatory approvals under a definitive statutory merger plan.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.45,
+    },
+    {
+        "sector": "Industrials",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "{partner_name} ({partner_ticker}) delivers precision hydraulic actuators and fly-by-wire flight control subsystems to {focal_name} ({focal_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.40,
+    },
+    {
+        "sector": "Industrials",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Precision hydraulic actuators and fly-by-wire flight control subsystems are delivered to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.40,
+    },
+
+    # 5. Consumer Discretionary & Automotive
     {
         "sector": "Consumer Discretionary",
         "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
         "passage_template": "{partner_name} ({partner_ticker}) delivers specialized lithium iron phosphate (LFP) battery cells and power inverters to the assembly plants of {focal_name} ({focal_ticker}).",
         "materiality": "CRITICAL_TIER_1",
         "polarity": "NEUTRAL_STABLE",
         "hops": 1,
         "difficulty": 0.40,
     },
-    # Energy & Materials
+    {
+        "sector": "Consumer Discretionary",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Specialized lithium iron phosphate (LFP) battery cells and power inverters are supplied to assembly plants of {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.40,
+    },
+    {
+        "sector": "Consumer Discretionary",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{focal_name} ({focal_ticker}) operates under an exclusive long-term agreement naming {partner_name} ({partner_ticker}) as its sole automotive sensor and solid-state lidar provider.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.50,
+    },
+    {
+        "sector": "Consumer Discretionary",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{partner_name} ({partner_ticker}) was designated by {focal_name} ({focal_ticker}) as its exclusive sole source provider of automotive sensors and solid-state lidar units under multi-year contracts.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.50,
+    },
+
+    # 6. Energy
     {
         "sector": "Energy",
         "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
         "passage_template": "{partner_name} ({partner_ticker}) operates midstream pipeline transport and gathering facilities servicing deepwater acreage owned by {focal_name} ({focal_ticker}).",
         "materiality": "MATERIAL_TIER_2",
         "polarity": "NEUTRAL_STABLE",
@@ -168,33 +446,266 @@ MULTI_SECTOR_RELATION_TEMPLATES = [
         "difficulty": 0.40,
     },
     {
+        "sector": "Energy",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Midstream pipeline transport and gathering services are provided to deepwater acreage of {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.40,
+    },
+    {
+        "sector": "Energy",
+        "rel_type": "DEFAULTED_ON",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "{partner_name} ({partner_ticker}) defaulted on offshore service charter commitments owed to operator {focal_name} ({focal_ticker}) following deepwater operational failures.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "DISRUPTIVE_SHOCK",
+        "hops": 1,
+        "difficulty": 0.65,
+    },
+    {
+        "sector": "Energy",
+        "rel_type": "DEFAULTED_ON",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "A formal contractual default declaration was issued against drilling contractor {partner_name} ({partner_ticker}) by {focal_name} ({focal_ticker}) after uncurable offshore drilling failures.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "DISRUPTIVE_SHOCK",
+        "hops": 1,
+        "difficulty": 0.65,
+    },
+
+    # 7. Materials
+    {
         "sector": "Materials",
         "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
         "passage_template": "{focal_name} ({focal_ticker}) depends on {partner_name} ({partner_ticker}) as its single source refiner for ultra-pure electronic-grade argon gas required in cleanroom fabrication.",
         "materiality": "CRITICAL_TIER_1",
         "polarity": "NEUTRAL_STABLE",
         "hops": 1,
         "difficulty": 0.55,
     },
-    # Consumer Staples
+    {
+        "sector": "Materials",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Ultra-pure electronic-grade argon gas for cleanroom fabrication is supplied exclusively to {focal_name} ({focal_ticker}) on a sole-source basis by {partner_name} ({partner_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.55,
+    },
+    {
+        "sector": "Materials",
+        "rel_type": "LICENSES_FROM",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{focal_name} ({focal_ticker}) secured an exclusive intellectual property license from {partner_name} ({partner_ticker}) for proprietary specialty polymer membranes.",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.45,
+    },
+    {
+        "sector": "Materials",
+        "rel_type": "LICENSES_FROM",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Exclusive intellectual property rights for proprietary specialty polymer membranes were licensed to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.45,
+    },
+
+    # 8. Consumer Staples
     {
         "sector": "Consumer Staples",
         "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
         "passage_template": "{partner_name} ({partner_ticker}) supplies agricultural sweeteners, packaging aluminum, and distribution logistics to {focal_name} ({focal_ticker}).",
         "materiality": "COMMODITY_TIER_3",
         "polarity": "NEUTRAL_STABLE",
         "hops": 1,
         "difficulty": 0.30,
     },
-    # Communication Services
+    {
+        "sector": "Consumer Staples",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Agricultural sweeteners, packaging aluminum, and distribution logistics are supplied to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "COMMODITY_TIER_3",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.30,
+    },
+
+    # 9. Communication Services
     {
         "sector": "Communication Services",
         "rel_type": "LICENSES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
         "passage_template": "{partner_name} ({partner_ticker}) entered a multi-year content licensing distribution agreement granting streaming rights to {focal_name} ({focal_ticker}).",
         "materiality": "MATERIAL_TIER_2",
         "polarity": "EXPANDING_BULLISH",
         "hops": 1,
         "difficulty": 0.40,
+    },
+    {
+        "sector": "Communication Services",
+        "rel_type": "LICENSES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Exclusive multi-year streaming and content distribution rights were granted to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.40,
+    },
+    {
+        "sector": "Communication Services",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "{partner_name} ({partner_ticker}) leases dark fiber backbone bandwidth and subsea transatlantic transit cables to {focal_name} ({focal_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.35,
+    },
+    {
+        "sector": "Communication Services",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Dark fiber backbone bandwidth and subsea transatlantic transit capacity are leased to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.35,
+    },
+
+    # 10. Utilities
+    {
+        "sector": "Utilities",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "active",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "{focal_name} ({focal_ticker}) contracts with {partner_name} ({partner_ticker}) as its sole source enriched uranium fuel supplier for regulated nuclear power generation facilities.",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.50,
+    },
+    {
+        "sector": "Utilities",
+        "rel_type": "SOLE_SOURCE_DEPENDENT_ON",
+        "voice": "passive",
+        "source_role": "focal",
+        "target_role": "partner",
+        "passage_template": "Enriched uranium fuel for regulated nuclear facilities of {focal_name} ({focal_ticker}) is provided on an exclusive sole source basis by {partner_name} ({partner_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.50,
+    },
+    {
+        "sector": "Utilities",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "{partner_name} ({partner_ticker}) delivers high-voltage grid substation transformers and switchgear equipment to utility operator {focal_name} ({focal_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.40,
+    },
+    {
+        "sector": "Utilities",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "High-voltage grid substation transformers and switchgear equipment are delivered to utility operator {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "NEUTRAL_STABLE",
+        "hops": 1,
+        "difficulty": 0.40,
+    },
+
+    # 11. Real Estate
+    {
+        "sector": "Real Estate",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "{partner_name} ({partner_ticker}) leases hyperscale data center colocation shell facilities and backup power infrastructure to {focal_name} ({focal_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.45,
+    },
+    {
+        "sector": "Real Estate",
+        "rel_type": "SUPPLIES_TO",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Hyperscale data center colocation shell facilities and backup power infrastructure are leased to {focal_name} ({focal_ticker}) by {partner_name} ({partner_ticker}).",
+        "materiality": "CRITICAL_TIER_1",
+        "polarity": "EXPANDING_BULLISH",
+        "hops": 1,
+        "difficulty": 0.45,
+    },
+    {
+        "sector": "Real Estate",
+        "rel_type": "DEFAULTED_ON",
+        "voice": "active",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "{partner_name} ({partner_ticker}) breached commercial lease covenants and defaulted on office rental obligations owed to {focal_name} ({focal_ticker}).",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "DISRUPTIVE_SHOCK",
+        "hops": 1,
+        "difficulty": 0.60,
+    },
+    {
+        "sector": "Real Estate",
+        "rel_type": "DEFAULTED_ON",
+        "voice": "passive",
+        "source_role": "partner",
+        "target_role": "focal",
+        "passage_template": "Formal eviction and foreclosure proceedings were initiated against commercial tenant {partner_name} ({partner_ticker}) by {focal_name} ({focal_ticker}) following rent covenant default.",
+        "materiality": "MATERIAL_TIER_2",
+        "polarity": "DISRUPTIVE_SHOCK",
+        "hops": 1,
+        "difficulty": 0.60,
     },
 ]
 
@@ -205,9 +716,12 @@ COMMENTARY_TEMPLATES = [
     "Equity index rebalancing triggered elevated trading volumes in {comp_a} (${tick_a}) and {comp_b} (${tick_b}) as passive ETF index funds adjusted sector weightings at the market close.",
     "Macroeconomic concerns regarding consumer sentiment impacted equities including {comp_a} (${tick_a}) and {comp_b} (${tick_b}), with options volume indicating increased hedging activity across benchmark derivatives.",
     "Energy prices and geopolitical volatility weighed on diversified holdings such as {comp_a} (${tick_a}) and {comp_b} (${tick_b}), although neither firm announced any material company-specific operational updates.",
+    "Sector rotation strategies led quantitative hedge funds to reallocate between {comp_a} (${tick_a}) and {comp_b} (${tick_b}), though no direct supplier or corporate partnership links exist between the firms.",
+    "Analysts debated valuation multiples for large-cap peers {comp_a} (${tick_a}) and {comp_b} (${tick_b}) following quarterly economic GDP updates, noting divergent capital expenditure cycles.",
+    "Foreign exchange headwinds and dollar strength impacted multinationals including {comp_a} (${tick_a}) and {comp_b} (${tick_b}) across international revenue reporting segments.",
 ]
 
-# Multi-Hop Shock Propagation Scenarios for 8B Reasoner (Task D)
+# Multi-Hop Shock Propagation Scenarios for Reasoner (Task D)
 CONTAGION_SCENARIOS = [
     {
         "sector": "Information Technology",
@@ -251,9 +765,23 @@ CONTAGION_SCENARIOS = [
         "supplier": ("Regional Bank Syndicate Consortium", "KBW"),
         "customers": ["Institutional Pension Funds", "Corporate Treasury Depositors"],
     },
+    {
+        "sector": "Utilities",
+        "shock": "Unplanned outage at nuclear fuel enrichment centrifuge facility restricts uranium fuel rod deliveries for 6 months.",
+        "focal": ("NextEra Energy", "NEE"),
+        "supplier": ("Cameco Corporation", "CCJ"),
+        "customers": ["Regional Grid Independent System Operators", "Industrial High-Load Manufacturing"],
+    },
+    {
+        "sector": "Materials",
+        "shock": "Geopolitical export embargo cuts titanium sponge production by 50%, choking aerospace forgings.",
+        "focal": ("RTX Corporation", "RTX"),
+        "supplier": ("Titanium Metals Corporation", "TMC"),
+        "customers": ["Defense Logistics Agency", "Commercial Aircraft Operators"],
+    },
 ]
 
-# Institutional Hedging Scenarios for 8B Reasoner (Task E)
+# Institutional Hedging Scenarios for Reasoner (Task E)
 HEDGING_SCENARIOS = [
     {
         "company": ("Apple Inc.", "AAPL"),
@@ -285,17 +813,27 @@ HEDGING_SCENARIOS = [
         "risk": "Container freight shipping cost spikes and East Coast port labor strikes",
         "hedge": "Long dry-bulk maritime freight rate futures and overweight domestic discount retail peers with domestic supply sourcing",
     },
+    {
+        "company": ("NextEra Energy", "NEE"),
+        "risk": "Severe weather damage to solar generation assets and rising grid interconnection queue delays",
+        "hedge": "Long utility sector ETF (XLU) put options and hedge via peak-load electricity forward swap contracts",
+    },
+    {
+        "company": ("Tesla, Inc.", "TSLA"),
+        "risk": "Lithium carbonate refining bottleneck delaying volume EV deliveries",
+        "hedge": "Buy call options on lithium mining ETF (LIT) as a direct commodity input price hedge while hedging long delta via index collars",
+    },
 ]
 
 
 class FullSFTDatasetBuilder:
-    """Orchestrates large-scale multi-sector SFT dataset generation for dual models."""
+    """Orchestrates large-scale multi-sector SFT dataset generation for unified Qwen2.5-7B."""
 
     def __init__(self, output_dir: Path = OUTPUT_SFT_DIR, seed: int = 42):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.seed = seed
-        random.seed(seed)
+        self.rng = random.Random(seed)
 
         self.universe_mgr = SP500UniverseManager()
         self.annotator = FinancialTaxonomyAnnotator(universe_mgr=self.universe_mgr)
@@ -307,43 +845,78 @@ class FullSFTDatasetBuilder:
         for c in self.constituents:
             self.constituents_by_sector[c.gics_sector].append(c)
 
-    def generate_positive_manifold_samples(self, target_per_template: int = 35) -> List[ManifoldSample]:
-        """Generate diverse positive relational samples across all 11 GICS sectors."""
+    def generate_positive_manifold_samples(self, target_per_template: int = 80) -> List[ManifoldSample]:
+        """Generate diverse positive relational samples across all 11 GICS sectors (both active and passive voice)."""
         positive_samples: List[ManifoldSample] = []
         sample_idx = 1
+        seen_passages: Set[str] = set()
+
+        qualifiers = [
+            "under an executed multi-year commercial framework agreement",
+            "pursuant to audited SEC regulatory disclosures",
+            "governed by formal binding contractual specifications",
+            "effective across multi-year fiscal operating cycles",
+            "under an amended long-term master services arrangement",
+            "following comprehensive counterparty qualification review",
+        ]
 
         for tmpl in MULTI_SECTOR_RELATION_TEMPLATES:
             sec = tmpl["sector"]
-            candidates = self.constituents_by_sector.get(sec, self.constituents)
-            if len(candidates) < 2:
-                candidates = self.constituents
+            sec_candidates = self.constituents_by_sector.get(sec, self.constituents)
+            if not sec_candidates:
+                sec_candidates = self.constituents
 
-            for _ in range(target_per_template):
-                focal, partner = random.sample(candidates, 2)
-                passage = tmpl["passage_template"].format(
+            attempts = 0
+            created_for_tmpl = 0
+            max_attempts = target_per_template * 30
+
+            while created_for_tmpl < target_per_template and attempts < max_attempts:
+                attempts += 1
+                focal = self.rng.choice(sec_candidates)
+
+                in_sector_peers = [c for c in sec_candidates if c.ticker != focal.ticker]
+                if in_sector_peers and self.rng.random() < 0.60:
+                    partner = self.rng.choice(in_sector_peers)
+                else:
+                    universe_peers = [c for c in self.constituents if c.ticker != focal.ticker]
+                    partner = self.rng.choice(universe_peers)
+
+                qualifier = self.rng.choice(qualifiers)
+                base_passage = tmpl["passage_template"].format(
                     focal_name=focal.company_name,
                     focal_ticker=focal.ticker,
                     partner_name=partner.company_name,
                     partner_ticker=partner.ticker,
                 )
 
-                sample_id = f"POS_{sec[:4].upper()}_{tmpl['rel_type'][:6]}_{sample_idx:04d}"
+                passage = f"{base_passage.rstrip('.')} {qualifier}."
+
+                if passage in seen_passages:
+                    continue
+                seen_passages.add(passage)
+
+                voice_tag = tmpl.get("voice", "active")[:3].upper()
+                sample_id = f"POS_{sec[:4].upper()}_{tmpl['rel_type'][:6]}_{voice_tag}_{sample_idx:05d}"
                 sample_idx += 1
+
+                # Topological invariant: assign source and target by semantic role, not surface word order
+                src_ent = partner if tmpl.get("source_role", "partner") == "partner" else focal
+                tgt_ent = focal if tmpl.get("target_role", "focal") == "focal" else partner
 
                 sample = ManifoldSample(
                     sample_id=sample_id,
                     text_passage=passage,
                     grounded_triples=[
                         {
-                            "source_id": partner.company_name,
-                            "target_id": focal.company_name,
+                            "source_id": src_ent.company_name,
+                            "target_id": tgt_ent.company_name,
                             "rel_type": tmpl["rel_type"],
                             "confidence": 0.96,
                         }
                     ],
                     entities_present=[
-                        {"name": partner.company_name, "ticker": partner.ticker, "type": "Company"},
-                        {"name": focal.company_name, "ticker": focal.ticker, "type": "Company"},
+                        {"name": src_ent.company_name, "ticker": src_ent.ticker, "type": "Company"},
+                        {"name": tgt_ent.company_name, "ticker": tgt_ent.ticker, "type": "Company"},
                     ],
                     hop_count=tmpl["hops"],
                     is_hard_negative=False,
@@ -353,71 +926,171 @@ class FullSFTDatasetBuilder:
                     difficulty_score=tmpl["difficulty"],
                 )
                 positive_samples.append(sample)
+                created_for_tmpl += 1
 
-        logger.info(f"Generated {len(positive_samples)} balanced positive manifold samples across {len(MULTI_SECTOR_RELATION_TEMPLATES)} templates.")
+        logger.info(f"Generated {len(positive_samples)} balanced positive manifold samples across {len(MULTI_SECTOR_RELATION_TEMPLATES)} active/passive templates.")
         return positive_samples
 
-    def generate_hard_negative_samples(self, count: int = 250) -> List[ManifoldSample]:
-        """Synthesize boundary-proximity hard negative samples from commentary templates."""
-        hard_negatives: List[ManifoldSample] = []
-        benchmarks = ["S&P 500", "Nasdaq 100", "Russell 1000", "Dow Jones Industrial Average"]
+    def generate_hard_negative_samples(self, positives: List[ManifoldSample], count: int = 1200) -> List[ManifoldSample]:
+        """Synthesize verified boundary-proximity hard negative samples with target '(none)'."""
+        known_active_pairs: Set[Tuple[str, str]] = set()
+        for p in positives:
+            for t in p.grounded_triples:
+                s_id = str(t.get("source_id", "")).upper()
+                t_id = str(t.get("target_id", "")).upper()
+                if s_id and t_id:
+                    known_active_pairs.add((s_id, t_id))
+                    known_active_pairs.add((t_id, s_id))
+            for e1 in p.entities_present:
+                for e2 in p.entities_present:
+                    tk1 = e1.get("ticker", "").upper()
+                    tk2 = e2.get("ticker", "").upper()
+                    if tk1 and tk2 and tk1 != tk2:
+                        known_active_pairs.add((tk1, tk2))
+                        known_active_pairs.add((tk2, tk1))
 
-        for i in range(count):
-            comp_a, comp_b = random.sample(self.constituents, 2)
-            tmpl = random.choice(COMMENTARY_TEMPLATES)
-            bench = random.choice(benchmarks)
+        return self.sampler.synthesize_template_hard_negatives(
+            templates=COMMENTARY_TEMPLATES,
+            known_active_pairs=known_active_pairs,
+            count=count,
+        )
 
-            text = tmpl.format(
-                comp_a=comp_a.company_name,
-                tick_a=comp_a.ticker,
-                comp_b=comp_b.company_name,
-                tick_b=comp_b.ticker,
-                benchmark=bench,
+    def generate_task_d_contagion_records(self, count: int = 400) -> List[SFTRecord]:
+        """Generate unique, non-duplicative multi-hop shock propagation scenarios with <think> CoT."""
+        records: List[SFTRecord] = []
+        sectors = [s for s in self.constituents_by_sector.keys() if len(self.constituents_by_sector[s]) >= 2]
+        if not sectors:
+            sectors = ["Information Technology", "Health Care", "Industrials", "Financials", "Energy", "Materials"]
+
+        shock_archetypes = [
+            ("unscheduled fabrication downtime and wafer yield collapse", "Advanced Silicon Wafers", "1–2 quarters"),
+            ("export control packaging substrate embargo and customs inspection hold", "High-Bandwidth Memory Packaging", "2–3 quarters"),
+            ("sterility validation failure and regulatory inspection shutdown at primary API facility", "Active Pharmaceutical Ingredients", "2–4 quarters"),
+            ("uncertified structural titanium fastener supply chokepoint", "Precision Aerospace Sub-Assemblies", "2–3 quarters"),
+            ("refining bottleneck and port logistics interruption for battery-grade materials", "Lithium Battery Cells", "1–2 quarters"),
+            ("critical cyberattack disrupting pipeline SCADA flow and terminal distribution", "Pipeline Transport Capacity", "1–2 quarters"),
+            ("liquidity contraction and regional syndication office loan covenant breach", "Core Mainframe Clearing Services", "1–3 quarters"),
+            ("centrifuge enrichment outage delaying enriched fuel rod qualification", "Enriched Nuclear Fuel Rods", "2–4 quarters"),
+        ]
+
+        seen_prompts: Set[str] = set()
+        attempts = 0
+        max_attempts = count * 20
+
+        while len(records) < count and attempts < max_attempts:
+            attempts += 1
+            sec = self.rng.choice(sectors)
+            candidates = self.constituents_by_sector.get(sec, self.constituents)
+            if len(candidates) < 2:
+                candidates = self.constituents
+
+            focal, supplier = self.rng.sample(candidates, 2)
+            shock_desc, supply_mat, timeline = self.rng.choice(shock_archetypes)
+            cap_hit = self.rng.choice([15, 20, 25, 30, 35, 40, 50])
+            lead_time = self.rng.choice([3, 4, 6, 8, 12, 18])
+
+            full_shock = f"A {cap_hit}% quarterly supply curtailment resulting from {shock_desc}, imposing an estimated {lead_time}-month requalification timeline for secondary vendors."
+
+            other_candidates = [c for c in self.constituents if c.ticker not in (focal.ticker, supplier.ticker)]
+            sampled_customers = [c.company_name for c in self.rng.sample(other_candidates, self.rng.choice([2, 3]))]
+
+            rec = self.exporter.format_task_d_contagion_reasoning(
+                focal_company=focal.company_name,
+                focal_ticker=focal.ticker,
+                supplier=supplier.company_name,
+                supplier_ticker=supplier.ticker,
+                shock_scenario=full_shock,
+                impacted_customers=sampled_customers,
+                gics_sector=sec,
+                supply_nature=supply_mat,
+                timeline_quarters=timeline,
             )
 
-            sample_id = f"NEG_HARD_{i+1:04d}_{comp_a.ticker}_{comp_b.ticker}"
-            entities = [
-                {"name": comp_a.company_name, "ticker": comp_a.ticker, "type": "Company"},
-                {"name": comp_b.company_name, "ticker": comp_b.ticker, "type": "Company"},
-            ]
+            prompt_sig = rec.prompt.strip()
+            if prompt_sig in seen_prompts:
+                continue
+            seen_prompts.add(prompt_sig)
+            records.append(rec)
 
-            hard_negatives.append(
-                ManifoldSample(
-                    sample_id=sample_id,
-                    text_passage=text,
-                    grounded_triples=[], # Strictly empty target
-                    entities_present=entities,
-                    hop_count=0,
-                    is_hard_negative=True,
-                    gics_sector=comp_a.gics_sector,
-                    provenance="MARKET_COMMENTARY_WIRE",
-                    confidence=0.98,
-                    difficulty_score=0.50,
-                )
+        logger.info(f"Generated {len(records)} unique Task D contagion reasoning records (0 duplicates).")
+        return records
+
+    def generate_task_e_hedging_records(self, count: int = 400) -> List[SFTRecord]:
+        """Generate unique, non-duplicative portfolio hedging and risk allocation recommendations with <think> CoT."""
+        records: List[SFTRecord] = []
+        sectors = list(self.constituents_by_sector.keys())
+
+        risk_hedges = [
+            ("single-source concentration in foreign semiconductor foundry fabrication",
+             "out-of-the-money put spread on semiconductor ETF (SMH) funded by call overwriting on mature software holdings"),
+            ("regulatory export embargo on proprietary high-compute accelerators to international markets",
+             "establish a zero-cost equity collar (90% strike floor put, 110% cap call) on core equity weight"),
+            ("contract manufacturing fill-finish capacity bottleneck for biologic injectable devices",
+             "overweight diversified medical equipment ETF (IHI) and initiate paired long-short equity hedge against single-facility suppliers"),
+            ("abrupt commodity crack spread compression and refined product inventory accumulation",
+             "acquire downside crude put options contracts while rotating capital into defensive regulated utility dividend holdings"),
+            ("private credit duration mismatch and regional banking CRE delinquency acceleration",
+             "execute interest rate swaptions and scale cash allocation into 3-month Treasury bills"),
+            ("transoceanic maritime shipping rate spikes and container port labor strikes",
+             "long dry-bulk maritime freight rate futures and overweight domestic discount retail peers with domestic logistics sourcing"),
+            ("severe extreme weather damage to solar generation assets and rising grid interconnection queue delays",
+             "long utility sector ETF (XLU) put options and hedge via peak-load electricity forward swap contracts"),
+            ("critical raw material refining bottleneck and lithium supply chokepoint delaying volume deliveries",
+             "purchase call options on lithium mining ETF (LIT) as a direct commodity input price hedge while hedging long delta via index collars"),
+        ]
+
+        seen_prompts: Set[str] = set()
+        attempts = 0
+        max_attempts = count * 20
+
+        while len(records) < count and attempts < max_attempts:
+            attempts += 1
+            sec = self.rng.choice(sectors)
+            candidates = self.constituents_by_sector.get(sec, self.constituents)
+            if not candidates:
+                candidates = self.constituents
+
+            focal = self.rng.choice(candidates)
+            risk, hedge = self.rng.choice(risk_hedges)
+            bps = self.rng.choice([125, 150, 175, 200, 225, 250, 300])
+
+            rec = self.exporter.format_task_e_portfolio_recommendation(
+                focal_company=focal.company_name,
+                focal_ticker=focal.ticker,
+                risk_exposure=risk,
+                recommended_hedge=hedge,
+                gics_sector=sec,
+                allocation_delta_bps=bps,
             )
 
-        logger.info(f"Generated {len(hard_negatives)} boundary hard negative samples with target '(none)'.")
-        return hard_negatives
+            prompt_sig = rec.prompt.strip()
+            if prompt_sig in seen_prompts:
+                continue
+            seen_prompts.add(prompt_sig)
+            records.append(rec)
+
+        logger.info(f"Generated {len(records)} unique Task E portfolio hedging records (0 duplicates).")
+        return records
 
     def build_dataset(self) -> Dict[str, Any]:
-        """Execute full end-to-end multi-task SFT generation and export splits."""
+        """Execute full end-to-end multi-task SFT generation in the 12,000-15,000 range."""
         print("\n" + "=" * 70)
-        print("GENERATING FULL S&P 500 MULTI-TASK SFT DATASET (11 SECTORS)")
+        print("GENERATING FULL S&P 500 MULTI-TASK SFT DATASET (12,000 - 15,000 SCALE)")
         print("=" * 70)
 
-        # 1. Positives & Hard Negatives
-        positives = self.generate_positive_manifold_samples(target_per_template=35)
-        negatives = self.generate_hard_negative_samples(count=250)
+        # 1. Positives & Verified Hard Negatives
+        positives = self.generate_positive_manifold_samples(target_per_template=75)
+        negatives = self.generate_hard_negative_samples(positives=positives, count=1200)
 
-        # 2. Manifold class balancing (floors >= 200 for rare relations)
-        curated_samples = self.sampler.balance_and_curate_manifold(positives, negatives)
+        # 2. Manifold class balancing (floors >= 400 for rare relations, caps at 1500)
+        curated_samples = self.sampler.balance_and_curate_manifold(positives, negatives, target_total_samples=8000)
         print(f"  Curated {len(curated_samples)} total manifold samples ({len(curated_samples) - len(negatives)} positives, {len(negatives)} hard negatives).")
 
         # 3. Format Multi-Task Records
         extractor_records: List[SFTRecord] = []
         reasoner_records: List[SFTRecord] = []
 
-        # Task A & Task B
+        # Task A & Task B: 2 records per curated sample
         for s in curated_samples:
             annotated_triples: List[AnnotatedTriple] = []
             for t in s.grounded_triples:
@@ -434,41 +1107,18 @@ class FullSFTDatasetBuilder:
             rec_b = self.exporter.format_task_b_news_event(s, annotated_triples)
             extractor_records.extend([rec_a, rec_b])
 
-        # Task C: Text-to-Cypher across all constituents
+        # Task C: Multi-variation Text-to-Cypher across all constituents (10 query variants per company)
         for c in self.constituents:
-            rec_c = self.exporter.format_task_c_text_to_cypher(c.company_name, c.ticker)
-            extractor_records.append(rec_c)
+            recs_c = self.exporter.format_task_c_variations(c.company_name, c.ticker, num_variations=10)
+            extractor_records.extend(recs_c)
 
-        # Task D: Contagion Reasoning (Multi-hop shock propagation with <think>)
-        for sc in CONTAGION_SCENARIOS:
-            for rep in range(12): # Replicate across diversified downstream customer permutations
-                f_name, f_tick = sc["focal"]
-                s_name, s_tick = sc["supplier"]
-                rec_d = self.exporter.format_task_d_contagion_reasoning(
-                    focal_company=f_name,
-                    focal_ticker=f_tick,
-                    supplier=s_name,
-                    supplier_ticker=s_tick,
-                    shock_scenario=sc["shock"],
-                    impacted_customers=sc["customers"],
-                )
-                rec_d.sample_id = f"TASK_D_{f_tick}_{rep+1:02d}_{rec_d.sample_id[-8:]}"
-                reasoner_records.append(rec_d)
+        # Task D: Contagion Reasoning (Multi-hop shock propagation with <think>, 0 duplicates)
+        reasoner_records.extend(self.generate_task_d_contagion_records(count=400))
 
-        # Task E: Portfolio Hedging & Risk Rebalancing with <think>
-        for hg in HEDGING_SCENARIOS:
-            for rep in range(12):
-                c_name, c_tick = hg["company"]
-                rec_e = self.exporter.format_task_e_portfolio_recommendation(
-                    focal_company=c_name,
-                    focal_ticker=c_tick,
-                    risk_exposure=hg["risk"],
-                    recommended_hedge=hg["hedge"],
-                )
-                rec_e.sample_id = f"TASK_E_{c_tick}_{rep+1:02d}_{rec_e.sample_id[-8:]}"
-                reasoner_records.append(rec_e)
+        # Task E: Portfolio Hedging & Risk Rebalancing with <think>, 0 duplicates
+        reasoner_records.extend(self.generate_task_e_hedging_records(count=400))
 
-        # 4. Partition into 80/10/10 Train/Val/Test Splits
+        # 4. Partition into 80/10/10 Train/Val/Test Splits with zero split leakage
         summary = self.exporter.export_full_sft_splits(extractor_records, reasoner_records)
 
         print("\n" + "=" * 70)
