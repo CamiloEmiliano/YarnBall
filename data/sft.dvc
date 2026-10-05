@@ -1,6 +1,6 @@
 outs:
-- md5: a990c7b1a16d333b2810016da1f01aa4.dir
-  size: 5956
-  nfiles: 7
+- md5: 7cecaec6a60f97004605e6b3db9fd386.dir
+  size: 24597058
+  nfiles: 10
   hash: md5
   path: sft
