@@ -1,9 +1,5 @@
 """
 Upload YarnBall SFT Dataset to Hugging Face Hub as a Private Dataset.
-
-Reads HUGGINGFACE_FULL_ACCESS_TOKEN_01 from .env, validates authentication,
-creates the private dataset repository if it doesn't already exist, and
-uploads all dataset splits and metadata.
 """
 
 from __future__ import annotations
@@ -13,20 +9,29 @@ import os
 from pathlib import Path
 import sys
 
-# Ensure project root in sys.path
+# Dynamically determine project root and runtime working directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CURRENT_WORKING_DIR = Path(os.environ.get("PWD", os.getcwd())).resolve()
+
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# Attempt dotenv loading from current repo or QwenSFT_YarnBall
+# Attempt dynamic dotenv loading from runtime CWD, project root, or sibling repos
 try:
     from dotenv import load_dotenv
-    qwen_env = Path("/home/caspe/practice/QwenSFT_YarnBall/.env")
-    local_env = PROJECT_ROOT / ".env"
-    if qwen_env.is_file():
-        load_dotenv(qwen_env)
-    elif local_env.is_file():
-        load_dotenv(local_env)
+
+    candidate_env_paths = [
+        CURRENT_WORKING_DIR / ".env",
+        PROJECT_ROOT / ".env",
+        CURRENT_WORKING_DIR.parent / "QwenSFT_YarnBall" / ".env",
+        PROJECT_ROOT.parent / "QwenSFT_YarnBall" / ".env",
+        PROJECT_ROOT.parent.parent / "QwenSFT_YarnBall" / ".env",
+    ]
+
+    for env_path in candidate_env_paths:
+        if env_path.is_file():
+            load_dotenv(env_path)
+            break
 except ImportError:
     pass
 
@@ -98,41 +103,62 @@ This is the official Supervised Fine-Tuning (SFT) dataset for **YarnBall**, desi
 def main():
     parser = argparse.ArgumentParser(description="Upload YarnBall SFT dataset to Hugging Face Hub")
     parser.add_argument("--repo-name", default="yarnball-sft", help="Repository name on Hugging Face (default: yarnball-sft)")
+    parser.add_argument("--repo-id", default=None, help="Explicit repository ID (e.g. username/repo-name). Overrides --repo-name.")
     parser.add_argument("--data-dir", default=str(PROJECT_ROOT / "data" / "sft"), help="Path to data/sft directory")
-    parser.add_argument("--private", action="store_true", default=True, help="Set repository to private (default: True)")
+    parser.add_argument("--env-file", default=None, help="Explicit path to a .env file to load credentials from")
+    parser.add_argument("--token", default=None, help="Hugging Face access token (overrides environment variables)")
+    
+    # Python 3.9+ BooleanOptionalAction for clean --private / --no-private flags
+    if hasattr(argparse, "BooleanOptionalAction"):
+        parser.add_argument("--private", action=argparse.BooleanOptionalAction, default=True, help="Set repository to private (default: True)")
+    else:
+        parser.add_argument("--private", action="store_true", default=True, help="Set repository to private (default: True)")
+        parser.add_argument("--public", dest="private", action="store_false", help="Set repository to public")
+
     args = parser.parse_args()
 
-    data_dir = Path(args.data_dir)
+    # Load custom env file if specified
+    if args.env_file:
+        custom_env = Path(args.env_file).resolve()
+        if custom_env.is_file():
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(custom_env, override=True)
+            except ImportError:
+                pass
+        else:
+            print(f"Warning: Specified --env-file not found: {custom_env}")
+
+    data_dir = Path(args.data_dir).resolve()
     if not data_dir.is_dir():
         print(f"Error: Dataset directory not found at {data_dir}")
         sys.exit(1)
 
-    # Token lookup
+    # Token lookup: CLI flag > environment variables
     token = (
-        os.getenv("HUGGINGFACE_FULL_ACCESS_TOKEN_01")
+        args.token
+        or os.getenv("HUGGINGFACE_FULL_ACCESS_TOKEN_01")
         or os.getenv("HF_TOKEN")
         or os.getenv("HUGGING_FACE_HUB_TOKEN")
     )
     if not token:
-        print("Error: No Hugging Face token found in environment or .env file.")
-        print("Set HUGGINGFACE_FULL_ACCESS_TOKEN_01 in /home/caspe/practice/QwenSFT_YarnBall/.env or export HF_TOKEN.")
+        print("Error: No Hugging Face token found in environment, CLI flags, or loaded .env file.")
+        print("Provide via --token, export HF_TOKEN, or set HUGGINGFACE_FULL_ACCESS_TOKEN_01 in your .env.")
         sys.exit(1)
 
     api = HfApi(token=token)
     user_info = api.whoami()
-    username = user_info.get("name")
-    repo_id = f"{username}/{args.repo_name}"
+    username = user_info.get("name") or user_info.get("user")
+
+    if args.repo_id:
+        repo_id = args.repo_id
+    else:
+        repo_id = f"{username}/{args.repo_name}"
 
     print(f"Authenticated as Hugging Face user: {username}")
     print(f"Target Dataset Repository: {repo_id} (Private: {args.private})")
 
-    # 1. Ensure README.md / dataset card exists in data/sft
-    readme_path = data_dir / "README.md"
-    if not readme_path.exists():
-        print("Creating Dataset Card (README.md) in data/sft/...")
-        readme_path.write_text(DATASET_CARD_TEMPLATE, encoding="utf-8")
-
-    # 2. Create repo on Hub if needed
+    # 1. Ensure repository exists on Hub
     print(f"Ensuring repository {repo_id} exists on Hugging Face Hub...")
     create_repo(
         repo_id=repo_id,
@@ -142,13 +168,23 @@ def main():
         token=token,
     )
 
-    # 3. Upload entire folder
-    print(f"Uploading files from {data_dir} to https://huggingface.co/datasets/{repo_id} ...")
+    # 2. Upload dataset card (README.md) in-memory without modifying local DVC tracked directory
+    print("Uploading Dataset Card (README.md)...")
+    api.upload_file(
+        path_or_fileobj=DATASET_CARD_TEMPLATE.strip().encode("utf-8"),
+        path_in_repo="README.md",
+        repo_id=repo_id,
+        repo_type="dataset",
+        commit_message="Add formal Dataset Card for YarnBall SFT v1.0",
+    )
+
+    # 3. Upload dataset files from local directory
+    print(f"Uploading dataset files from {data_dir} to https://huggingface.co/datasets/{repo_id} ...")
     api.upload_folder(
         folder_path=str(data_dir),
         repo_id=repo_id,
         repo_type="dataset",
-        commit_message="Upload YarnBall v1.0 SFT dataset (12,470 point-in-time records)",
+        commit_message="Upload YarnBall v1.0 SFT dataset splits (12,470 records)",
     )
 
     print("\n" + "=" * 65)
