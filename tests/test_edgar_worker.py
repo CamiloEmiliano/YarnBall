@@ -5,7 +5,7 @@ Unit tests for EdgarWorker end-to-end 10-K processing and graph extraction.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ingest.edgar_worker import EdgarWorker, extract_sec_relationships, select_salient_sec_context
+from ingestion.sec import EdgarWorker, extract_sec_relationships, select_salient_sec_context
 
 
 class TestEdgarWorker(unittest.TestCase):
@@ -90,7 +90,7 @@ class TestEdgarWorker(unittest.TestCase):
         # Verify Memgraph session was called with temporal parameters
         self.assertGreater(self.mock_session.run.call_count, 0)
 
-    @patch("ingest.edgar_worker.extract_sec_relationships")
+    @patch("ingestion.sec.harvester.extract_sec_relationships")
     @patch.object(EdgarWorker, "_persist_sec_graph_data")
     @patch.object(EdgarWorker, "_persist_subsidiaries")
     def test_process_company_10k_flow(self, mock_subs, mock_graph, mock_extract):

@@ -3,23 +3,35 @@ SEC EDGAR Client Wrapper using `edgartools`.
 
 Provides standardized methods to:
 - Authenticate / set identity with SEC EDGAR
-- Fetch 10-K, 8-K, Form 4, and 13F filings
+- Fetch 10-K, 10-Q, 8-K, Form 4, and 13F filings
 - Extract structured sections (Item 1 Business, Item 1A Risk Factors, Exhibit 21 Subsidiaries)
 - Parse Exhibit 21 list of subsidiaries into structured records
+- CLI utility for targeted filing downloads
 """
 
+from __future__ import annotations
+
+import argparse
+import json
 import logging
 import os
+from pathlib import Path
 import re
+import subprocess
+import sys
 from typing import Any, Dict, List, Optional
 
 try:
     from edgar import Company, Filing, get_filings, set_identity
     EDGAR_AVAILABLE = True
 except ImportError:
+    Company = None
+    Filing = None
+    get_filings = None
+    set_identity = None
     EDGAR_AVAILABLE = False
 
-logger = logging.getLogger("edgar_client")
+logger = logging.getLogger("ingestion.sec.client")
 
 # Default S&P 500 benchmark seed tickers for testing and focused graph construction
 DEFAULT_SP500_BENCHMARK = [
@@ -78,13 +90,7 @@ class EdgarClient:
             return None
 
     def extract_10k_sections(self, filing: Any) -> Dict[str, Any]:
-        """Extract structured sections from a 10-K filing using edgartools TenK parser.
-        
-        Extracts:
-        - item_1 (Business description, key suppliers/customers/partnerships)
-        - item_1a (Risk Factors)
-        - exhibit_21_subsidiaries (Structured list of subsidiary names & jurisdictions)
-        """
+        """Extract structured sections from a 10-K filing using edgartools TenK parser."""
         result = {
             "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
             "filing_date": str(getattr(filing, "filing_date", "")),
@@ -180,7 +186,6 @@ class EdgarClient:
                     results.append({"name": name, "jurisdiction": jurisdiction or "Unknown"})
             elif len(parts) == 1:
                 name = parts[0].strip(" -:;,")
-                # Avoid single word fragments or numbers
                 if len(name) >= 4 and len(name) < 100 and " " in name and not boilerplate_pattern.search(name):
                     results.append({"name": name, "jurisdiction": "Unknown"})
         return results
@@ -272,3 +277,147 @@ class EdgarClient:
         except Exception as e:
             logger.error(f"Error fetching Form 4 for '{ticker_or_cik}': {e}")
         return results
+
+
+def download_filings_for_ticker(
+    client: EdgarClient,
+    ticker: str,
+    output_base_dir: Path,
+    year: Optional[int] = None,
+    include_8k: bool = False,
+    include_form4: bool = False,
+) -> dict:
+    """Download and stage 10-K, 8-K, and Form 4 filings for a single ticker."""
+    clean_ticker = ticker.strip().upper()
+    logger.info(f"Downloading filings for {clean_ticker}...")
+
+    stats = {
+        "ticker": clean_ticker,
+        "10k_downloaded": False,
+        "8k_count": 0,
+        "form4_count": 0,
+        "accession_number": None,
+        "subsidiaries_count": 0,
+    }
+
+    ticker_dir = output_base_dir / clean_ticker
+    ticker_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Fetch 10-K
+    tenk_filing = client.fetch_latest_10k(clean_ticker, year=year)
+    if tenk_filing:
+        sections = client.extract_10k_sections(tenk_filing)
+        accession = sections.get("accession_number", "UNKNOWN").replace("-", "")
+        stats["accession_number"] = accession
+        stats["10k_downloaded"] = True
+        stats["subsidiaries_count"] = len(sections.get("subsidiaries", []))
+
+        filing_dir = ticker_dir / accession
+        filing_dir.mkdir(parents=True, exist_ok=True)
+
+        meta_path = filing_dir / "metadata.json"
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "ticker": clean_ticker,
+                "accession_number": sections.get("accession_number"),
+                "filing_date": sections.get("filing_date"),
+                "report_date": sections.get("report_date"),
+                "form": "10-K",
+                "subsidiaries_count": stats["subsidiaries_count"],
+            }, f, indent=2)
+
+        if sections.get("item_1_business"):
+            with open(filing_dir / "item_1_business.txt", "w", encoding="utf-8") as f:
+                f.write(sections["item_1_business"])
+
+        if sections.get("item_1a_risk_factors"):
+            with open(filing_dir / "item_1a_risk_factors.txt", "w", encoding="utf-8") as f:
+                f.write(sections["item_1a_risk_factors"])
+
+        if sections.get("subsidiaries"):
+            with open(filing_dir / "exhibit_21_subsidiaries.json", "w", encoding="utf-8") as f:
+                json.dump(sections["subsidiaries"], f, indent=2)
+
+        logger.info(f"[{clean_ticker}] 10-K saved to {filing_dir} ({stats['subsidiaries_count']} subsidiaries)")
+    else:
+        logger.warning(f"[{clean_ticker}] No 10-K filing found for year={year}")
+
+    # 2. Optionally fetch Form 8-K
+    if include_8k:
+        eight_ks = client.fetch_recent_8k(clean_ticker, limit=5, year=year)
+        stats["8k_count"] = len(eight_ks)
+        if eight_ks:
+            eightk_dir = ticker_dir / "8K"
+            eightk_dir.mkdir(parents=True, exist_ok=True)
+            for e in eight_ks:
+                acc = e.get("accession_number", "unknown").replace("-", "")
+                with open(eightk_dir / f"{acc}.json", "w", encoding="utf-8") as f:
+                    json.dump(e, f, indent=2)
+
+    # 3. Optionally fetch Form 4
+    if include_form4:
+        form4s = client.fetch_form4_transactions(clean_ticker, limit=10, year=year)
+        stats["form4_count"] = len(form4s)
+        if form4s:
+            form4_dir = ticker_dir / "FORM4"
+            form4_dir.mkdir(parents=True, exist_ok=True)
+            with open(form4_dir / "transactions.json", "w", encoding="utf-8") as f:
+                json.dump(form4s, f, indent=2)
+
+    return stats
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SEC EDGAR Filings Downloader and Staging CLI.")
+    parser.add_argument(
+        "--tickers",
+        type=str,
+        default="AAPL,MSFT,NVDA",
+        help="Comma-separated list of stock tickers or 'SP500' for benchmark seed",
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help="Fiscal year to download (default: latest)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="data/sec_filings",
+        help="Local staging directory for downloaded filings",
+    )
+    parser.add_argument(
+        "--include-8k",
+        action="store_true",
+        help="Include Form 8-K material event filings",
+    )
+    parser.add_argument(
+        "--include-form4",
+        action="store_true",
+        help="Include Form 4 insider transaction filings",
+    )
+
+    args = parser.parse_args()
+    output_dir = Path(args.output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.tickers.upper() == "SP500":
+        tickers = DEFAULT_SP500_BENCHMARK
+    else:
+        tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+
+    client = EdgarClient()
+    for t in tickers:
+        download_filings_for_ticker(
+            client=client,
+            ticker=t,
+            output_base_dir=output_dir,
+            year=args.year,
+            include_8k=args.include_8k,
+            include_form4=args.include_form4,
+        )
+
+
+if __name__ == "__main__":
+    main()

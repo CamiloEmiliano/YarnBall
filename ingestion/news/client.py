@@ -1,62 +1,28 @@
-# ingest/finnhub_client.py
-"""Finnhub ingestion client.
-
-Provides `fetch_finnhub()` which respects the 60 calls/minute rate limit using `TokenBucket`.
 """
-import os
-import json
-import time
+Financial News Client Module.
+
+Provides:
+- Finnhub live news streaming client with rate-limited TokenBucket (60 req/min).
+- Dynamic date window normalization.
+- Helper readers for historical FNSPID / Form 8-K parquet archives.
+"""
+
+from __future__ import annotations
+
 import datetime
+import json
+import logging
+import os
+from pathlib import Path
 from threading import Lock
-from typing import Any, List, Dict
+import time
+from typing import Any, Dict, Iterator, List, Optional
 
-from kafka_pipeline.kafka_driver import send_record
-from tools.utils import logger
-from . import ingest_task  # noqa: F401
-
-# ------------------------------------------------------------------------------
-class TokenBucket:
-    """Token bucket rate limiter for API call quotas.
-    Respects the free-tier 60 calls/minute limit by default.
-    """
-    def __init__(self, capacity: int = 60, refill_seconds: int = 60):
-        self.capacity = capacity
-        self.tokens = capacity
-        self.refill_rate = capacity / float(refill_seconds)
-        self.last_refill = time.monotonic()
-        self.lock = Lock()
-
-    def _refill(self) -> None:
-        now = time.monotonic()
-        elapsed = now - self.last_refill
-        added = elapsed * self.refill_rate
-        if added >= 1:
-            self.tokens = min(self.capacity, self.tokens + added)
-            self.last_refill = now
-
-    def consume(self, n: int = 1) -> bool:
-        with self.lock:
-            self._refill()
-            if self.tokens >= n:
-                self.tokens -= n
-                return True
-            return False
-
-    def wait(self, n: int = 1) -> None:
-        while not self.consume(n):
-            time.sleep(0.2)
-
-# ------------------------------------------------------------------------------
 try:
     from dotenv import load_dotenv
-    from pathlib import Path
-    load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
+    load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
 except ImportError:
     pass
-
-# Load tickers from environment variable (comma‑separated)
-FINNHUB_TICKERS = [t.strip() for t in os.getenv("FINNHUB_TICKERS", "").split(",") if t.strip()]
-HIST_DATETIME_FORMAT = os.getenv("HIST_DATETIME_FORMAT", "%Y-%m-%d %H:%M:%S")
 
 try:
     import httpx
@@ -97,13 +63,54 @@ except ImportError:
     def wait_exponential(*args, **kwargs):
         return None
 
-# ------------------------------------------------------------------------------
-def _date_range() -> dict[str, str]:
-    """Return normalized start/end window values for upstream APIs.
+from ingestion import ingest_task
 
-    By default we fetch the last 30 days. Override with HIST_START and
-    HIST_END environment variables (format %Y-%m-%d %H:%M:%S in UTC).
+try:
+    from kafka_pipeline.kafka_driver import send_record
+except ImportError:
+    send_record = lambda src, payload: None
+
+logger = logging.getLogger("ingestion.news.client")
+
+# Load tickers from environment variable (comma-separated)
+FINNHUB_TICKERS = [t.strip() for t in os.getenv("FINNHUB_TICKERS", "").split(",") if t.strip()]
+HIST_DATETIME_FORMAT = os.getenv("HIST_DATETIME_FORMAT", "%Y-%m-%d %H:%M:%S")
+
+
+class TokenBucket:
+    """Token bucket rate limiter for API call quotas.
+    Respects the free-tier 60 calls/minute limit by default.
     """
+    def __init__(self, capacity: int = 60, refill_seconds: int = 60):
+        self.capacity = capacity
+        self.tokens = capacity
+        self.refill_rate = capacity / float(refill_seconds)
+        self.last_refill = time.monotonic()
+        self.lock = Lock()
+
+    def _refill(self) -> None:
+        now = time.monotonic()
+        elapsed = now - self.last_refill
+        added = elapsed * self.refill_rate
+        if added >= 1:
+            self.tokens = min(self.capacity, self.tokens + added)
+            self.last_refill = now
+
+    def consume(self, n: int = 1) -> bool:
+        with self.lock:
+            self._refill()
+            if self.tokens >= n:
+                self.tokens -= n
+                return True
+            return False
+
+    def wait(self, n: int = 1) -> None:
+        while not self.consume(n):
+            time.sleep(0.2)
+
+
+def _date_range() -> Dict[str, str]:
+    """Return normalized start/end window values for upstream APIs."""
     end_env = os.getenv("HIST_END")
     start_env = os.getenv("HIST_START")
 
@@ -112,9 +119,7 @@ def _date_range() -> dict[str, str]:
             end_env, HIST_DATETIME_FORMAT
         ).replace(tzinfo=datetime.timezone.utc)
     else:
-        end_dt = datetime.datetime.now(datetime.timezone.utc).replace(
-            microsecond=0
-        )
+        end_dt = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
 
     if start_env:
         start_dt = datetime.datetime.strptime(
@@ -130,8 +135,8 @@ def _date_range() -> dict[str, str]:
         "to_iso_utc": end_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 
-# ------------------------------------------------------------------------------
-def _finnhub_params(ticker: str) -> dict[str, Any]:
+
+def _finnhub_params(ticker: str) -> Dict[str, Any]:
     dr = _date_range()
     return {
         "symbol": ticker,
@@ -140,12 +145,10 @@ def _finnhub_params(ticker: str) -> dict[str, Any]:
         "token": os.getenv("FINNHUB_API_KEY"),
     }
 
-# ------------------------------------------------------------------------------
-def _process_finnhub(data: Any, ticker: str) -> List[dict[str, str]]:
-    """Transform Finnhub raw items into the payload format expected downstream.
-    Filters articles to the exact HIST_START and HIST_END timestamps if set.
-    """
-    results: List[dict[str, str]] = []
+
+def _process_finnhub(data: Any, ticker: str) -> List[Dict[str, str]]:
+    """Transform Finnhub raw items into the payload format expected downstream."""
+    results: List[Dict[str, str]] = []
     if not isinstance(data, list):
         logger.warning(f"Unexpected Finnhub payload shape for {ticker}; expected list")
         return results
@@ -171,7 +174,6 @@ def _process_finnhub(data: Any, ticker: str) -> List[dict[str, str]]:
         if not isinstance(item, dict):
             continue
         item_ts = item.get("datetime", 0)
-        # Apply exact timestamp window filtering
         if (start_env or end_env) and not (start_ts <= item_ts <= end_ts):
             continue
 
@@ -187,7 +189,7 @@ def _process_finnhub(data: Any, ticker: str) -> List[dict[str, str]]:
         results.append({"source": "Finnhub", "payload": payload})
     return results
 
-# ------------------------------------------------------------------------------
+
 @retry(
     stop=stop_after_attempt(4),
     wait=wait_exponential(multiplier=2, min=2, max=20),
@@ -202,23 +204,23 @@ def _get_json(
         resp.raise_for_status()
         return resp.json()
 
-# ------------------------------------------------------------------------------
+
 def _is_api_available(
     url: str,
     headers: Dict[str, str] | None = None,
 ) -> bool:
-    """Check whether an API endpoint is reachable before the main request."""
+    """Check whether an API endpoint is reachable before making request."""
     try:
         with httpx.Client(timeout=10.0, follow_redirects=True) as client:
             resp = client.head(url, headers=headers or {})
             if resp.status_code == 405:
                 resp = client.get(url, headers=headers or {})
             return resp.status_code < 500
-    except httpx.HTTPError as exc:
+    except Exception as exc:
         logger.warning(f"API availability check failed for {url}: {exc}")
         return False
 
-# ------------------------------------------------------------------------------
+
 def _fetch_json_if_available(
     service_name: str,
     url: str,
@@ -227,26 +229,24 @@ def _fetch_json_if_available(
 ) -> Any | None:
     return _get_json(url, params=params, headers=headers)
 
-# ------------------------------------------------------------------------------
+
 def _test_finnhub_endpoint(ticker: str) -> bool:
-    """Verify the Finnhub endpoint is reachable before making a full request."""
     url = "https://finnhub.io/api/v1/company-news"
     return _is_api_available(url)
 
-# ------------------------------------------------------------------------------
+
 @ingest_task("finnhub")
 def fetch_finnhub() -> None:
-    """Entry point called by the task runner.
-    Iterates over configured tickers, respects the rate limit, fetches data and pushes to Kafka.
-    """
+    """Entry point called by the task runner."""
     if not os.getenv("FINNHUB_API_KEY"):
         logger.warning("FINNHUB_API_KEY not set - skipping Finnhub ingestion")
         return
     tickers = [t.strip() for t in os.getenv("FINNHUB_TICKERS", "").split(",") if t.strip()] or FINNHUB_TICKERS
     logger.info("Fetching Finnhub news for tickers: %s", ", ".join(tickers))
     bucket = TokenBucket()
+
     for ticker in tickers:
-        bucket.wait()  # enforce 60 calls/minute limit
+        bucket.wait()
         try:
             data = _fetch_json_if_available(
                 "Finnhub",
@@ -261,9 +261,9 @@ def fetch_finnhub() -> None:
         except Exception as exc:
             logger.error(f"Finnhub fetch failed for {ticker}: {exc}")
 
-# ------------------------------------------------------------------------------
+
 def check_api() -> None:
-    """Sanity check and verification function for Finnhub API connectivity and data."""
+    """Sanity check and verification function for Finnhub API connectivity."""
     api_key = os.getenv("FINNHUB_API_KEY")
     if not api_key:
         print("ERROR: FINNHUB_API_KEY not set. Set it in .env or the environment.")
@@ -298,7 +298,7 @@ def check_api() -> None:
                 print(json.dumps(first_payload, indent=2))
         except Exception as exc:
             print(f"ERROR: Request for ticker {ticker} failed: {exc}")
-# ------------------------------------------------------------------------------
+
+
 if __name__ == "__main__":
     check_api()
-

@@ -5,7 +5,7 @@ Unit tests for EdgarClient and 10-K section parsing.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ingest.edgar_client import EdgarClient, DEFAULT_SP500_BENCHMARK
+from ingestion.sec import EdgarClient, DEFAULT_SP500_BENCHMARK
 
 
 class TestEdgarClient(unittest.TestCase):

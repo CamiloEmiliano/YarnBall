@@ -5,7 +5,7 @@ Unit tests for EdgarEntityLinker and name normalization.
 import unittest
 from unittest.mock import MagicMock
 
-from ingest.edgar_linker import (
+from ingestion.sec import (
     EdgarEntityLinker,
     normalize_company_name,
 )

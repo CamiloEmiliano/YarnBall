@@ -54,7 +54,7 @@ except ImportError:
     from sft_pipeline.annotator import AnnotatedTriple, FinancialTaxonomyAnnotator
     from sft_pipeline.exporter import SFTDatasetExporter, SFTRecord
 
-from tools.fetch_market_context import MarketContextIntegrator
+from ingestion.market import MarketContextIntegrator
 
 # Formal Curation Engine Integration
 try:

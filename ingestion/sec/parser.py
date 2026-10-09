@@ -1,19 +1,23 @@
 """
-SEC Entity Linker & Master CIK Registry Module.
+SEC Entity Linker & Semantic Filing Parser Module.
 
 Provides:
-- Company name normalization with legal suffix stripping
-- Fast 4-tier hierarchical entity resolution against PostgreSQL sec_companies and sec_subsidiaries
-- In-memory caching for resolved entities
-- Synchronization utility to populate/refresh the SEC master CIK registry
+- Company name normalization with legal corporate suffix stripping
+- 4-tier hierarchical entity resolution against PostgreSQL sec_companies & sec_subsidiaries
+- SEC master CIK registry synchronization from SEC.gov
+- Salient context paragraph selector for relationally dense text
+- Local LLM relationship extraction schema and prompt for SEC Form 10-K/8-K sections
 """
 
+from __future__ import annotations
+
+from collections import OrderedDict
 import logging
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-logger = logging.getLogger("edgar_linker")
+logger = logging.getLogger("ingestion.sec.parser")
 
 # Common corporate suffixes to strip during normalization
 CORP_SUFFIXES = [
@@ -75,8 +79,6 @@ def normalize_company_name(name: Optional[str]) -> str:
     return text
 
 
-from collections import OrderedDict
-
 class EdgarEntityLinker:
     """4-Tier Hierarchical Entity Linker for SEC EDGAR and Financial Graph Entities.
     
@@ -94,7 +96,6 @@ class EdgarEntityLinker:
         max_cache_size: int = 10000,
     ):
         self.pg_conn = pg_conn
-        # Calibrated pg_trgm similarity threshold (distinct from Jaro-Winkler 0.88 metric)
         self.trigram_threshold = trigram_threshold
         self.max_cache_size = max_cache_size
         self._cache: OrderedDict[str, Optional[Dict[str, Any]]] = OrderedDict()
@@ -271,11 +272,7 @@ class EdgarEntityLinker:
 
 
 def sync_sec_companies_from_sec(pg_conn, sp500_tickers: Optional[List[str]] = None) -> int:
-    """Fetch official SEC company_tickers.json and sync into `sec_companies` table.
-    
-    Endpoint: https://www.sec.gov/files/company_tickers.json
-    Header required: User-Agent: YarnBallResearch admin@yarnball.org
-    """
+    """Fetch official SEC company_tickers.json and sync into `sec_companies` table."""
     import httpx
 
     user_agent = os.getenv("SEC_EDGAR_USER_AGENT", "YarnBallResearch admin@yarnball.org")
@@ -310,7 +307,6 @@ def sync_sec_companies_from_sec(pg_conn, sp500_tickers: Optional[List[str]] = No
 
     cur = pg_conn.cursor()
     try:
-        # Upsert records
         query = """
         INSERT INTO sec_companies (cik, ticker, company_name, normalized_name, is_sp500, updated_at)
         VALUES (%s, %s, %s, %s, %s, now())
@@ -329,3 +325,123 @@ def sync_sec_companies_from_sec(pg_conn, sp500_tickers: Optional[List[str]] = No
         if hasattr(cur, "close"):
             cur.close()
 
+
+SEC_EXTRACTION_PROMPT = """You are an expert financial SEC filing knowledge graph extractor.
+Analyze the following section from an SEC filing (e.g. Form 10-K Item 1 Business / Item 1A Risks, or Form 8-K).
+Extract key corporate entities, suppliers, customers, strategic partners, competitors, key products, and material risks.
+
+Output ONLY a valid JSON object matching this schema:
+{
+    "nodes": [
+        {"id": "<Full Company or Entity Name>", "type": "Company|Product|Technology|RiskFactor|Person|RegulatoryBody", "properties": {"ticker": "<TICKER if known>"}}
+    ],
+    "edges": [
+        {"source": "<Source Entity>", "target": "<Target Entity>", "type": "<RELATIONSHIP_TYPE>", "properties": {"nature": "<brief context>"}}
+    ]
+}
+
+Allowed relationship types:
+- SUPPLIES_TO (source sells/supplies goods/services to target)
+- CUSTOMER_OF (source buys goods/services from target)
+- COMPETES_WITH (source competes directly with target)
+- PARTNERED_WITH (strategic alliance, joint venture, distribution agreement)
+- LICENSES_TO / LICENSES_FROM (IP or patent licensing)
+- OWNS / CONTROLS (equity stake, joint venture)
+- EXPOSED_TO_RISK (company exposed to specific operational/geopolitical/supply risk)
+- ACQUIRED / MERGED_WITH (M&A events)
+
+Do not include any explanation or markdown formatting. Output raw JSON only."""
+
+
+def select_salient_sec_context(text: str, max_chars: int = 2500) -> str:
+    """Select the most relationally dense paragraphs from SEC filing text (e.g. Item 1 or Item 1A)."""
+    if not text or len(text) <= max_chars:
+        return text
+
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n|\r\n\s*\r\n", text) if len(p.strip()) > 40]
+    if not paragraphs:
+        return text[:max_chars]
+
+    keywords = [
+        r"\bsuppl(y|ier|iers|ies)\b",
+        r"\bcustomer(s)?\b",
+        r"\bvendor(s)?\b",
+        r"\bmanufactur(er|ers|ing)\b",
+        r"\bclient(s)?\b",
+        r"\bdistribut(or|ors|ion)\b",
+        r"\bcompet(e|es|ing|itor|itors|ition)\b",
+        r"\bpartner(s|ship|ships)?\b",
+        r"\balliance(s)?\b",
+        r"\bjoint venture(s)?\b",
+        r"\blicens(e|es|ing|or|ee)\b",
+        r"\bacqui(re|red|sition|sitions)\b",
+        r"\bmerg(e|ed|er|ers)\b",
+        r"\bsubsidiar(y|ies)\b",
+        r"\bdependen(t|ce)\b",
+        r"\bsole source\b|\bsingle source\b",
+        r"\breliance\b",
+    ]
+    pattern = re.compile("|".join(keywords), re.IGNORECASE)
+
+    scored = []
+    for idx, p in enumerate(paragraphs):
+        matches = len(pattern.findall(p))
+        if matches > 0:
+            scored.append((matches, idx, p))
+
+    if not scored:
+        return text[:max_chars]
+
+    scored.sort(key=lambda x: (-x[0], x[1]))
+
+    selected = []
+    total_len = 0
+    for _, idx, p in scored:
+        if total_len + len(p) + 2 <= max_chars:
+            selected.append((idx, p))
+            total_len += len(p) + 2
+        elif not selected:
+            selected.append((idx, p[:max_chars]))
+            break
+
+    selected.sort(key=lambda x: x[0])
+    return "\n\n".join(p for _, p in selected)
+
+
+def extract_sec_relationships(text: str, max_chars: int = 2500) -> Dict[str, Any]:
+    """Extract entities and relationships from SEC text chunk using local LLM."""
+    if not text or not text.strip():
+        return {"nodes": [], "edges": []}
+
+    try:
+        import httpx
+    except ImportError:
+        logger.warning("httpx not available; skipping LLM extraction")
+        return {"nodes": [], "edges": []}
+
+    from graph.graph_store import _clean_json_response, OLLAMA_API_BASE, OLLAMA_MODEL_NAME
+
+    chunk = select_salient_sec_context(text, max_chars=max_chars)
+    prompt = f"{SEC_EXTRACTION_PROMPT}\n\nSEC Text Section:\n{chunk}\n\nJSON:"
+
+    gen_url = OLLAMA_API_BASE
+    if "/v1" in gen_url:
+        gen_url = gen_url.split("/v1")[0].rstrip("/") + "/api/generate"
+
+    try:
+        with httpx.Client(timeout=90.0) as client:
+            resp = client.post(
+                gen_url,
+                json={
+                    "model": OLLAMA_MODEL_NAME,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": "json",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return _clean_json_response(data.get("response", ""))
+    except Exception as e:
+        logger.error(f"Failed SEC LLM extraction call: {e}")
+        return {"nodes": [], "edges": []}

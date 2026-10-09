@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from ingest import finnhub_client
+from ingestion.news import client as finnhub_client
 
 
 class FinnhubClientContractTests(unittest.TestCase):

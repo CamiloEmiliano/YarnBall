@@ -1,18 +1,17 @@
-# ingest/task_runner.py
-# -*- coding: utf-8 -*-
-"""Task runner for ingestion clients.
+"""
+Task runner for ingestion clients.
 
 Discovers and executes all registered ingestion tasks concurrently in a thread pool.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 
-# Import registry and client modules to ensure @ingest_task decorators execute
 from . import registry
-from . import finnhub_client
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ingestion.task_runner")
 
 
 async def _run_sync(func):
@@ -26,8 +25,8 @@ async def run_all():
 
     Each fetch function is executed concurrently via `_run_sync`.
     """
-    tasks = [_run_sync(fn) for fn in registry.values()]
-    if not tasks:
+    if not registry:
         logger.warning("No ingestion fetch functions registered.")
         return
+    tasks = [_run_sync(fn) for fn in registry.values()]
     await asyncio.gather(*tasks)

@@ -31,9 +31,8 @@ try:
 except ImportError:
     pass
 
-from ingest.edgar_client import EdgarClient
-from tools.download_historical_sec import HistoricalSECHarvester
-from tools.fetch_market_context import MarketContextIntegrator
+from ingestion.sec import EdgarClient, HistoricalSECHarvester
+from ingestion.market import MarketContextIntegrator
 from sft_pipeline import (
     ManifoldSample,
     ManifoldTargetedSampler,

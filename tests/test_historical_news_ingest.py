@@ -1,12 +1,12 @@
 # tests/test_historical_news_ingest.py
 # -*- coding: utf-8 -*-
-"""Unit tests for tools/ingest_historical_news.py."""
+"""Unit tests for ingestion/news/harvester.py (HistoricalNewsIngestor)."""
 
 from pathlib import Path
 import pytest
 from unittest.mock import MagicMock, patch
 
-from tools.ingest_historical_news import HistoricalNewsIngestor
+from ingestion.news import HistoricalNewsIngestor
 
 
 @pytest.fixture

@@ -1,13 +1,13 @@
 # tests/test_market_context.py
 # -*- coding: utf-8 -*-
-"""Unit tests for tools/fetch_market_context.py and tools/ingest_transcripts.py."""
+"""Unit tests for ingestion/market/harvester.py and ingestion/transcripts/harvester.py."""
 
 from pathlib import Path
 import pytest
 from unittest.mock import MagicMock
 
-from tools.fetch_market_context import MarketContextIntegrator
-from tools.ingest_transcripts import EarningsTranscriptIngestor
+from ingestion.market import MarketContextIntegrator
+from ingestion.transcripts import EarningsTranscriptIngestor
 
 
 @pytest.fixture

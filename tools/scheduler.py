@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Import ingestion job
 try:
-    from ingest import task_runner
+    from ingestion import task_runner
     def run_ingestion():
         logger.info("Executing scheduled ingestion job...")
         asyncio.run(task_runner.run_all())

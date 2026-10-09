@@ -1,11 +1,11 @@
 # tests/test_scraping_worker.py
 # -*- coding: utf-8 -*-
-"""Unit tests for ingest/scraping_worker.py."""
+"""Unit tests for ingestion/news/harvester.py and parser.py."""
 
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ingest.scraping_worker import (
+from ingestion.news import (
     compute_source_hash,
     extract_text_from_html,
     get_domain_from_url,
@@ -108,7 +108,7 @@ class ScrapingWorkerTests(unittest.TestCase):
         mock_cur.execute.assert_called()
         mock_conn.commit.assert_called()
 
-    @patch("ingest.scraping_worker.fetch_and_extract")
+    @patch("ingestion.news.harvester.fetch_and_extract")
     def test_process_scraping_message_success(self, mock_fetch):
         mock_fetch.return_value = (
             "A long valid article text about tech earnings with plenty of words and facts... " * 10,
@@ -128,7 +128,7 @@ class ScrapingWorkerTests(unittest.TestCase):
         result = process_scraping_message(msg, conn=mock_conn)
         self.assertTrue(result)
 
-    @patch("ingest.scraping_worker.fetch_and_extract")
+    @patch("ingestion.news.harvester.fetch_and_extract")
     def test_process_scraping_message_paywall_fails(self, mock_fetch):
         mock_fetch.return_value = (None, {})
         mock_conn = MagicMock()

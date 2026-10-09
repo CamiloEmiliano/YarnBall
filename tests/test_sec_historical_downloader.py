@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from tools.download_historical_sec import HistoricalSECHarvester
+from ingestion.sec import HistoricalSECHarvester
 from tools.sp500_universe import SP500Constituent
 
 

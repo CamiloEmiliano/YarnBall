@@ -1,9 +1,8 @@
 """
-Quarterly Earnings Call Transcript & Form 8-K Item 2.02 Ingestor.
+Earnings Call Transcript Harvester & Parquet Stager.
 
-Processes earnings call transcripts and Form 8-K Item 2.02 releases, segmenting
-executive prepared remarks (strategic announcements) from analyst Q&A sessions
-to supply high-fidelity conversational context for GraphRAG and multi-hop SFT.
+Processes earnings call transcripts and Form 8-K Item 2.02 disclosures, validates
+against S&P 500 point-in-time constituent registry, and stages structured datasets into Parquet.
 """
 
 from __future__ import annotations
@@ -20,88 +19,33 @@ from typing import Any, Dict, List, Optional, Tuple
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-# Load environment
-try:
-    from dotenv import load_dotenv
-    load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
-except ImportError:
-    pass
-
 from tools.sp500_universe import SP500UniverseManager
+from .parser import EarningsTranscriptParser
+from .client import TranscriptSourceClient
 
-logger = logging.getLogger("ingest_transcripts")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("ingestion.transcripts.harvester")
 
-DEFAULT_TRANSCRIPT_DIR = Path(__file__).resolve().parent.parent / "data" / "transcripts"
+DEFAULT_TRANSCRIPT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "transcripts"
 
 
 class EarningsTranscriptIngestor:
-    """Ingests and parses earnings call transcripts and Item 2.02 disclosures."""
+    """Ingests, validates, and stages earnings call transcripts."""
 
     def __init__(
         self,
         output_dir: Optional[Path] = None,
         universe_mgr: Optional[SP500UniverseManager] = None,
+        parser: Optional[EarningsTranscriptParser] = None,
     ):
-        self.output_dir = output_dir or DEFAULT_TRANSCRIPT_DIR
+        self.output_dir = Path(output_dir or DEFAULT_TRANSCRIPT_DIR)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.universe_mgr = universe_mgr or SP500UniverseManager()
+        self.parser = parser or EarningsTranscriptParser()
+        self.client = TranscriptSourceClient(data_dir=self.output_dir)
 
     def parse_transcript_text(self, raw_text: str) -> Dict[str, Any]:
-        """
-        Segment transcript into prepared remarks and Q&A dialogues.
-        Identifies executive speakers, analysts, and dialogue turns.
-        """
-        if not raw_text or not raw_text.strip():
-            return {"prepared_remarks": "", "qa_dialogues": [], "executives": [], "analysts": []}
-
-        # Patterns for section demarcation
-        qa_split_pattern = re.compile(
-            r"(?:question[s]?\s*(?:and|&)\s*answer[s]?\s*(?:session|period)?|q\s*&\s*a\s*session)",
-            re.IGNORECASE,
-        )
-
-        parts = qa_split_pattern.split(raw_text, maxsplit=1)
-        prepared_remarks = parts[0].strip() if parts else raw_text.strip()
-        qa_text = parts[1].strip() if len(parts) > 1 else ""
-
-        # Parse Q&A dialogues into speaker turns
-        qa_dialogues: List[Dict[str, str]] = []
-        executives: List[str] = []
-        analysts: List[str] = []
-
-        if qa_text:
-            speaker_pattern = re.compile(
-                r"(?:^|\n)([A-Z][a-zA-Z\.\s]+?)\s*(?:--|-|\—)\s*([A-Za-z\s,]+?)(?:\n|:)",
-            )
-            turns = re.split(r"\n(?=[A-Z][a-zA-Z\.\s]+?\s*(?:--|-|\—))", qa_text)
-            for turn in turns:
-                match = speaker_pattern.search(turn)
-                if match:
-                    speaker_name = match.group(1).strip().rstrip("-— ").strip()
-                    speaker_role = match.group(2).strip().lstrip("-— ").strip()
-                    speech_content = turn[match.end():].strip()
-
-                    role_lower = speaker_role.lower()
-                    if any(r in role_lower for r in ["ceo", "cfo", "chief", "president", "management", "officer"]):
-                        if speaker_name not in executives:
-                            executives.append(speaker_name)
-                    else:
-                        if speaker_name not in analysts:
-                            analysts.append(speaker_name)
-
-                    qa_dialogues.append({
-                        "speaker": speaker_name,
-                        "role": speaker_role,
-                        "text": speech_content,
-                    })
-
-        return {
-            "prepared_remarks": prepared_remarks,
-            "qa_dialogues": qa_dialogues,
-            "executives": executives,
-            "analysts": analysts,
-        }
+        """Delegate to parser for backward compatibility."""
+        return self.parser.parse_transcript_text(raw_text)
 
     def process_transcript_record(
         self,
@@ -112,16 +56,15 @@ class EarningsTranscriptIngestor:
         raw_text: str,
         source_url: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Process and validate an earnings transcript record."""
+        """Process and validate an earnings transcript record against S&P 500 universe."""
         clean_ticker = ticker.strip().upper()
-        clean_quarter = fiscal_quarter.strip().upper() # e.g. "Q1", "Q2", "Q3", "Q4"
+        clean_quarter = fiscal_quarter.strip().upper()
 
-        # Validate S&P 500 inclusion at date
         if not self.universe_mgr.is_constituent(clean_ticker, target_date=date_str):
             logger.debug(f"Skipping transcript: {clean_ticker} was not in S&P 500 on {date_str}")
             return None
 
-        parsed = self.parse_transcript_text(raw_text)
+        parsed = self.parser.parse_transcript_text(raw_text)
         transcript_id = f"{clean_ticker}_{fiscal_year}_{clean_quarter}"
         source_hash = hashlib.sha256(f"{transcript_id}_{date_str}".encode("utf-8")).hexdigest()[:32]
 
@@ -174,7 +117,6 @@ def main() -> None:
 
     ingestor = EarningsTranscriptIngestor()
 
-    # Demonstration / synthetic seeding if no external file provided
     sample_records = [
         {
             "ticker": "AAPL",

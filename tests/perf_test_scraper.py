@@ -17,7 +17,7 @@ import time
 from typing import List
 
 # Finnhub client helpers
-from ingest.finnhub_client import (
+from ingestion.news.client import (
     _fetch_json_if_available,
     _finnhub_params,
     FINNHUB_TICKERS,
@@ -27,7 +27,7 @@ from ingest.finnhub_client import (
 from kafka_pipeline.kafka_driver import send_record
 
 # Scraper processing function (the code we want to evaluate)
-from ingest.scraping_worker import process_scraping_message
+from ingestion.news import process_scraping_message
 
 # ----------------------------------------------------------------------
 # Configuration (adjust via environment or edit here)
