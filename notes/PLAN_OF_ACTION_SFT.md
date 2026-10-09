@@ -10,7 +10,7 @@ This document outlines the end-to-end plan for building **YarnBall's Unified Fin
   - **Task D (`<|contagion_reasoning|>`)**: Multi-hop supply chain contagion and shock propagation with `<think>` Chain-of-Thought (CoT).
   - **Task E (`<|portfolio_recommendation|>`)**: Risk synthesis and institutional portfolio hedging strategies with `<think>` CoT.
 
-The plan decouples the **GraphRAG production runtime** (`graphrag_finance` / `YarnBall`) from the **dedicated ML training lab** (`Qwen_YarnBall_SFT`), establishes multi-year S&P 500 point-in-time snapshot archives tracked by DVC, incorporates 4 complementary data layers (SEC Filings, Historical News, Earnings Transcripts, Market/Macro series), and enforces a rigorous 5-tier Ground Truth verification protocol.
+The plan decouples the **GraphRAG production runtime** (`graphrag_finance` / `YarnBall`) from the **dedicated ML training lab** (`QwenSFT_YarnBall`), establishes multi-year S&P 500 point-in-time snapshot archives tracked by DVC, incorporates 4 complementary data layers (SEC Filings, Historical News, Earnings Transcripts, Market/Macro series), and enforces a rigorous 5-tier Ground Truth verification protocol.
 
 ---
 
@@ -26,13 +26,12 @@ The plan decouples the **GraphRAG production runtime** (`graphrag_finance` / `Ya
 │    - Form 8-K (Material Events, M&A, Defaults, Leadership Departures)  │
 │    - Form 4 (Insider Transactions & Options Exercises)                 │
 │                                                                        │
-│ 2. Uncapped Historical & Real-Time Financial News (2018–2025)          │
-│    - FNSPID Hugging Face Dataset (>29M S&P 500 articles 2010–2024)     │
-│    - SEC Form 8-K Material Event Disclosures (Item 1.01/2.01 press)    │
-│    - Real-Time Harvesters: `yfinance` Ticker News, corporate wire feeds, │
-│      and direct publisher disclosures                                  │
-│    - GDELT 2.0 Global Corporate & Supply Chain Event Stream            │
-│    - Auxiliary Fallback: Finnhub API (ticker metadata & quote lookup)  │
+│ 2. Grounded Historical Corporate News & Material Disclosures           │
+│    - SEC Form 8-K Material Event Filings (Mandatory Legal Truth)       │
+│    - FNSPID Open Parquet Archive (>29M S&P 500 articles 2010–2024)     │
+│    - Historical Daily OHLCV & Abnormal Returns via yfinance            │
+│    - Production Forward Streaming: Finnhub (strictly forward runtime;  │
+│      excluded from historical SFT builds & dry runs per policy)        │
 │                                                                        │
 │ 3. Earnings Call Transcripts & Corporate Guidance                      │
 │    - Quarterly Earnings Conference Calls (Executive Remarks + Q&A)     │
@@ -50,19 +49,19 @@ The plan decouples the **GraphRAG production runtime** (`graphrag_finance` / `Ya
 │ - PostgreSQL (10,422 CIK Master Registry, News, Embeddings)            │
 │ - Memgraph Temporal Graph Database (Nodes, Temporal Weighted Edges)    │
 │ - Hybrid Retriever, Guarded Text-to-CQL, and Chainlit UI               │
-│ - Dual-Model Router (Dispatches k <= 2 to 3B, k >= 3 to 8B)            │
+│ - Unified Model Engine: Serves all 5 extraction & reasoning tasks       │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
        [Exports Multi-Source Corpus & Gold Graph Snapshots]
                                     │
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│ REPOSITORY 2: Qwen_YarnBall_SFT (Dedicated Training & MLOps Lab)       │
+│ REPOSITORY 2: QwenSFT_YarnBall (Dedicated Training & MLOps Lab)        │
 │ - 5-Tier Ground Truth Protocol (Deterministic Anchors, Triangulation,  │
-│   Multi-Teacher Consensus, CIK Gates, Human Audit)                     │
+│   Targeted Teacher Consensus, CIK Gates, Human Audit)                  │
 │ - Multi-Task Dataset Curation: Extraction, Sentiment, Text-to-CQL, Rec │
 │ - 30/50/20 Difficulty Curriculum & Rare Relationship Over-Sampling     │
-│ - Dual QLoRA Training: Qwen2.5-3B & Qwen3-8B on Cloud GPUs             │
+│ - Unified LoRA SFT: Qwen2.5-7B-Instruct on Datacenter A100 (bfloat16)  │
 │ - GGUF 4-bit Quantization (Q4_K_M) & Hugging Face Hub Registry         │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -83,7 +82,7 @@ The plan decouples the **GraphRAG production runtime** (`graphrag_finance` / `Ya
      - Extract plain-text sections (`item_1_business.txt`, `item_1a_risk_factors.txt`, `subsidiaries.json`, `form8k_events.json`).
   3. **Generous Multi-Source News Ingestion (`tools/ingest_historical_news.py` & `ingest/news_harvester.py`)**:
      - **Bulk Historical (2018–2025)**: Stream and filter the open **FNSPID** Hugging Face dataset (>29M financial articles mapped to S&P 500 tickers) and SEC Form 8-K material event releases directly into PostgreSQL `financial_news_queue` with zero API rate limits.
-     - **Live & Ongoing Ingestion**: Direct ticker news and corporate wire streams via `yfinance` and publisher feeds (with Finnhub relegated to an auxiliary metadata fallback).
+     - **Production Forward Streaming**: Live WebSocket / REST forward streaming via Finnhub is reserved strictly for production runtime execution (excluded from historical SFT dataset builds and dry runs per `.agents/rules/data_sources.md`; web scrapers and ephemeral ticker news feeds are omitted).
   4. **Earnings Call Transcript Ingestion (`tools/ingest_transcripts.py`)**:
      - Download and stage quarterly earnings call transcripts and 8-K earnings releases.
   5. **Market Context Integrator (`tools/fetch_market_context.py`)**:
@@ -94,18 +93,18 @@ The plan decouples the **GraphRAG production runtime** (`graphrag_finance` / `Ya
 
 ---
 
-### Phase 2: Dedicated Training Repository Setup (`Qwen_YarnBall_SFT`)
-- **Objective**: Create an isolated repository for multi-task dataset curation, dual-model cloud training, and benchmark evaluation.
+### Phase 2: Dedicated Training Repository Setup (`QwenSFT_YarnBall`)
+- **Objective**: Create an isolated repository for unified multi-task cloud training, model registry management, and benchmark evaluation.
 - **Key Deliverables**:
   1. **Workspace Initialization**:
-     - Independent `pyproject.toml` with PyTorch, CUDA 12, `unsloth`, `transformers`, `peft`, `trl`, `bitsandbytes`, `wandb`.
+     - Independent `pyproject.toml` with PyTorch, CUDA 12, `transformers`, `peft`, `trl`, `bitsandbytes`, `wandb`.
   2. **Inter-Repo Data Pipeline**:
      - Data loader consuming `YarnBall`'s DVC-tracked multi-source corpus.
 
 ---
 
 ### Phase 3: Ground Truth Verification, 5-Axis Taxonomy & Multi-Task Dataset Curation
-- **Objective**: Generate a 100% verified, balanced, multi-task dataset of 5,000–10,000 golden training samples partitioned for dual-model specialization.
+- **Objective**: Generate a 100% verified, balanced, multi-task dataset of point-in-time grounded training samples curated for unified model specialization across Tasks A through E.
 
 #### 3.1 The 5-Tier Ground Truth Verification Protocol
 1. **Tier 1: Deterministic SEC Anchors (100% Confidence)**:
@@ -115,10 +114,11 @@ The plan decouples the **GraphRAG production runtime** (`graphrag_finance` / `Ya
    - Master CIK registry (10,422 official SEC companies).
 2. **Tier 2: Dual-Counterparty Triangulation**:
    - Under US GAAP ASC 280 (>10% revenue customer disclosure), cross-verify disclosures: If Supplier A reports Customer B, and Customer B lists Supplier A, confidence = 1.0.
-3. **Tier 3: Multi-Teacher Consensus (Frontier Committee Voting)**:
-   - For unstructured text, run 3 independent Frontier models: **Google Gemini** (Gemini 1.5 Pro / 2.0), **Anthropic Claude** (Claude 3.5 Sonnet), and **OpenAI** (GPT-4o).
-   - *Design Decision*: Qwen is intentionally excluded from the teacher voting committee to prevent self-distillation bias and echo-chamber effects, ensuring the student models learn strictly from an external consensus of top frontier systems.
-   - Require 2-out-of-3 agreement on exact entity pair, relationship type, and directionality; reject or flag disagreements.
+3. **Tier 3: Targeted Multi-Teacher Consensus (Selective Frontier Voting)**:
+   - *Deterministic Boundary*: Regulatory filings (Form 10-K, 10-Q, 8-K, Exhibit 21, Form 4) are verified deterministically via code parsers and CIK grounding (Tiers 1 & 2), bypassing frontier LLM APIs completely to avoid vendor billing overhead.
+   - *Unstructured News Protocol*: For complex, unstructured news headlines and commentary where statutory disclosures are unavailable, deploy a targeted teacher protocol using frontier models (**Google Gemini**, **Anthropic Claude**, or **OpenAI GPT-4o**) selectively on ambiguous entity-relation candidates.
+   - *Design Decision*: Qwen is intentionally excluded from the teacher voting committee to prevent self-distillation bias and echo-chamber effects, ensuring the student model learns strictly from ground truth filings or external frontier teachers.
+   - Ambiguous candidates require 2-out-of-3 agreement on entity pair, relation ontology, and directionality before admission into the golden training manifold.
 4. **Tier 4: Programmatic Constraint & CIK Grounding Gates**:
    - Automated code gate: Source and target must resolve to valid CIKs in PostgreSQL `sec_companies` via trigram matching score > 0.85. Unlinked strings are automatically pruned.
    - Enforce closed relationship ontology and temporal metadata integrity.
@@ -178,13 +178,24 @@ To prevent catastrophic forgetting and ensure balanced capability:
 }
 ```
 
-#### 3.5 Statistical Balancing, Deduplication & Data Cartography Pipeline
-To eliminate redundant boilerplates and optimize sample efficiency without losing tail risks:
-1. **MinHash LSH Deduplication** (*Broder, 1997; Lee et al., ACL 2022*): 5-gram tokenization with 128 permutation hashes (Jaccard >= 0.85) to eliminate syndicated news wire copies and identical 10-K legal text.
-2. **Dense Semantic Embedding Clustering** (*Song et al., NeurIPS 2020; Abbas et al., 2023 - SemDeDup*): 768-dim `all-mpnet-base-v2` clustering (cosine threshold >= 0.88) collapsing boilerplate disclosures into centroid exemplars.
-3. **Dataset Cartography & Training Dynamics** (*Swayamdipta et al., EMNLP 2020; Toneva et al., ICLR 2019*): Prunes ~80% of "Easy-to-Learn" samples, retains 100% of "Ambiguous / Boundary" samples, and quarantines "Hard-to-Learn" noisy data.
-4. **Submodular Core-Set Selection** (*Mirzasoleiman et al., ICML 2020; Sener & Savarese, ICLR 2018*): Facility location optimization guaranteeing uniform geometric coverage across all 11 GICS economic sectors and 5-axis types.
-5. **Deterministic Split**: Train / Validation / Test partitioning (`yarnball_sft_train.jsonl` 80%, `yarnball_sft_val.jsonl` 10%, `yarnball_sft_test.jsonl` 10%).
+#### 3.5 Curation Pipeline & Active Learning Cartography Loop
+To eliminate redundant boilerplates, ensure geometric coverage across economic sectors, and continuously refine dataset quality across training cycles, data curation is structured into two chronological phases:
+
+##### 3.5.1 Cold-Start Pre-Training Pipeline (Dataset v1.0.0)
+Before initial model training, raw candidates undergo a 4-stage deterministic curation pipeline:
+1. **MinHash LSH Deduplication** (*Broder, 1997; Lee et al., ACL 2022*): 5-gram tokenization with 128 permutation hashes (Jaccard >= 0.85) to eliminate syndicated news wire copies and duplicate 10-K legal disclaimers.
+2. **Dense Semantic Embedding Clustering (SemDeDup)** (*Song et al., NeurIPS 2020; Abbas et al., 2023*): 768-dim `all-mpnet-base-v2` dense embeddings with cosine threshold >= 0.88, collapsing redundant filings into centroid exemplars.
+3. **Submodular Core-Set Selection** (*Mirzasoleiman et al., ICML 2020; Sener & Savarese, ICLR 2018*): Facility location optimization guaranteeing uniform geometric coverage across all 11 GICS economic sectors and 5-axis types.
+4. **Deterministic Partitioning**: Stratified split into `yarnball_sft_train.jsonl` (80%), `yarnball_sft_val.jsonl` (10%), and `yarnball_sft_test.jsonl` (10%).
+
+##### 3.5.2 Post-Training Active Learning Loop (Dataset v(N) -> v(N+1))
+Dataset Cartography (*Swayamdipta et al., EMNLP 2020; Toneva et al., ICLR 2019*) measures sample confidence and variability across training epochs, and is deployed as an active learning refinement loop between training cycles:
+1. **Training Dynamics Logging**: `TrainingDynamicsCallback` in `QwenSFT_YarnBall/train.py` records per-sample confidence (mean probability assigned to golden completion) and variability (standard deviation across epochs) to `training_dynamics.jsonl`.
+2. **Cartographic Partitioning**:
+   - **Easy-to-Learn** (High confidence, low variability): Prune 80% of repetitive corporate boilerplates to save compute and prevent overfitting.
+   - **Ambiguous / Boundary** (High variability): Retain 100% of samples; these occupy the decision boundary and drive the majority of generalization performance.
+   - **Hard-to-Learn** (Low confidence, low variability): Automatically quarantine for CIK grounding or syntax validation (identifies labeling noise and contradictory disclosures).
+3. **Continuous Re-Training**: Export refined dataset v(N+1) back to Vast.ai for targeted fine-tuning.
 
 #### 3.6 Rare Relationship Over-Sampling & Lexical Trigger Harvesting
 To prevent class collapse where the model only predicts common relationships (`SUBSIDIARY_OF`, `SUPPLIES_TO`) while missing high-value risk edges:
@@ -204,20 +215,20 @@ To prevent class collapse where the model only predicts common relationships (`S
 ---
 
 ### Phase 4: Cloud LoRA Training, Hardware Specs & Experiment Tracking
-- **Objective**: Fine-tune `Qwen2.5-7B-Instruct` on cloud GPU compute (Vast.ai / RunPod).
+- **Objective**: Fine-tune `Qwen2.5-7B-Instruct` on cloud GPU compute via `QwenSFT_YarnBall` (Vast.ai datacenter instances).
 - **GPU Hardware & Compute Estimates**:
-  - **Workload**: Base model `Qwen/Qwen2.5-7B-Instruct`, ~3,000–5,000 unified multi-task samples, 3 epochs.
-  - **Training Compute Requirements (4-bit QLoRA via Unsloth / Hugging Face PEFT)**:
-    - 7B Model Peak vRAM during training: **~8.5 to 11.5 GB vRAM** (Training time: **~45 to 60 min** on RTX 4090).
+  - **Workload**: Base model `Qwen/Qwen2.5-7B-Instruct`, ~12,470 multi-task samples across Tasks A through E, 3 epochs.
+  - **Training Precision & Architecture**: Native `bfloat16` precision LoRA (eliminates 4-bit quantization rounding artifacts on strict OpenCypher syntax). LoRA rank r=32, alpha=64 on attention (`q_proj`, `k_proj`, `v_proj`, `o_proj`) and MLP projections (`gate_proj`, `up_proj`, `down_proj`).
   - **Recommended Hardware Tier**:
-    - **Primary Target**: **1x Nvidia RTX 4090 (24 GB vRAM)** — Total Training Time: **~1.0 hour**, Total Cost: **~$0.40 to $0.75 USD** (via Vast.ai).
-    - **System Specs**: 8 vCPUs, 32 GB System RAM, 50 GB NVMe storage.
+    - **Primary Target**: **1x NVIDIA A100 (80GB SXM or PCIe)** in verified commercial datacenters (`datacenter=true verified=true`).
+    - **Instance Telemetry**: Vast.ai spot/on-demand pricing ~$1.05–$1.20/hr. Total 3-epoch runtime on 12,470 records is ~35–45 minutes, costing **under $1.00 USD total**.
+    - **System Specs**: Sequence length: 2,048 tokens; per-device batch size: 4 with 4 gradient accumulation steps (effective global batch size: 16); 8 vCPUs, 60+ GB RAM, 60 GB NVMe storage.
 - **Key Deliverables**:
-  1. **Unified LoRA Training Script (`train_lora_vastai.py`)**:
-     - Target: LoRA rank r=32, alpha=64, targeting attention (`q_proj`, `k_proj`, `v_proj`, `o_proj`) and MLP projections (`gate_proj`, `up_proj`, `down_proj`).
-     - Prompt loss masking with label `-100` on input prompt tokens.
-     - Sequence Length: Clamped to 2,048 tokens.
-  2. **Experiment Tracking (Weights & Biases)**:
+  1. **Production Training Engine (`train.py` & `config.yaml` in `QwenSFT_YarnBall`)**:
+     - Prompt loss masking with label `-100` on system and user prompt tokens.
+     - `TrainingDynamicsCallback` logging per-sample epoch probabilities to `training_dynamics.jsonl`.
+     - Automated orchestration via `vast_runner.py` with fail-closed security and datacenter verification.
+  2. **Experiment Tracking (Weights & Biases / Local Telemetry)**:
      - Real-time logging of train/eval loss across tasks, learning rate decay, gradient norms, and GPU memory telemetry.
   3. **Multi-Task Checkpoint Evaluation (`eval_checkpoint.py`)**:
      - Evaluated every 100 steps on held-out test set: JSON Validity %, Entity/Relation F1, Cypher Syntax Accuracy, Sentiment F1, Directional Accuracy.
@@ -256,11 +267,12 @@ To prevent class collapse where the model only predicts common relationships (`S
 
 ## Verification & Acceptance Gates
 
-| Gate | Target | Verification Method |
+| Gate | Minimum Threshold | Evaluation Metric & Probe Scope |
 | :--- | :---: | :--- |
-| **1. Dataset Ground Truth** | **100% JSON valid, >90% CIK linked, Kappa >0.90** | 5-Tier Ground Truth Protocol (CIK gates + Committee Consensus) |
-| **2. Extraction F1 (Task A & B)** | **> 92% Entity F1, > 88% Relation F1** | 200-sample held-out golden test set with GBNF grammar |
-| **3. Text-to-CQL Accuracy (Task C)** | **> 96% Executable Cypher** | Automated Memgraph execution test suite |
-| **4. Contagion Reasoning (Task D & E)** | **> 85% Directional & Propagation Accuracy** | Golden multi-hop scenario evaluation benchmark |
-| **5. Local Hardware Footprint** | **~4.7 GB vRAM (~60-75 tok/s, 100% GPU)** | Measured under local Ollama on 8 GB vRAM laptop GPU |
+| **1. Cypher Syntax Execution** | **>= 99.5%** | Formal Memgraph AST parser validation across 500 holdout test samples (Tasks A, C). |
+| **2. Hard Negative Refusal** | **>= 96.0%** | Rejection accuracy strictly outputting `(none)` on co-occurring non-causal entities. |
+| **3. Relational Macro F1** | **>= 0.90** | Macro F1 across all 11 GICS economic sectors and rare relationship classes (Tasks A, B). |
+| **4. Entity & CIK Grounding** | **>= 95.0%** | Source and target alignment against official S&P 500 master CIK registry (`sec_companies`). |
+| **5. CoT Reasoning Validity** | **>= 92.0%** | Directional and propagation validity on multi-hop supply contagion cascades (Tasks D, E). |
+| **6. Local Inference Footprint** | **~4.7 GB vRAM** | Fits 100% in local 8GB laptop GPU vRAM under 4-bit GGUF (`Q4_K_M`) at ~60–75 tok/s. |
 
