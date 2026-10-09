@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock
 
-from tools.sft_manifold_sampler import (
+from sft_pipeline import (
     ManifoldTargetedSampler,
     ManifoldSample,
     RARE_RELATION_FLOORS,

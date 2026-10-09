@@ -7,6 +7,7 @@ relationship manifold (M*):
 2. Boundary-proximity hard negative mining (co-occurring pairs with target: none)
 3. Information-theoretic class balancing (floors >= 200 for rare risk relations, caps for dominant classes)
 4. Stratified sampling across all 11 GICS economic sectors
+5. Active Learning Cartography Steering (dynamic floor re-weighting based on model ambiguity)
 """
 
 from __future__ import annotations
@@ -30,11 +31,19 @@ try:
 except ImportError:
     pass
 
-from graph.quality_controls import (
-    is_generic_placeholder,
-    validate_and_orient_triple,
-    compute_edge_confidence,
-)
+try:
+    from ontology import (
+        is_generic_placeholder,
+        validate_and_orient_triple,
+        compute_edge_confidence,
+    )
+except ImportError:
+    from graph.quality_controls import (
+        is_generic_placeholder,
+        validate_and_orient_triple,
+        compute_edge_confidence,
+    )
+
 from tools.sp500_universe import SP500UniverseManager
 
 logger = logging.getLogger("manifold_sampler")
@@ -98,13 +107,13 @@ class ManifoldSample:
     sample_id: str
     text_passage: str
     grounded_triples: List[Dict[str, Any]]
-    entities_present: List[Dict[str, str]] # {"name": ..., "ticker": ..., "type": ...}
+    entities_present: List[Dict[str, str]]  # {"name": ..., "ticker": ..., "type": ...}
     hop_count: int
     is_hard_negative: bool
     gics_sector: str
     provenance: str
     confidence: float
-    difficulty_score: float # 0.0 (easy) to 1.0 (complex multi-hop boundary)
+    difficulty_score: float  # 0.0 (easy) to 1.0 (complex multi-hop boundary)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -131,6 +140,23 @@ class ManifoldTargetedSampler:
         self.null_sample_ratio = null_sample_ratio
         self.seed = seed
         self.rng = random.Random(seed)
+        self.relation_floors: Dict[str, int] = dict(RARE_RELATION_FLOORS)
+
+    def steer_from_cartography(
+        self,
+        ambiguous_relations: List[str],
+        boost_factor: float = 1.5,
+    ) -> None:
+        """
+        Active Learning feedback hook:
+        When Dataset Cartography detects high ambiguity or low confidence
+        for specific relations, boost their representation floors.
+        """
+        for rel in ambiguous_relations:
+            rel_upper = rel.strip().upper()
+            curr = self.relation_floors.get(rel_upper, 200)
+            self.relation_floors[rel_upper] = int(curr * boost_factor)
+            logger.info(f"Cartography Steering: Boosted floor for '{rel_upper}' from {curr} to {self.relation_floors[rel_upper]}")
 
     def mine_rare_relation_candidates(
         self,
@@ -203,7 +229,6 @@ class ManifoldTargetedSampler:
 
             # Need at least 2 distinct companies mentioned
             if len(mentioned_tickers) >= 2:
-                # Check if any pair has an active economic relationship in the graph
                 has_active_edge = False
                 t_list = list(mentioned_tickers)
                 for i in range(len(t_list)):
@@ -224,14 +249,14 @@ class ManifoldTargetedSampler:
                         ManifoldSample(
                             sample_id=sample_id,
                             text_passage=text,
-                            grounded_triples=[], # Explicitly empty target!
+                            grounded_triples=[],  # Explicitly empty target!
                             entities_present=entities,
                             hop_count=0,
                             is_hard_negative=True,
                             gics_sector="Cross-Sector",
                             provenance="HEURISTIC_HARD_NEGATIVE",
-                            confidence=0.65, # Capped below 1.0 (heuristic negative)
-                            difficulty_score=0.85, # High difficulty for small LLMs
+                            confidence=0.65,  # Capped below 1.0 (heuristic negative)
+                            difficulty_score=0.85,  # High difficulty for small LLMs
                         )
                     )
 
@@ -305,13 +330,13 @@ class ManifoldTargetedSampler:
                 ManifoldSample(
                     sample_id=sample_id,
                     text_passage=text,
-                    grounded_triples=[], # Strictly empty target!
+                    grounded_triples=[],  # Strictly empty target!
                     entities_present=entities,
                     hop_count=0,
                     is_hard_negative=True,
                     gics_sector="Cross-Sector",
                     provenance="HEURISTIC_HARD_NEGATIVE",
-                    confidence=0.65, # Calibrated heuristic negative cap
+                    confidence=0.65,  # Calibrated heuristic negative cap
                     difficulty_score=0.85,
                 )
             )
@@ -348,17 +373,14 @@ class ManifoldTargetedSampler:
             if rel_type == "EMPTY":
                 continue
 
-            floor = RARE_RELATION_FLOORS.get(rel_type, 150)
+            floor = self.relation_floors.get(rel_type, 150)
             cap = DOMINANT_CLASS_CAP
 
             if len(samples) > cap:
-                # Subsample dominant class using deterministic RNG
                 curated.extend(self.rng.sample(samples, cap))
             elif len(samples) < floor and len(samples) > 0:
-                # Oversample to meet floor
                 curated.extend(samples)
                 shortfall = floor - len(samples)
-                # Counterfactual entity-swap augmentation on shortfall
                 augmented = self._augment_entity_swaps(samples, shortfall)
                 curated.extend(augmented)
             else:
@@ -403,7 +425,6 @@ class ManifoldTargetedSampler:
             if not base.grounded_triples:
                 continue
 
-            # Pick replacement peer companies from S&P 500 without per-iteration list comprehension
             peer_a, peer_b = self.rng.sample(constituents, 2)
 
             old_triples = base.grounded_triples

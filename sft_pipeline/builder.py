@@ -27,7 +27,7 @@ import os
 from pathlib import Path
 import random
 import sys
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -44,10 +44,27 @@ except ImportError:
     pass
 
 from tools.sp500_universe import SP500Constituent, SP500UniverseManager
-from tools.sft_manifold_sampler import ManifoldSample, ManifoldTargetedSampler
-from tools.sft_taxonomy_annotator import AnnotatedTriple, FinancialTaxonomyAnnotator
-from tools.export_sft_dataset import SFTDatasetExporter, SFTRecord
+
+try:
+    from .sampler import ManifoldSample, ManifoldTargetedSampler
+    from .annotator import AnnotatedTriple, FinancialTaxonomyAnnotator
+    from .exporter import SFTDatasetExporter, SFTRecord
+except ImportError:
+    from sft_pipeline.sampler import ManifoldSample, ManifoldTargetedSampler
+    from sft_pipeline.annotator import AnnotatedTriple, FinancialTaxonomyAnnotator
+    from sft_pipeline.exporter import SFTDatasetExporter, SFTRecord
+
 from tools.fetch_market_context import MarketContextIntegrator
+
+# Formal Curation Engine Integration
+try:
+    from curation.cold_start.pipeline import ColdStartCurationPipeline
+    from curation.active_learning.cartographer import DatasetCartographer
+    from curation.contracts import ActiveLearningPartition
+except ImportError:
+    from graphrag_finance.curation.cold_start.pipeline import ColdStartCurationPipeline
+    from graphrag_finance.curation.active_learning.cartographer import DatasetCartographer
+    from graphrag_finance.curation.contracts import ActiveLearningPartition
 
 logging.basicConfig(
     level=logging.INFO,
@@ -829,16 +846,25 @@ HEDGING_SCENARIOS = [
 class FullSFTDatasetBuilder:
     """Orchestrates large-scale multi-sector SFT dataset generation for unified Qwen2.5-7B."""
 
-    def __init__(self, output_dir: Path = OUTPUT_SFT_DIR, seed: int = 42):
+    def __init__(
+        self,
+        output_dir: Path = OUTPUT_SFT_DIR,
+        seed: int = 42,
+        universe_mgr: Optional[SP500UniverseManager] = None,
+        enable_cold_start_curation: bool = False,
+        cold_start_pipeline: Optional[ColdStartCurationPipeline] = None,
+    ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.seed = seed
         self.rng = random.Random(seed)
 
-        self.universe_mgr = SP500UniverseManager()
+        self.universe_mgr = universe_mgr or SP500UniverseManager()
         self.annotator = FinancialTaxonomyAnnotator(universe_mgr=self.universe_mgr)
         self.sampler = ManifoldTargetedSampler(output_dir=self.output_dir, universe_mgr=self.universe_mgr, seed=seed)
         self.exporter = SFTDatasetExporter(output_dir=self.output_dir, universe_mgr=self.universe_mgr, seed=seed)
+        self.enable_cold_start_curation = enable_cold_start_curation
+        self.cold_start_pipeline = cold_start_pipeline
 
         self.constituents = self.universe_mgr.get_all_records()
         self.constituents_by_sector = defaultdict(list)
@@ -1072,7 +1098,84 @@ class FullSFTDatasetBuilder:
         logger.info(f"Generated {len(records)} unique Task E portfolio hedging records (0 duplicates).")
         return records
 
-    def build_dataset(self) -> Dict[str, Any]:
+    def apply_cold_start_curation(
+        self,
+        samples: List[ManifoldSample],
+        minhash_threshold: float = 0.85,
+        coreset_retention_ratio: float = 0.85,
+    ) -> List[ManifoldSample]:
+        """
+        Executes formal Cold-Start Curation (MinHash LSH & Facility Location Coreset Selection)
+        via curation.cold_start.pipeline.ColdStartCurationPipeline.
+        """
+        pipeline = self.cold_start_pipeline or ColdStartCurationPipeline(
+            minhash_threshold=minhash_threshold,
+            coreset_retention_ratio=coreset_retention_ratio,
+        )
+        curation_payload = [
+            {"sample_id": s.sample_id, "prompt": s.text_passage, "_obj": s}
+            for s in samples
+        ]
+        result = pipeline.run(curation_payload, text_key="prompt", id_key="sample_id")
+        retained = [item["_obj"] for item in result.get("retained", [])]
+        logger.info(
+            f"Cold-Start Curation: {len(samples)} -> {len(retained)} samples retained "
+            f"(MinHash pruned: {len(result.get('pruned_minhash', []))}, "
+            f"Coreset pruned: {len(result.get('pruned_coreset', []))})"
+        )
+        return retained
+
+    def apply_active_learning_curation(
+        self,
+        samples: List[ManifoldSample],
+        partition_or_path: Union[ActiveLearningPartition, Path, str],
+    ) -> List[ManifoldSample]:
+        """
+        Applies Dataset Cartography Active Learning Partition from curation.active_learning:
+        - Keeps 100% of Ambiguous samples (high variability, maximum learning signal).
+        - Discards Hard/quarantined mislabeled samples.
+        - Steers manifold sampler to boost representation of deficient/ambiguous relation classes.
+        """
+        if isinstance(partition_or_path, (str, Path)):
+            p_path = Path(partition_or_path)
+            if p_path.suffix == ".jsonl":
+                cartographer = DatasetCartographer()
+                dynamics = cartographer.parse_dynamics_log(p_path)
+                partition = cartographer.filter_for_active_learning(dynamics)
+            else:
+                with open(p_path, "r", encoding="utf-8") as f:
+                    partition = ActiveLearningPartition(**json.load(f))
+        else:
+            partition = partition_or_path
+
+        retained_ids = set(partition.retained_guids)
+        quarantined_ids = set(partition.quarantined_hard_guids)
+
+        filtered: List[ManifoldSample] = []
+        ambiguous_relations: Set[str] = set()
+
+        for s in samples:
+            if s.sample_id in quarantined_ids:
+                continue
+            if not retained_ids or s.sample_id in retained_ids:
+                filtered.append(s)
+                if s.grounded_triples:
+                    ambiguous_relations.add(s.grounded_triples[0].get("rel_type", ""))
+
+        if ambiguous_relations:
+            self.sampler.steer_from_cartography(list(ambiguous_relations), boost_factor=1.5)
+
+        logger.info(
+            f"Active Learning Curation: {len(samples)} -> {len(filtered)} retained, "
+            f"quarantined {len(quarantined_ids)} hard instances, steered {len(ambiguous_relations)} relations."
+        )
+        return filtered
+
+    def build_dataset(
+        self,
+        enable_cold_start_curation: Optional[bool] = None,
+        active_learning_partition: Optional[Union[ActiveLearningPartition, Path, str]] = None,
+    ) -> Dict[str, Any]:
         """Execute full end-to-end multi-task SFT generation in the 12,000-15,000 range."""
         print("\n" + "=" * 70)
         print("GENERATING FULL S&P 500 MULTI-TASK SFT DATASET (12,000 - 15,000 SCALE)")
@@ -1085,6 +1188,15 @@ class FullSFTDatasetBuilder:
         # 2. Manifold class balancing (floors >= 400 for rare relations, caps at 1500)
         curated_samples = self.sampler.balance_and_curate_manifold(positives, negatives, target_total_samples=8000)
         print(f"  Curated {len(curated_samples)} total manifold samples ({len(curated_samples) - len(negatives)} positives, {len(negatives)} hard negatives).")
+
+        # Active Learning Feedback Integration (Cartography filtering & steering)
+        if active_learning_partition:
+            curated_samples = self.apply_active_learning_curation(curated_samples, active_learning_partition)
+
+        # Cold-Start Curation Integration (MinHash LSH & Coreset selection)
+        use_cold_start = self.enable_cold_start_curation if enable_cold_start_curation is None else enable_cold_start_curation
+        if use_cold_start:
+            curated_samples = self.apply_cold_start_curation(curated_samples)
 
         # 3. Format Multi-Task Records
         extractor_records: List[SFTRecord] = []

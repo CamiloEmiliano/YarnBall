@@ -220,7 +220,6 @@ class FinancialTaxonomyAnnotator:
 
         # Re-assign if inverted during validation
         if v_src != raw_source:
-            # Swapped
             final_src, final_src_type, final_src_ticker, final_src_cik = raw_target, tgt_type, tgt_ticker, tgt_cik
             final_tgt, final_tgt_type, final_tgt_ticker, final_tgt_cik = raw_source, src_type, src_ticker, src_cik
         else:

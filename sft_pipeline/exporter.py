@@ -30,8 +30,13 @@ try:
 except ImportError:
     pass
 
-from tools.sft_manifold_sampler import ManifoldTargetedSampler, ManifoldSample
-from tools.sft_taxonomy_annotator import FinancialTaxonomyAnnotator, AnnotatedTriple
+try:
+    from .sampler import ManifoldTargetedSampler, ManifoldSample
+    from .annotator import FinancialTaxonomyAnnotator, AnnotatedTriple
+except ImportError:
+    from sft_pipeline.sampler import ManifoldTargetedSampler, ManifoldSample
+    from sft_pipeline.annotator import FinancialTaxonomyAnnotator, AnnotatedTriple
+
 from tools.sp500_universe import SP500UniverseManager
 
 logger = logging.getLogger("export_sft_dataset")
@@ -443,7 +448,6 @@ def main() -> None:
     exporter = SFTDatasetExporter()
     logger.info("Running SFT Dataset Export demonstration...")
 
-    # Synthesize demo records
     extractor_recs = [
         exporter.format_task_c_text_to_cypher("Apple Inc.", "AAPL"),
         exporter.format_task_c_text_to_cypher("Microsoft Corp", "MSFT"),

@@ -3,6 +3,7 @@ architecture.md
 temp.pdf
 install.sql
 PLAN_OF_ACTION.md
+notes/
 # Data directories (raw data ignored, DVC pointers and evaluation sets tracked)
 data/*
 !data/*.dvc
