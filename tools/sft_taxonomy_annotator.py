@@ -27,135 +27,38 @@ try:
 except ImportError:
     pass
 
-from graph.quality_controls import (
-    validate_and_orient_triple,
-    compute_edge_confidence,
-    is_generic_placeholder,
-)
+try:
+    from ontology import (
+        AnnotatedTriple,
+        CRITICAL_MATERIALITY_TERMS,
+        POLARITY_TRIGGERS,
+        NEGATION_REGEX,
+        has_unnegated_pattern,
+        classify_polarity_from_text,
+        classify_financial_materiality,
+        validate_and_orient_triple,
+        compute_edge_confidence,
+        is_generic_placeholder,
+    )
+except ImportError:
+    from graphrag_finance.ontology import (
+        AnnotatedTriple,
+        CRITICAL_MATERIALITY_TERMS,
+        POLARITY_TRIGGERS,
+        NEGATION_REGEX,
+        has_unnegated_pattern,
+        classify_polarity_from_text,
+        classify_financial_materiality,
+        validate_and_orient_triple,
+        compute_edge_confidence,
+        is_generic_placeholder,
+    )
+
 from graph.entity_resolver import _jaro_winkler_similarity
 from tools.sp500_universe import SP500UniverseManager
 
 logger = logging.getLogger("taxonomy_annotator")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-
-# Polarity Lexical Triggers
-POLARITY_TRIGGERS: Dict[str, List[str]] = {
-    "DISRUPTIVE_SHOCK": [
-        r"defaulted", r"bankruptcy", r"chapter 11", r"emergency\s+shutdown",
-        r"export\s+ban", r"trade\s+embargo", r"catastrophic", r"force\s+majeure",
-        r"terminated\s+for\s+cause", r"breach\s+of\s+contract",
-    ],
-    "CONTRACTING_BEARISH": [
-        r"cutbacks?", r"reduced\s+orders?", r"margin\s+compression",
-        r"downgraded", r"canceled", r"lawsuit", r"contract\s+termination",
-        r"investigation", r"delayed", r"dropped", r"loss\s+of\s+customer",
-    ],
-    "EXPANDING_BULLISH": [
-        r"expand(?:s|ed|ing)?", r"multi-year\s+(?:deal|agreement|contract|partnership)",
-        r"surged?", r"record\s+(?:revenue|volume|orders?|commitment)",
-        r"partnership\s+expansion", r"awarded", r"joint\s+venture",
-        r"strategic\s+(?:collaboration|agreement|partnership)",
-        r"capacity\s+increase", r"sole\s+source\s+win", r"accelerat(?:es?|ed|ing)",
-    ],
-}
-
-NEGATION_REGEX = re.compile(
-    r"\b(not|no|never|avoided|avoiding|without|prevented|preventing|neither|nor|denied|unlikely\s+to)\b",
-    re.IGNORECASE,
-)
-
-
-def has_unnegated_pattern(pattern: str, text: str, window_chars: int = 45) -> bool:
-    """Check if pattern matches in text without being preceded by a negation cue in the local clause."""
-    if not text:
-        return False
-    for m in re.finditer(pattern, text, flags=re.IGNORECASE):
-        start = m.start()
-        # Look back within the local clause (stopping at clause/sentence boundaries ., ;, !)
-        preceding = text[max(0, start - window_chars):start]
-        clause_boundary = max(preceding.rfind("."), preceding.rfind(";"), preceding.rfind("!"))
-        if clause_boundary != -1:
-            preceding = preceding[clause_boundary + 1:]
-        
-        if not NEGATION_REGEX.search(preceding):
-            return True
-    return False
-
-# Materiality Rules
-CRITICAL_MATERIALITY_TERMS: Set[str] = {
-    "sole source", "single source", "exclusive", "asc 280", "10% of revenue",
-    "primary foundry", "100% owned", "wholly-owned", "core operating",
-}
-
-
-@dataclass
-class AnnotatedTriple:
-    """Fully grounded 5-Axis financial triple."""
-    # Required entity and relationship fields (non-defaults)
-    source_name: str
-    source_type: str  # Company, Subsidiary, Person, RegulatoryBody, Product, CommodityRisk
-    target_name: str
-    target_type: str
-    rel_type: str
-
-    # Optional Identifiers (Axis 1)
-    source_ticker: Optional[str] = None
-    source_cik: Optional[str] = None
-    target_ticker: Optional[str] = None
-    target_cik: Optional[str] = None
-
-    # Directional Polarity (Axis 3)
-    polarity: str = "NEUTRAL_STABLE"  # EXPANDING_BULLISH, NEUTRAL_STABLE, CONTRACTING_BEARISH, DISRUPTIVE_SHOCK
-
-    # Financial Materiality (Axis 4)
-    materiality: str = "MATERIAL_TIER_2"  # CRITICAL_TIER_1, MATERIAL_TIER_2, COMMODITY_TIER_3
-
-    # Temporal & Provenance (Axis 5)
-    status: str = "ACTIVE_CURRENT"  # ACTIVE_CURRENT, TERMINATED
-    valid_from: Optional[str] = None
-    valid_to: Optional[str] = None
-    provenance: str = "SEC_10K_ITEM1"
-    confidence: float = 0.95
-    nature: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-    def to_cypher_dsl(self) -> str:
-        """Format as strict OpenCypher DSL string for student training target."""
-        # Source node
-        src_props = [f'name: "{self.source_name}"']
-        if self.source_ticker:
-            src_props.append(f'ticker: "{self.source_ticker}"')
-        if self.source_cik:
-            src_props.append(f'cik: "{self.source_cik}"')
-        src_str = f"(:{self.source_type} {{{', '.join(src_props)}}})"
-
-        # Edge properties (5-Axis)
-        edge_props = [
-            f'polarity: "{self.polarity}"',
-            f'materiality: "{self.materiality}"',
-            f'status: "{self.status}"',
-            f'provenance: "{self.provenance}"',
-            f'confidence: {self.confidence:.2f}',
-        ]
-        if self.valid_from:
-            edge_props.append(f'valid_from: "{self.valid_from}"')
-        if self.valid_to:
-            edge_props.append(f'valid_to: "{self.valid_to}"')
-        if self.nature:
-            edge_props.append(f'nature: "{self.nature}"')
-        edge_str = f"-[:{self.rel_type} {{{', '.join(edge_props)}}}]->"
-
-        # Target node
-        tgt_props = [f'name: "{self.target_name}"']
-        if self.target_ticker:
-            tgt_props.append(f'ticker: "{self.target_ticker}"')
-        if self.target_cik:
-            tgt_props.append(f'cik: "{self.target_cik}"')
-        tgt_str = f"(:{self.target_type} {{{', '.join(tgt_props)}}})"
-
-        return f"{src_str}{edge_str}{tgt_str}"
 
 
 class FinancialTaxonomyAnnotator:
@@ -262,29 +165,11 @@ class FinancialTaxonomyAnnotator:
         market_sentiment: Optional[str] = None,
     ) -> str:
         """Axis 3: Classify Directional Polarity & Sentiment with Negation-Scope Protection."""
-        if market_sentiment in ["EXPANDING_BULLISH", "NEUTRAL_STABLE", "CONTRACTING_BEARISH", "DISRUPTIVE_SHOCK"]:
-            return market_sentiment
-
-        clean_rel = rel_type.strip().upper()
-        if clean_rel in ["DEFAULTED_ON", "TERMINATED", "CONTRACT_TERMINATION"]:
-            return "DISRUPTIVE_SHOCK"
-
-        text_val = context_text or ""
-
-        # Check triggers with negation filtering: most severe to positive
-        for shock_pat in POLARITY_TRIGGERS["DISRUPTIVE_SHOCK"]:
-            if has_unnegated_pattern(shock_pat, text_val):
-                return "DISRUPTIVE_SHOCK"
-
-        for bear_pat in POLARITY_TRIGGERS["CONTRACTING_BEARISH"]:
-            if has_unnegated_pattern(bear_pat, text_val):
-                return "CONTRACTING_BEARISH"
-
-        for bull_pat in POLARITY_TRIGGERS["EXPANDING_BULLISH"]:
-            if has_unnegated_pattern(bull_pat, text_val):
-                return "EXPANDING_BULLISH"
-
-        return "NEUTRAL_STABLE"
+        return classify_polarity_from_text(
+            context_text=context_text,
+            rel_type=rel_type,
+            market_sentiment=market_sentiment,
+        )
 
     def infer_financial_materiality(
         self,
@@ -293,25 +178,11 @@ class FinancialTaxonomyAnnotator:
         provenance: Optional[str] = None,
     ) -> str:
         """Axis 4: Determine Financial Materiality & Criticality."""
-        clean_rel = rel_type.strip().upper()
-        prov = (provenance or "").upper()
-        text_lower = (context_text or "").lower()
-
-        # Tier 1 Critical: Exhibit 21 subsidiaries, Sole-Source, or Form 8-K M&A
-        if clean_rel in ["SOLE_SOURCE_DEPENDENT_ON", "ACQUIRED_BY", "DEFAULTED_ON"]:
-            return "CRITICAL_TIER_1"
-        if prov in ["SEC_EXHIBIT_21", "SEC_8K"]:
-            return "CRITICAL_TIER_1"
-
-        for term in CRITICAL_MATERIALITY_TERMS:
-            if term in text_lower:
-                return "CRITICAL_TIER_1"
-
-        # Tier 3 Commodity: Generic off-the-shelf suppliers
-        if any(w in text_lower for w in ["routine supplier", "standard vendor", "off-the-shelf", "minor supply"]):
-            return "COMMODITY_TIER_3"
-
-        return "MATERIAL_TIER_2"
+        return classify_financial_materiality(
+            context_text=context_text,
+            rel_type=rel_type,
+            provenance=provenance,
+        )
 
     def annotate_triple(
         self,

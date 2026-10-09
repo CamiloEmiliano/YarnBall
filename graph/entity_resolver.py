@@ -24,37 +24,29 @@ from .db import pg_connection
 
 logger = logging.getLogger(__name__)
 
-# Symmetric relationship types that should be canonically ordered
-SYMMETRIC_RELATIONSHIPS: Set[str] = {
-    "COMPETES_WITH",
-    "PARTNERED_WITH",
-    "CO_INVESTS_WITH",
-    "PEER_OF",
-    "COLLABORATES_WITH",
-}
+try:
+    from ontology import (
+        SYMMETRIC_RELATIONSHIPS,
+        CORPORATE_SUFFIXES,
+        KNOWN_PUBLISHER_NAMES,
+        normalize_entity_name,
+        canonicalize_symmetric_edge,
+        jaro_winkler_similarity,
+    )
+except ImportError:
+    from graphrag_finance.ontology import (
+        SYMMETRIC_RELATIONSHIPS,
+        CORPORATE_SUFFIXES,
+        KNOWN_PUBLISHER_NAMES,
+        normalize_entity_name,
+        canonicalize_symmetric_edge,
+        jaro_winkler_similarity,
+    )
 
-# Common corporate suffixes for name normalization (singular & plural variants synchronized)
-CORPORATE_SUFFIXES: List[str] = [
-    "inc.", "inc", "corp.", "corp", "corporation", "co.", "co", "company",
-    "ltd.", "ltd", "limited", "llc", "plc", "nv", "ag", "sa", "gmbh", "b.v.", "bv",
-    "group", "holding", "holdings", "technology", "technologies", "tech",
-    "system", "systems", "solution", "solutions", "semiconductor", "semiconductors",
-    "international", "intl", "enterprises", "enterprise", "industries", "industry",
-]
-
-# Canonical set of all known media, news publishers, and syndication platforms
-KNOWN_PUBLISHER_NAMES: Set[str] = {
-    # Mainstream Financial Media & Wire Services
-    "cnbc", "bloomberg", "reuters", "associated press", "ap news", "dow jones",
-    "pr newswire", "businesswire", "globe newswire", "accesswire", "marketwired",
-    "yahoo finance", "barrons", "wall street journal", "wsj", "financial times",
-    "ft.com", "forbes", "morningstar", "investopedia", "marketwatch",
-    # Opinion Blogs, Clickbait & Retail Aggregators
-    "motley fool", "the motley fool", "fool", "foolcom", "fool.com",
-    "seeking alpha", "seekingalpha", "zacks", "zacks investment research",
-    "benzinga", "investorplace", "thestreet", "tipranks", "insider monkey",
-    "24/7 wall st", "alpha spreading", "fxstreet", "investing.com",
-}
+# Backward-compatible internal aliases
+_normalize_name = normalize_entity_name
+_jaro_winkler_similarity = jaro_winkler_similarity
+_canonicalize_symmetric_edge = canonicalize_symmetric_edge
 
 # Retail clickbait / promotional blogs specifically filtered out during article ingestion
 CLICKBAIT_ARTICLE_STOPLIST: Set[str] = {
@@ -106,75 +98,6 @@ def is_blacklisted_publisher(name: Optional[str]) -> bool:
         if pub in norm_clean and (len(pub) >= 6 or norm_clean == pub):
             return True
     return False
-
-
-def _normalize_name(name: str) -> str:
-    """Normalize company/entity name for fuzzy matching."""
-    if not name:
-        return ""
-    norm = name.lower().strip()
-    # Remove punctuation
-    norm = "".join(c for c in norm if c.isalnum() or c.isspace())
-    tokens = norm.split()
-    # Filter out corporate suffixes from comparison key
-    filtered = [t for t in tokens if t not in CORPORATE_SUFFIXES]
-    return " ".join(filtered) if filtered else norm
-
-
-def _jaro_winkler_similarity(s1: str, s2: str) -> float:
-    """Compute Jaro-Winkler similarity between two strings."""
-    if not s1 or not s2:
-        return 0.0
-    if s1 == s2:
-        return 1.0
-
-    len1, len2 = len(s1), len(s2)
-    max_dist = max(len1, len2) // 2 - 1
-    if max_dist < 0:
-        max_dist = 0
-
-    match1 = [False] * len1
-    match2 = [False] * len2
-    matches = 0
-
-    for i in range(len1):
-        start = max(0, i - max_dist)
-        end = min(i + max_dist + 1, len2)
-        for j in range(start, end):
-            if not match2[j] and s1[i] == s2[j]:
-                match1[i] = True
-                match2[j] = True
-                matches += 1
-                break
-
-    if matches == 0:
-        return 0.0
-
-    transpositions = 0
-    k = 0
-    for i in range(len1):
-        if match1[i]:
-            while not match2[k]:
-                k += 1
-            if s1[i] != s2[k]:
-                transpositions += 1
-            k += 1
-
-    jaro = (
-        (matches / len1)
-        + (matches / len2)
-        + ((matches - transpositions / 2.0) / matches)
-    ) / 3.0
-
-    # Winkler prefix bonus
-    prefix = 0
-    for i in range(min(4, min(len1, len2))):
-        if s1[i] == s2[i]:
-            prefix += 1
-        else:
-            break
-
-    return jaro + (prefix * 0.1 * (1.0 - jaro))
 
 
 class EntityResolver:
@@ -443,10 +366,7 @@ class EntityResolver:
             v_src, _, v_tgt, _, v_rel = validated_triple
 
             # Canonicalize symmetric edge orientations (e.g. COMPETES_WITH, PARTNERED_WITH)
-            if v_rel in SYMMETRIC_RELATIONSHIPS:
-                final_src, final_tgt = sorted([v_src, v_tgt])
-            else:
-                final_src, final_tgt = v_src, v_tgt
+            final_src, final_tgt = canonicalize_symmetric_edge(v_src, v_tgt, v_rel)
 
             edge_groups[(final_src, final_tgt, v_rel)].append(edge)
 
