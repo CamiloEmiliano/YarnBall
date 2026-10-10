@@ -9,7 +9,7 @@ import pyarrow.parquet as pq
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from graph.snapshot_manager import SnapshotManager
+from knowledge_graph.snapshot_manager import SnapshotManager
 
 
 @pytest.fixture
@@ -49,8 +49,8 @@ def test_export_snapshot_creates_parquet_files(temp_snapshot_dir):
     mock_driver = MagicMock()
     mock_driver.session.return_value.__enter__.return_value = mock_session
 
-    with patch("graph.snapshot_manager.get_memgraph_driver", return_value=mock_driver), \
-         patch("graph.snapshot_manager.pg_connection") as mock_pg_conn:
+    with patch("knowledge_graph.snapshot_manager.get_memgraph_driver", return_value=mock_driver), \
+         patch("knowledge_graph.snapshot_manager.pg_connection") as mock_pg_conn:
         
         mock_conn = MagicMock()
         mock_pg_conn.return_value.__enter__.return_value = mock_conn
@@ -115,8 +115,8 @@ def test_restore_snapshot_executes_cypher_unwind(temp_snapshot_dir):
     mock_driver = MagicMock()
     mock_driver.session.return_value.__enter__.return_value = mock_session
 
-    with patch("graph.snapshot_manager.get_memgraph_driver", return_value=mock_driver), \
-         patch("graph.snapshot_manager.pg_connection") as mock_pg_conn:
+    with patch("knowledge_graph.snapshot_manager.get_memgraph_driver", return_value=mock_driver), \
+         patch("knowledge_graph.snapshot_manager.pg_connection") as mock_pg_conn:
         mock_pg_conn.return_value.__enter__.return_value = MagicMock()
 
         mgr.export_snapshot("G_test", "raw", "Test")
@@ -152,8 +152,8 @@ def test_list_snapshots_disk_fallback(temp_snapshot_dir):
     mock_driver = MagicMock()
     mock_driver.session.return_value.__enter__.return_value = mock_session
 
-    with patch("graph.snapshot_manager.get_memgraph_driver", return_value=mock_driver), \
-         patch("graph.snapshot_manager.pg_connection", side_effect=Exception("DB down")):
+    with patch("knowledge_graph.snapshot_manager.get_memgraph_driver", return_value=mock_driver), \
+         patch("knowledge_graph.snapshot_manager.pg_connection", side_effect=Exception("DB down")):
         mgr.export_snapshot("G_raw_tsla", "raw", "Tesla snapshot")
 
         snapshots = mgr.list_snapshots()

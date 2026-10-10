@@ -21,8 +21,8 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from graph.memgraph_driver import get_memgraph_driver
-from graph.graph_store import MAX_LABEL_LENGTH, MAX_REL_TYPE_LENGTH
+from knowledge_graph.memgraph_driver import get_memgraph_driver
+from knowledge_graph.graph_store import MAX_LABEL_LENGTH, MAX_REL_TYPE_LENGTH
 from tools.sp500_universe import SP500Constituent, SP500UniverseManager
 from .client import EdgarClient, DEFAULT_SP500_BENCHMARK
 from .parser import (

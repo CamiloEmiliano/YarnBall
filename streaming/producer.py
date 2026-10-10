@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Kafka producer utilities for the Financial - RAG pipeline.
+Streaming producer utilities for the Financial-RAG pipeline.
 Provides a fallback implementation when `kafka-python` is not installed
 and a `send_to_dlt` helper that routes malformed/failed messages to the
-dead - letter topic.
+dead-letter topic.
 """
 
 import json
@@ -20,35 +20,29 @@ except ImportError:  # pragma: no cover
 
 def _ensure_topics() -> None:
     """
-    Create the primary data topic and the dead‑letter topic if they do not
-    already exist.  It is idempotent – any “already exists” error is ignored.
+    Create the primary data topic and the dead-letter topic if they do not
+    already exist. It is idempotent - any "already exists" error is ignored.
     """
-    # Main topic (default is “news”)
     _init_topic(os.getenv("KAFKA_TOPIC"))
-
-    # Dead‑letter topic – default is "<main>.dlt"
     dlt_topic = os.getenv("KAFKA_DLT_TOPIC") or f"{os.getenv('KAFKA_TOPIC')}.dlt"
     _init_topic(dlt_topic)
 
 # ----------------------------------------------------------------------
-# Kafka fallback class (unchanged)
+# Kafka fallback class
 # ----------------------------------------------------------------------
 class KafkaProducerFallback:
     def __init__(self, *args, **kwargs) -> None:
-        # In environments without kafka‑python we raise a clear error.
         from tools.utils import logger
-        logger.error("KafkaProducerFallback instantiated – kafka‑python is required.")
+        logger.error("KafkaProducerFallback instantiated - kafka-python is required.")
         raise RuntimeError("kafka-python is required for KafkaProducer")
 
     def send(self, *args, **kwargs):  # pragma: no cover
-        # Return an object with a ``get`` method so callers can ``.get()`` safely.
         class _NoOpFuture:
             def get(self, timeout=None):
                 return None
         return _NoOpFuture()
 
     def close(self) -> None:
-        # Nothing to close in the no‑op implementation.
         return None
 
 # ----------------------------------------------------------------------
@@ -56,7 +50,7 @@ class KafkaProducerFallback:
 # ----------------------------------------------------------------------
 try:
     from kafka import KafkaProducer as KafkaProducerType
-except ImportError:  # pragma: no cover - exercised in minimal environments
+except ImportError:  # pragma: no cover
     KafkaProducerType = KafkaProducerFallback
 
 KafkaProducer = KafkaProducerType
@@ -77,7 +71,7 @@ def _producer() -> KafkaProducer:
         return KafkaProducer(**kwargs)
 
 # ----------------------------------------------------------------------
-# Send a message to the dead‑letter topic (DLT)
+# Send a message to the dead-letter topic (DLT)
 # ----------------------------------------------------------------------
 def send_to_dlt(
     producer: KafkaProducer | None,
@@ -87,7 +81,6 @@ def send_to_dlt(
     error: str | None = None,
 ) -> bool:
     if producer is None:
-        # In testing environments the producer may be omitted – we log and skip.
         from tools.utils import logger
         logger.warning(
             json.dumps(
@@ -139,11 +132,8 @@ def send_to_dlt(
 # ----------------------------------------------------------------------
 # Topic initialization and convenience wrapper
 # ----------------------------------------------------------------------
-
 def _init_topic(topic: str) -> None:
-    """Create the given topic with configurable partitions if it does not already exist.
-    Uses KafkaAdminClient; no‑op if admin client unavailable.
-    """
+    """Create the given topic with configurable partitions if it does not already exist."""
     if KafkaAdminClient is None or not topic:
         return
     admin = KafkaAdminClient(bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS"))
@@ -152,13 +142,12 @@ def _init_topic(topic: str) -> None:
     try:
         admin.create_topics([NewTopic(name=topic, num_partitions=num_partitions, replication_factor=replication_factor)])
     except Exception:
-        # Topic may already exist; ignore errors
         pass
     finally:
         admin.close()
 
 def get_producer() -> KafkaProducer:
-    """Factory that returns a ready‑to‑use producer and ensures both main and dead‑letter topics exist."""
+    """Factory that returns a ready-to-use producer and ensures both main and dead-letter topics exist."""
     prod = _producer()
     main_topic = os.getenv("KAFKA_TOPIC")
     dlt_topic = os.getenv("KAFKA_DLT_TOPIC") or f"{main_topic}.dlt"
@@ -172,16 +161,7 @@ def publish_message(
     producer: KafkaProducer | None = None,
     sync: bool = False,
 ) -> bool:
-    """Convenient wrapper for sending a JSON‑serialised message.
-
-    Arguments:
-        payload: The Python object to send (will be JSON‑encoded).
-        topic:   Optional explicit topic; defaults to KAFKA_TOPIC env var.
-        producer: Optional pre‑created producer; if omitted a new one is created.
-        sync:    Whether to block synchronously for broker acknowledgement.
-    Returns:
-        True on send dispatch, False on immediate exception.
-    """
+    """Convenient wrapper for sending a JSON-serialized message."""
     if producer is None:
         producer = get_producer()
     target_topic = topic or os.getenv("KAFKA_TOPIC")

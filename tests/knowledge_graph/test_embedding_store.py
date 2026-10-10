@@ -4,7 +4,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 # Module under test
-from graph.embedding_store import store_node_embeddings
+from knowledge_graph.embedding_store import store_node_embeddings
 
 # ----------------------------------------------------------------------
 # Fixtures

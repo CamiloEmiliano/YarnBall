@@ -25,13 +25,13 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple, Set
 
 # Ensure project root is in sys.path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from graph.memgraph_driver import get_memgraph_driver
-from graph.snapshot_manager import SnapshotManager
-from graph.entity_resolver import EntityResolver
+from knowledge_graph.memgraph_driver import get_memgraph_driver
+from knowledge_graph.snapshot_manager import SnapshotManager
+from knowledge_graph.entity_resolver import EntityResolver
 from retrieval import TextToCQL, HybridRetriever
 from synthesis import GroundedSynthesizer
 

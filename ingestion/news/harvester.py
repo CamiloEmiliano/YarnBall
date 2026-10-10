@@ -46,8 +46,8 @@ try:
 except ImportError:
     trafilatura = None
 
-from graph.db import pg_connection
-from graph.entity_resolver import is_clickbait_article_source, is_generic_placeholder
+from knowledge_graph.db import pg_connection
+from knowledge_graph.entity_resolver import is_clickbait_article_source, is_generic_placeholder
 from tools.sp500_universe import SP500UniverseManager
 from tools.init_db import _connect_db
 

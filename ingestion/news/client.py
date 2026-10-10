@@ -66,7 +66,7 @@ except ImportError:
 from ingestion import ingest_task
 
 try:
-    from kafka_pipeline.kafka_driver import send_record
+    from streaming.driver import send_record
 except ImportError:
     send_record = lambda src, payload: None
 

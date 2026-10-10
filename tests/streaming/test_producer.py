@@ -12,7 +12,7 @@ from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
 # Import the functions under test
-from kafka_pipeline.kafka_producer import _producer, send_to_dlt, KafkaProducerFallback
+from streaming.producer import _producer, send_to_dlt, KafkaProducerFallback
 
 
 class TestKafkaProducer(unittest.TestCase):
@@ -26,7 +26,7 @@ class TestKafkaProducer(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    @patch("kafka_pipeline.kafka_producer.KafkaProducer")
+    @patch("streaming.producer.KafkaProducer")
     def test_producer_created_with_env_vars(self, mock_kafka_producer):
         """_producer should instantiate KafkaProducer with the bootstrap server
         from the environment and a JSON serializer."""
@@ -43,7 +43,7 @@ class TestKafkaProducer(unittest.TestCase):
         # The returned object should be the mock instance
         self.assertIs(prod, mock_kafka_producer.return_value)
 
-    @patch("kafka_pipeline.kafka_producer.KafkaProducer", side_effect=ImportError)
+    @patch("streaming.producer.KafkaProducer", side_effect=ImportError)
     def test_producer_fallback_when_kafka_not_installed(self, _):
         """When the kafka library cannot be imported, the fallback class is used.
         Instantiating the fallback should raise a clear RuntimeError."""

@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 # Import the module under test
-from kafka_pipeline.kafka_producer import publish_message, get_producer, _init_topic, send_to_dlt
+from streaming.producer import publish_message, get_producer, _init_topic, send_to_dlt
 
 class KafkaProducerDLTTests(unittest.TestCase):
     def test_malformed_payload_triggers_dlt(self):
@@ -20,10 +20,10 @@ class KafkaProducerDLTTests(unittest.TestCase):
         mock_producer = MagicMock()
         mock_producer.send.side_effect = Exception("serialization error")
         # Patch ``_producer`` to return our mock (so get_producer uses it)
-        with patch("kafka_pipeline.kafka_producer._init_topic"):
-            with patch("kafka_pipeline.kafka_producer._producer", return_value=mock_producer):
+        with patch("streaming.producer._init_topic"):
+            with patch("streaming.producer._producer", return_value=mock_producer):
                 # Spy on send_to_dlt
-                with patch("kafka_pipeline.kafka_producer.send_to_dlt") as mock_send_to_dlt:
+                with patch("streaming.producer.send_to_dlt") as mock_send_to_dlt:
                     result = publish_message(malformed)
                     self.assertFalse(result)
                     # send_to_dlt should be called exactly once with the mock producer
@@ -37,9 +37,9 @@ class KafkaProducerDLTTests(unittest.TestCase):
         """Calling ``get_producer`` should attempt to create both the main
         topic and the dead‑letter topic via ``_init_topic``.
         """
-        with patch("kafka_pipeline.kafka_producer._init_topic") as mock_init_topic:
+        with patch("streaming.producer._init_topic") as mock_init_topic:
             # Patch the actual Kafka producer creation to avoid network calls
-            with patch("kafka_pipeline.kafka_producer._producer") as mock_prod_factory:
+            with patch("streaming.producer._producer") as mock_prod_factory:
                 mock_prod_factory.return_value = MagicMock()
                 prod = get_producer()
                 # Ensure a producer instance is returned

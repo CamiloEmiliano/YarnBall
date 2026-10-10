@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from graph.memgraph_consumer import process_graph_message, _deserialize_message
+from knowledge_graph.memgraph_consumer import process_graph_message, _deserialize_message
 
 
 class TestMemgraphConsumer(unittest.TestCase):
@@ -18,7 +18,7 @@ class TestMemgraphConsumer(unittest.TestCase):
         self.assertFalse(process_graph_message({"source_hash": "abc"}))
         self.assertFalse(process_graph_message({"raw_payload": "text"}))
 
-    @patch("graph.memgraph_consumer.store_graph_entities")
+    @patch("knowledge_graph.memgraph_consumer.store_graph_entities")
     def test_process_graph_message_json_payload(self, mock_store):
         payload = {
             "source_hash": "hash123",
@@ -28,7 +28,7 @@ class TestMemgraphConsumer(unittest.TestCase):
         self.assertTrue(result)
         mock_store.assert_called_once_with("hash123", "Apple News Q3 record profits")
 
-    @patch("graph.memgraph_consumer.store_graph_entities")
+    @patch("knowledge_graph.memgraph_consumer.store_graph_entities")
     def test_process_graph_message_raw_string(self, mock_store):
         payload = {
             "source_hash": "hash456",

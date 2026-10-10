@@ -9,8 +9,8 @@ import pyarrow.parquet as pq
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from graph.entity_resolver import EntityResolver
-from graph.snapshot_manager import SnapshotManager
+from knowledge_graph.entity_resolver import EntityResolver
+from knowledge_graph.snapshot_manager import SnapshotManager
 
 
 @pytest.fixture
@@ -167,7 +167,7 @@ def test_resolve_snapshot_full_pipeline(temp_resolver, tmp_path):
     pq.write_table(pa.Table.from_pylist(raw_nodes, schema=node_schema), raw_dir / "nodes.parquet")
     pq.write_table(pa.Table.from_pylist(raw_edges, schema=edge_schema), raw_dir / "edges.parquet")
 
-    with patch("graph.entity_resolver.pg_connection") as mock_pg:
+    with patch("knowledge_graph.entity_resolver.pg_connection") as mock_pg:
         mock_pg.return_value.__enter__.return_value = MagicMock()
         res = temp_resolver.resolve_snapshot("G_raw", "G_resolved")
 

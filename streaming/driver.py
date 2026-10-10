@@ -1,9 +1,9 @@
-# kafka/kafka_driver.py
+# streaming/driver.py
 # -*- coding: utf-8 -*-
 
 """Thin wrapper used by the ingestion scripts.
 It converts a `(source, payload)` pair into the envelope expected
-by the consumer and forwards it to the Kafka producer."""
+by the consumer and forwards it to the streaming producer."""
 
 import json
 import os
@@ -11,15 +11,15 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
-from .kafka_producer import publish_message
+from .producer import publish_message
 
 def _make_envelope(source: str, raw_payload: str) -> dict[str, Any]:
     """
-    Build the internal message format that kafka_consumer._is_valid_payload
+    Build the internal message format that consumer._is_valid_payload
     expects:
         {
-            "raw_payload": <json‑string>,
-            "fetched_at":  <ISO‑8601 timestamp>,
+            "raw_payload": <json-string>,
+            "fetched_at":  <ISO-8601 timestamp>,
             "source_hash": <deterministic short hash>,
             "_source":     <source name>,
         }
@@ -39,8 +39,7 @@ def _make_envelope(source: str, raw_payload: str) -> dict[str, Any]:
 def send_record(source: str, payload: str) -> bool:
     """
     Called by the ingestion modules.
-    Returns True on successful publish, False otherwise (the producer already
-    logs the reason and will route to the dead‑letter topic if needed).
+    Returns True on successful publish, False otherwise.
     """
     envelope = _make_envelope(source, payload)
     return publish_message(envelope)

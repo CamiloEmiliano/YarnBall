@@ -38,7 +38,7 @@ try:
         compute_edge_confidence,
     )
 except ImportError:
-    from graph.quality_controls import (
+    from knowledge_graph.quality_controls import (
         is_generic_placeholder,
         validate_and_orient_triple,
         compute_edge_confidence,

@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from synthesis import EvaluationHarness, BENCHMARK_QUERIES
-from graph.snapshot_manager import SnapshotManager
+from knowledge_graph.snapshot_manager import SnapshotManager
 
 
 def test_benchmark_queries_count_and_schema():

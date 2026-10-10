@@ -24,8 +24,8 @@ if str(PROJECT_ROOT) not in sys.path:
 import chainlit as cl
 from pyvis.network import Network
 
-from graph.snapshot_manager import SnapshotManager
-from graph.memgraph_driver import get_memgraph_driver
+from knowledge_graph.snapshot_manager import SnapshotManager
+from knowledge_graph.memgraph_driver import get_memgraph_driver
 from retrieval import TextToCQL, HybridRetriever
 from synthesis import GroundedSynthesizer, HybridGraphRAGEngine, EvaluationHarness
 

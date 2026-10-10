@@ -26,8 +26,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from graph.snapshot_manager import SnapshotManager
-from graph.memgraph_driver import get_memgraph_driver
+from knowledge_graph.snapshot_manager import SnapshotManager
+from knowledge_graph.memgraph_driver import get_memgraph_driver
 
 logger = logging.getLogger(__name__)
 

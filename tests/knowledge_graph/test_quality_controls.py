@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import pytest
 
-from graph.quality_controls import (
+from knowledge_graph.quality_controls import (
     is_generic_placeholder,
     validate_and_orient_triple,
     compute_edge_confidence,
@@ -16,7 +16,7 @@ from graph.quality_controls import (
     check_degree_anomaly_quarantine,
     BENCHMARK_TOP_COMPANIES,
 )
-from graph.entity_resolver import EntityResolver, is_blacklisted_publisher
+from knowledge_graph.entity_resolver import EntityResolver, is_blacklisted_publisher
 
 
 # ----------------------------------------------------------------------

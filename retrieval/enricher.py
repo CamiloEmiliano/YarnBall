@@ -8,7 +8,7 @@ from Memgraph to furnish structured context for retrieval.
 from __future__ import annotations
 
 from typing import Any, Dict, List
-import graph.memgraph_driver as memgraph_driver
+import knowledge_graph.memgraph_driver as memgraph_driver
 
 
 def enrich_nodes(node_ids: List[str], hops: int = 1) -> List[Dict[str, Any]]:

@@ -4,7 +4,7 @@ Unit tests for Publisher Stoplist & Editorial Disclaimer Filtering.
 
 import unittest
 
-from graph.entity_resolver import EntityResolver, is_blacklisted_publisher, PUBLISHER_STOPLIST
+from knowledge_graph.entity_resolver import EntityResolver, is_blacklisted_publisher, PUBLISHER_STOPLIST
 from ingestion.news import strip_publisher_boilerplates
 
 

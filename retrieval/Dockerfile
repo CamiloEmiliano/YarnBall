@@ -17,7 +17,7 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # Copy the application source code
 COPY retrieval ./retrieval
-COPY graph ./graph
+COPY knowledge_graph ./knowledge_graph
 COPY embedding ./embedding
 COPY tools ./tools
 

@@ -5,7 +5,7 @@ FastAPI Microservice for Hybrid Retrieval & Node Enrichment.
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from embedding.embedder import embed_texts
-from graph.db import pg_connection
+from knowledge_graph.db import pg_connection
 from .enricher import enrich_nodes
 
 app = FastAPI(title="YarnBall Hybrid Retrieval Service")

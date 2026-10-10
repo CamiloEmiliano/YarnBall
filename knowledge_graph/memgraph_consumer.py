@@ -37,7 +37,7 @@ KafkaConsumer = KafkaConsumerType
 
 from tools.utils import KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC, logger
 from .graph_store import store_graph_entities
-from kafka_pipeline.kafka_producer import send_to_dlt, get_producer
+from streaming.producer import send_to_dlt, get_producer
 
 # Dedicated consumer group for Memgraph to allow independent scaling & offset tracking
 KAFKA_MEMGRAPH_GROUP_ID = os.getenv(

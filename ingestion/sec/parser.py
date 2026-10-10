@@ -419,7 +419,7 @@ def extract_sec_relationships(text: str, max_chars: int = 2500) -> Dict[str, Any
         logger.warning("httpx not available; skipping LLM extraction")
         return {"nodes": [], "edges": []}
 
-    from graph.graph_store import _clean_json_response, OLLAMA_API_BASE, OLLAMA_MODEL_NAME
+    from knowledge_graph.graph_store import _clean_json_response, OLLAMA_API_BASE, OLLAMA_MODEL_NAME
 
     chunk = select_salient_sec_context(text, max_chars=max_chars)
     prompt = f"{SEC_EXTRACTION_PROMPT}\n\nSEC Text Section:\n{chunk}\n\nJSON:"

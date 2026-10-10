@@ -23,8 +23,8 @@ from ingestion.news.client import (
     FINNHUB_TICKERS,
 )
 
-# Kafka producer (uses the same driver the scheduler uses)
-from kafka_pipeline.kafka_driver import send_record
+# Streaming producer (uses the same driver the scheduler uses)
+from streaming.driver import send_record
 
 # Scraper processing function (the code we want to evaluate)
 from ingestion.news import process_scraping_message

@@ -1,10 +1,10 @@
 import os
 import pytest
 from unittest.mock import patch
-from graph.memgraph_driver import _DummyDriver
+from knowledge_graph.memgraph_driver import _DummyDriver
 
 # Mock the memgraph driver globally for these tests to avoid connecting to live Memgraph container
-_driver_patcher = patch('graph.memgraph_driver.get_memgraph_driver', return_value=_DummyDriver())
+_driver_patcher = patch('knowledge_graph.memgraph_driver.get_memgraph_driver', return_value=_DummyDriver())
 _driver_patcher.start()
 
 from fastapi.testclient import TestClient
@@ -15,7 +15,7 @@ client = TestClient(app)
 @pytest.fixture(scope="module")
 def insert_test_embeddings():
     # Insert two dummy node embeddings into PGVECTOR
-    from graph.db import pg_connection
+    from knowledge_graph.db import pg_connection
     create_sql = """
         CREATE EXTENSION IF NOT EXISTS vector;
         CREATE TABLE IF NOT EXISTS node_embeddings (

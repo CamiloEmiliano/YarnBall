@@ -24,8 +24,8 @@ try:
 except ImportError:
     pass
 
-from graph.db import pg_connection
-from graph.memgraph_driver import get_memgraph_driver
+from knowledge_graph.db import pg_connection
+from knowledge_graph.memgraph_driver import get_memgraph_driver
 from .text_to_cql import TextToCQL
 
 logger = logging.getLogger("retrieval.hybrid")

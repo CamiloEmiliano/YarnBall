@@ -22,7 +22,7 @@ try:
 except ImportError:
     pass
 
-from graph.memgraph_driver import get_memgraph_driver
+from knowledge_graph.memgraph_driver import get_memgraph_driver
 
 logger = logging.getLogger(__name__)
 
