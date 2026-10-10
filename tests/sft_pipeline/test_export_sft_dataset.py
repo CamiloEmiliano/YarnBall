@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from sft_pipeline import SFTDatasetExporter, SFTRecord, ManifoldSample, AnnotatedTriple
-from tools.sp500_universe import SP500Constituent
+from universe import SP500Constituent
 
 
 @pytest.fixture

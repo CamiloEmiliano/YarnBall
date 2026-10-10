@@ -55,7 +55,7 @@ except ImportError:
     )
 
 from knowledge_graph.entity_resolver import _jaro_winkler_similarity
-from tools.sp500_universe import SP500UniverseManager
+from universe import SP500UniverseManager
 
 logger = logging.getLogger("taxonomy_annotator")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")

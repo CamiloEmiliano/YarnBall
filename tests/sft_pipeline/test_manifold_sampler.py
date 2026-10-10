@@ -13,7 +13,7 @@ from sft_pipeline import (
     RARE_RELATION_FLOORS,
     DOMINANT_CLASS_CAP,
 )
-from tools.sp500_universe import SP500Constituent
+from universe import SP500Constituent
 
 
 @pytest.fixture

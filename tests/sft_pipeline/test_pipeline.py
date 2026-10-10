@@ -36,7 +36,7 @@ from sft_pipeline.builder import (
     OUTPUT_SFT_DIR,
 )
 
-from tools.sp500_universe import SP500Constituent
+from universe import SP500Constituent
 from curation.contracts import ActiveLearningPartition
 
 

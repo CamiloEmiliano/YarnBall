@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from tools.sp500_universe import SP500UniverseManager
+from universe import SP500UniverseManager
 from .client import YahooFinanceClient
 from .parser import MarketMetricsCalculator
 

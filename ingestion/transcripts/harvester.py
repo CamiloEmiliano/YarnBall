@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from tools.sp500_universe import SP500UniverseManager
+from universe import SP500UniverseManager
 from .parser import EarningsTranscriptParser
 from .client import TranscriptSourceClient
 

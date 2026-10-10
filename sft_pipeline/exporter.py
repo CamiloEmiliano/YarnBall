@@ -37,7 +37,7 @@ except ImportError:
     from sft_pipeline.sampler import ManifoldTargetedSampler, ManifoldSample
     from sft_pipeline.annotator import FinancialTaxonomyAnnotator, AnnotatedTriple
 
-from tools.sp500_universe import SP500UniverseManager
+from universe import SP500UniverseManager
 
 logger = logging.getLogger("export_sft_dataset")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")

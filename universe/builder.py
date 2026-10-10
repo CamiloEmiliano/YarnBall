@@ -14,10 +14,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.sp500_universe import SP500Constituent, SP500UniverseManager
+from .sp500 import SP500Constituent, SP500UniverseManager
 
 logging.basicConfig(level=logging.INFO, format='{"time":"%(asctime)s", "level":"%(levelname)s", "msg":"%(message)s"}')
-logger = logging.getLogger("build_sp500_dataset")
+logger = logging.getLogger("universe.builder")
 
 WIKI_HTML_PATH = Path("/home/caspe/.gemini/antigravity-ide/brain/e461f87a-63c3-4226-8b4c-61de3eb9e162/.system_generated/steps/2019/content.md")
 OUTPUT_PATH = PROJECT_ROOT / "data" / "sp500_constituents_historical.json"
@@ -97,9 +97,9 @@ def get_historical_turnover_records() -> list[dict]:
     ]
 
 
-def main():
-    logger.info(f"Extracting S&P 500 constituents from {WIKI_HTML_PATH}")
-    current_constituents = extract_wiki_constituents(WIKI_HTML_PATH)
+def main(wiki_html_path: Path = WIKI_HTML_PATH, output_path: Path = OUTPUT_PATH):
+    logger.info(f"Extracting S&P 500 constituents from {wiki_html_path}")
+    current_constituents = extract_wiki_constituents(wiki_html_path)
     logger.info(f"Parsed {len(current_constituents)} current constituents.")
 
     turnover = get_historical_turnover_records()
@@ -111,14 +111,14 @@ def main():
             all_records.append(t)
             seen_tickers.add(t["ticker"])
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_records, f, indent=2)
 
-    logger.info(f"Saved total of {len(all_records)} S&P 500 records to {OUTPUT_PATH}")
+    logger.info(f"Saved total of {len(all_records)} S&P 500 records to {output_path}")
 
-    # Now sync to PostgreSQL using SP500UniverseManager
-    manager = SP500UniverseManager(cache_file=OUTPUT_PATH)
+    # Sync to PostgreSQL using SP500UniverseManager
+    manager = SP500UniverseManager(cache_file=output_path)
     synced = manager.sync_to_postgres()
     logger.info(f"Synced {synced} records to PostgreSQL table sp500_historical_constituents")
 

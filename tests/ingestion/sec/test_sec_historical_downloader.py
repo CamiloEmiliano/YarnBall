@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from ingestion.sec import HistoricalSECHarvester
-from tools.sp500_universe import SP500Constituent
+from universe import SP500Constituent
 
 
 class TestHistoricalSECHarvester(unittest.TestCase):

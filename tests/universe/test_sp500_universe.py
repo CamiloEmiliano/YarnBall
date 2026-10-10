@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from tools.sp500_universe import SP500Constituent, SP500UniverseManager
+from universe import SP500Constituent, SP500UniverseManager
 
 
 class TestSP500UniverseManager(unittest.TestCase):
@@ -73,7 +73,7 @@ class TestSP500UniverseManager(unittest.TestCase):
         self.assertIn("PLTR", tickers_2024)
         self.assertNotIn("TWTR", tickers_2024)
 
-    @patch("tools.sp500_universe._connect_db")
+    @patch("universe.sp500._connect_db")
     def test_sync_to_postgres(self, mock_connect):
         mock_conn = MagicMock()
         mock_cur = MagicMock()

@@ -40,7 +40,7 @@ from sft_pipeline import (
     SFTDatasetExporter,
     SFTRecord,
 )
-from tools.sp500_universe import SP500Constituent, SP500UniverseManager
+from universe import SP500Constituent, SP500UniverseManager
 
 logging.basicConfig(
     level=logging.INFO,

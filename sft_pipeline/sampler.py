@@ -44,7 +44,7 @@ except ImportError:
         compute_edge_confidence,
     )
 
-from tools.sp500_universe import SP500UniverseManager
+from universe import SP500UniverseManager
 
 logger = logging.getLogger("manifold_sampler")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")

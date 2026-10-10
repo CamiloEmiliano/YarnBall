@@ -43,7 +43,7 @@ try:
 except ImportError:
     pass
 
-from tools.sp500_universe import SP500Constituent, SP500UniverseManager
+from universe import SP500Constituent, SP500UniverseManager
 
 try:
     from .sampler import ManifoldSample, ManifoldTargetedSampler
