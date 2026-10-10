@@ -10,9 +10,9 @@ except ImportError:
     try:
         import psycopg2 as psycopg
     except ImportError:
-        from tools import psycopg2 as psycopg
+        psycopg = None
 
-OperationalError = getattr(psycopg, "OperationalError", Exception)
+OperationalError = getattr(psycopg, "OperationalError", Exception) if psycopg else Exception
 
 def _build_dsn(database: str = None) -> str:
     """Construct a clean DSN for PostgreSQL, respecting custom database names."""
@@ -43,10 +43,13 @@ def pg_connection(database: str = None):
         pass
 
     dsn = _build_dsn(target_db)
-    try:
-        return psycopg.connect(dsn)
-    except Exception as exc:
-        logger.warning("Could not connect to PostgreSQL at %s (%s); using mock fallback.", dsn, exc)
+    if psycopg is not None:
+        try:
+            return psycopg.connect(dsn)
+        except Exception as exc:
+            logger.warning("Could not connect to PostgreSQL at %s (%s); using mock fallback.", dsn, exc)
+    else:
+        logger.warning("Neither psycopg nor psycopg2 is installed; using mock fallback.")
         class _MockConnection:
             def __enter__(self):
                 return self

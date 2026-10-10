@@ -7,7 +7,7 @@ from pathlib import Path
 try:
     import psycopg2
 except ImportError:
-    from tools import psycopg2
+    psycopg2 = None
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -69,6 +69,8 @@ _producer: KafkaProducer | None = None
 # ----------------------------------------------------------------------
 def _db_connection():
     # Expect a POSTGRES_URL env var (Postgres). Adjust as needed.
+    if psycopg2 is None:
+        raise RuntimeError("psycopg2 is required for database operations")
     dsn = get_dsn()
     return psycopg2.connect(dsn)
 

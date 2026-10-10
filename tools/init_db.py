@@ -21,50 +21,35 @@ except ImportError:
     pass
 
 # ----------------------------------------------------------------------
-# Import psycopg2 – prefer the real library from site‑packages.
+# Import psycopg2 or psycopg
 # ----------------------------------------------------------------------
-import importlib.util
 import logging
 
-def _load_real_psycopg():
-    """Load the real psycopg2 or psycopg package from site-packages, bypassing repo mock."""
-    repo_tools = [p for p in sys.path if "tools" in p and "site-packages" not in p]
-    saved_path = list(sys.path)
-    try:
-        sys.path = [p for p in sys.path if p not in repo_tools]
-        for mod in list(sys.modules.keys()):
-            if mod.startswith("psycopg"):
-                del sys.modules[mod]
-        try:
-            import psycopg2
-            from psycopg2 import sql
-            from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-            return psycopg2, sql, ISOLATION_LEVEL_AUTOCOMMIT
-        except ImportError:
-            import psycopg as psycopg2
-            from psycopg import sql
-            ISOLATION_LEVEL_AUTOCOMMIT = None
-            return psycopg2, sql, ISOLATION_LEVEL_AUTOCOMMIT
-    finally:
-        sys.path = saved_path
-
 try:
-    psycopg2, sql, ISOLATION_LEVEL_AUTOCOMMIT = _load_real_psycopg()
-except Exception as exc:
-    logging.warning("Database driver not found; using mock stub: %s", exc)
+    import psycopg2
+    from psycopg2 import sql
+    from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+except ImportError:
+    try:
+        import psycopg as psycopg2
+        from psycopg import sql
+        ISOLATION_LEVEL_AUTOCOMMIT = None
+    except ImportError as exc:
+        logging.warning("Database driver not found; using mock stub: %s", exc)
 
-    class _PsycopgStub:
-        def connect(self, *_, **__):
-            raise RuntimeError(
-                "psycopg2 is not installed or unreachable; database operations are unavailable."
-            )
+        class _PsycopgStub:
+            def connect(self, *_, **__):
+                raise RuntimeError(
+                    "psycopg2 is not installed or unreachable; database operations are unavailable."
+                )
 
-    psycopg2 = _PsycopgStub()
-    class _SQLStub:
-        pass
+        psycopg2 = _PsycopgStub()
 
-    sql = _SQLStub()
-    ISOLATION_LEVEL_AUTOCOMMIT = 0
+        class _SQLStub:
+            pass
+
+        sql = _SQLStub()
+        ISOLATION_LEVEL_AUTOCOMMIT = 0
 import sys
 
 # ----------------------------------------------------------------------
