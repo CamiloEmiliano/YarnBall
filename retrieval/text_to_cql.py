@@ -1,4 +1,4 @@
-# rag/text_to_cql.py
+# retrieval/text_to_cql.py
 # -*- coding: utf-8 -*-
 """Guarded Text-to-CQL (Cypher) Engine with Safety Guardrails & Self-Correction.
 

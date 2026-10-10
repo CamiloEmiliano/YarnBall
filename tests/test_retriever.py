@@ -8,7 +8,7 @@ _driver_patcher = patch('graph.memgraph_driver.get_memgraph_driver', return_valu
 _driver_patcher.start()
 
 from fastapi.testclient import TestClient
-from rag.retriever.main import app
+from retrieval.service import app
 
 client = TestClient(app)
 
@@ -16,6 +16,16 @@ client = TestClient(app)
 def insert_test_embeddings():
     # Insert two dummy node embeddings into PGVECTOR
     from graph.db import pg_connection
+    create_sql = """
+        CREATE EXTENSION IF NOT EXISTS vector;
+        CREATE TABLE IF NOT EXISTS node_embeddings (
+            node_id TEXT PRIMARY KEY,
+            entity_type TEXT,
+            embedding VECTOR(768) NOT NULL,
+            source_hash TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+    """
     sql = """
         INSERT INTO node_embeddings (node_id, entity_type, embedding, source_hash)
         VALUES (%s, %s, %s, %s)
@@ -25,6 +35,7 @@ def insert_test_embeddings():
     dummy_vec = [0.0] * 768
     with pg_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(create_sql)
             cur.execute("DELETE FROM node_embeddings;")
             cur.execute(sql, ("TestNode1", "Entity", dummy_vec, "test"))
             cur.execute(sql, ("TestNode2", "Entity", dummy_vec, "test"))

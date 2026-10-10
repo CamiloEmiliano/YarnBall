@@ -5,7 +5,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from rag.text_to_cql import TextToCQL
+from retrieval import TextToCQL
 
 
 @pytest.fixture
@@ -120,7 +120,7 @@ def test_execute_query_successful_first_try(text_to_cql_engine):
     mock_driver.session.return_value.__enter__.return_value = mock_session
 
     with patch.object(text_to_cql_engine, "_call_llm", return_value=mock_llm_response), \
-         patch("rag.text_to_cql.get_memgraph_driver", return_value=mock_driver):
+         patch("retrieval.text_to_cql.get_memgraph_driver", return_value=mock_driver):
 
         res = text_to_cql_engine.execute_query("What is Apple's company node?")
 
@@ -146,7 +146,7 @@ def test_execute_query_self_corrects_on_error(text_to_cql_engine):
     mock_driver.session.return_value.__enter__.return_value = mock_session
 
     with patch.object(text_to_cql_engine, "_call_llm", side_effect=mock_responses), \
-         patch("rag.text_to_cql.get_memgraph_driver", return_value=mock_driver):
+         patch("retrieval.text_to_cql.get_memgraph_driver", return_value=mock_driver):
 
         res = text_to_cql_engine.execute_query("Find all companies")
 

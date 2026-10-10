@@ -32,8 +32,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from graph.memgraph_driver import get_memgraph_driver
 from graph.snapshot_manager import SnapshotManager
 from graph.entity_resolver import EntityResolver
-from rag.text_to_cql import TextToCQL
-from rag.hybrid_retriever import HybridRetriever, GroundedSynthesizer
+from retrieval import TextToCQL, HybridRetriever
+from synthesis import GroundedSynthesizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("stress_test")

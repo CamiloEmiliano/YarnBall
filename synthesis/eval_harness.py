@@ -1,6 +1,6 @@
-# rag/eval_harness.py
+# synthesis/eval_harness.py
 # -*- coding: utf-8 -*-
-"""Automated A/B Evaluation Harness for Financial GraphRAG.
+"""Automated A/B Evaluation Harness for Financial Knowledge Graph.
 
 Executes 25 golden multi-hop benchmark queries across raw (G_raw) and resolved
 (G_resolved) graph snapshots to quantitatively measure:

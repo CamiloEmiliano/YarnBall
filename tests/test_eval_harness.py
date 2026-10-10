@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from rag.eval_harness import EvaluationHarness, BENCHMARK_QUERIES
+from synthesis import EvaluationHarness, BENCHMARK_QUERIES
 from graph.snapshot_manager import SnapshotManager
 
 

@@ -1,4 +1,4 @@
-# rag/app.py
+# interactive/app.py
 # -*- coding: utf-8 -*-
 """YarnBall Conversational UI & Interactive Subgraph Visualizer.
 
@@ -26,9 +26,8 @@ from pyvis.network import Network
 
 from graph.snapshot_manager import SnapshotManager
 from graph.memgraph_driver import get_memgraph_driver
-from rag.text_to_cql import TextToCQL
-from rag.hybrid_retriever import HybridRetriever, GroundedSynthesizer, HybridGraphRAGEngine
-from rag.eval_harness import EvaluationHarness
+from retrieval import TextToCQL, HybridRetriever
+from synthesis import GroundedSynthesizer, HybridGraphRAGEngine, EvaluationHarness
 
 logger = logging.getLogger(__name__)
 

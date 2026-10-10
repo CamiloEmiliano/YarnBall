@@ -3,7 +3,7 @@
 """Unit tests for the Chainlit conversational application and PyVis visualizer."""
 
 import pytest
-from rag.app import generate_subgraph_html, NODE_COLORS
+from interactive import generate_subgraph_html, NODE_COLORS
 
 
 def test_node_colors_palette():

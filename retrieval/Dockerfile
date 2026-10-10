@@ -10,20 +10,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only the requirements file first (allows Docker cache reuse)
-COPY rag/retriever/requirements.txt .
+COPY retrieval/requirements.txt .
 
 # Install Python dependencies (excluding pymgclient)
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# pymgclient not needed – using neo4j driver
-
-
 # Copy the application source code
-COPY rag ./rag
+COPY retrieval ./retrieval
 COPY graph ./graph
 COPY embedding ./embedding
 COPY tools ./tools
 
 EXPOSE 8000
 
-CMD ["uvicorn", "rag.retriever.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "retrieval.service:app", "--host", "0.0.0.0", "--port", "8000"]

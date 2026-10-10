@@ -5,12 +5,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from rag.hybrid_retriever import (
-    HybridRetriever,
-    GroundedSynthesizer,
-    HybridGraphRAGEngine,
-)
-from rag.text_to_cql import TextToCQL
+from retrieval import HybridRetriever, TextToCQL
+from synthesis import GroundedSynthesizer, HybridGraphRAGEngine
 
 
 @pytest.fixture
@@ -41,7 +37,7 @@ def test_search_dense_entities_returns_formatted_results(hybrid_retriever):
     mock_cursor.fetchall.return_value = mock_rows
     mock_conn.cursor.return_value = mock_cursor
 
-    with patch("rag.hybrid_retriever.pg_connection", return_value=mock_conn), \
+    with patch("retrieval.hybrid.pg_connection", return_value=mock_conn), \
          patch("embedding.embedder.embed_texts", return_value=[[0.1] * 768]):
 
         results = hybrid_retriever.search_dense_entities("Apple chip supplier", top_k=2)
@@ -54,7 +50,7 @@ def test_search_dense_entities_returns_formatted_results(hybrid_retriever):
 
 def test_search_dense_entities_handles_offline_fallback(hybrid_retriever):
     """Test that dense search handles database connection errors gracefully."""
-    with patch("rag.hybrid_retriever.pg_connection", side_effect=Exception("DB down")), \
+    with patch("retrieval.hybrid.pg_connection", side_effect=Exception("DB down")), \
          patch("embedding.embedder.embed_texts", return_value=[[0.1] * 768]):
 
         results = hybrid_retriever.search_dense_entities("test query")
@@ -81,7 +77,7 @@ def test_expand_subgraph_queries_memgraph_triples(hybrid_retriever):
     mock_driver = MagicMock()
     mock_driver.session.return_value.__enter__.return_value = mock_session
 
-    with patch("rag.hybrid_retriever.get_memgraph_driver", return_value=mock_driver):
+    with patch("retrieval.hybrid.get_memgraph_driver", return_value=mock_driver):
         triples = hybrid_retriever.expand_subgraph(["Apple Inc."])
 
         assert len(triples) == 1
@@ -118,7 +114,7 @@ def test_fetch_article_context_from_postgres(hybrid_retriever):
     mock_cursor.fetchall.return_value = mock_rows
     mock_conn.cursor.return_value = mock_cursor
 
-    with patch("rag.hybrid_retriever.pg_connection", return_value=mock_conn):
+    with patch("retrieval.hybrid.pg_connection", return_value=mock_conn):
         articles = hybrid_retriever.fetch_article_context(["hash123"])
 
         assert len(articles) == 1

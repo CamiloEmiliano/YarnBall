@@ -109,7 +109,7 @@ services:
   retriever:
     build:
       context: .
-      dockerfile: rag/retriever/Dockerfile
+      dockerfile: retrieval/Dockerfile
     image: graphrag_retriever:latest
     container_name: graphrag_retriever
     restart: unless-stopped
