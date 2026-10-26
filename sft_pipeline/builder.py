@@ -1028,6 +1028,94 @@ SPIN_OFF_COLLISION_TEMPLATES = [
         "is_positive": False,
         "true_cypher": None,
     },
+    {
+        "focal": ("DowDuPont Inc.", "DWDP"),
+        "spun_off": ("Dow Inc.", "DOW"),
+        "retained_peer": ("DuPont de Nemours", "DD"),
+        "sector": "Materials",
+        "date": "2019-04-01",
+        "spin_context": (
+            "On April 1, 2019, DowDuPont Inc. completed the separation of its materials science business into Dow Inc. (NYSE: DOW). "
+            "DuPont de Nemours retained specialty products while Corteva holds agricultural sciences."
+        ),
+        "event_desc": "Dow Inc. (NYSE: DOW) commissioned a major ethylene cracker operational modernization.",
+        "target_entity": ("DuPont de Nemours", "DD"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("DowDuPont Inc.", "DWDP"),
+        "spun_off": ("Dow Inc.", "DOW"),
+        "retained_peer": ("DuPont de Nemours", "DD"),
+        "sector": "Materials",
+        "date": "2019-04-01",
+        "spin_context": (
+            "Pursuant to the separation and distribution agreement effective April 1, 2019, Dow Inc. (NYSE: DOW) legally separated from DowDuPont."
+        ),
+        "event_desc": "Dow Inc. completed its statutory separation from DowDuPont.",
+        "target_entity": ("Dow Inc.", "DOW"),
+        "is_positive": True,
+        "true_cypher": "(:Company {name: 'Dow Inc.', ticker: 'DOW'})-[:SPUN_OFF_FROM {effective_date: '2019-04-01'}]->(:Company {name: 'DowDuPont Inc.'})",
+    },
+    {
+        "focal": ("eBay Inc.", "EBAY"),
+        "spun_off": ("PayPal Holdings, Inc.", "PYPL"),
+        "retained_peer": ("eBay Inc.", "EBAY"),
+        "sector": "Financials",
+        "date": "2015-07-17",
+        "spin_context": (
+            "On July 17, 2015, eBay Inc. completed the tax-free spin-off of PayPal Holdings, Inc. (NASDAQ: PYPL), "
+            "establishing PayPal as an independent digital payments network."
+        ),
+        "event_desc": "PayPal Holdings (NASDAQ: PYPL) executed a global debit network merchant acquiring agreement.",
+        "target_entity": ("eBay Inc.", "EBAY"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("eBay Inc.", "EBAY"),
+        "spun_off": ("PayPal Holdings, Inc.", "PYPL"),
+        "retained_peer": ("eBay Inc.", "EBAY"),
+        "sector": "Financials",
+        "date": "2015-07-17",
+        "spin_context": (
+            "Under the definitive separation agreement dated July 17, 2015, PayPal Holdings, Inc. separated from eBay Inc."
+        ),
+        "event_desc": "PayPal Holdings completed the legal separation from eBay Inc.",
+        "target_entity": ("PayPal Holdings, Inc.", "PYPL"),
+        "is_positive": True,
+        "true_cypher": "(:Company {name: 'PayPal Holdings, Inc.', ticker: 'PYPL'})-[:SPUN_OFF_FROM {effective_date: '2015-07-17'}]->(:Company {name: 'eBay Inc.'})",
+    },
+    {
+        "focal": ("Baxter International Inc.", "BAX"),
+        "spun_off": ("Baxalta Incorporated", "BXLT"),
+        "retained_peer": ("Baxter International Inc.", "BAX"),
+        "sector": "Health Care",
+        "date": "2015-07-01",
+        "spin_context": (
+            "On July 1, 2015, Baxter International Inc. spun off its biopharmaceuticals business into Baxalta Incorporated, "
+            "focusing Baxter on hospital products and renal care therapies."
+        ),
+        "event_desc": "Baxalta Incorporated entered an oncology biomanufacturing collaboration.",
+        "target_entity": ("Baxter International Inc.", "BAX"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("Danaher Corporation", "DHR"),
+        "spun_off": ("Fortive Corporation", "FTV"),
+        "retained_peer": ("Danaher Corporation", "DHR"),
+        "sector": "Industrials",
+        "date": "2016-07-02",
+        "spin_context": (
+            "On July 2, 2016, Danaher Corporation completed the spin-off of Fortive Corporation (NYSE: FTV), "
+            "which assumed Danaher's test and measurement, industrial technologies, and retail fueling equipment operations."
+        ),
+        "event_desc": "Fortive Corporation (NYSE: FTV) contracted for telemetry field sensor deployments.",
+        "target_entity": ("Danaher Corporation", "DHR"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
 ]
 
 BORDERLINE_VOLATILITY_TEMPLATES = [
@@ -1087,6 +1175,62 @@ BORDERLINE_VOLATILITY_TEMPLATES = [
         "z_center": -1.95,
         "car_center": -2.60,
     },
+    {
+        "sector": "Consumer Staples",
+        "item_code": "2.02",
+        "template": "{company} ({ticker}) reported quarterly results with organic revenue rising 3.1%, but elevated packaging input cost pass-through lag reduced gross margins by 45 bps.",
+        "z_center": 1.87,
+        "car_center": 2.15,
+    },
+    {
+        "sector": "Utilities",
+        "item_code": "8.01",
+        "template": "{company} ({ticker}) filed Item 8.01 disclosing an extension of the planned refueling outage at its regulated nuclear station, partially offset by rate base rider approvals.",
+        "z_center": -1.93,
+        "car_center": -2.40,
+    },
+    {
+        "sector": "Real Estate",
+        "item_code": "1.02",
+        "template": "{company} ({ticker}) announced the early termination of a commercial anchor lease with a sub-tier retail tenant, with re-leasing underway at a 4% rent spread.",
+        "z_center": -1.89,
+        "car_center": -2.15,
+    },
+    {
+        "sector": "Information Technology",
+        "item_code": "8.01",
+        "template": "{company} ({ticker}) disclosed in Item 8.01 that third-party packaging allocation constraints will shift approximately 3% of enterprise server shipments into the subsequent quarter.",
+        "z_center": -1.94,
+        "car_center": -2.55,
+    },
+    {
+        "sector": "Health Care",
+        "item_code": "7.01",
+        "template": "{company} ({ticker}) furnished Item 7.01 investor presentation materials clarifying that initial Medicare Part D drug price negotiations reflect anticipated volume concessions.",
+        "z_center": 1.91,
+        "car_center": 2.35,
+    },
+    {
+        "sector": "Financials",
+        "item_code": "2.02",
+        "template": "{company} ({ticker}) posted quarterly EPS exceeding expectations by $0.04, accompanied by a modest $45M valuation adjustment on syndicated leveraged loan commitments.",
+        "z_center": 1.88,
+        "car_center": 2.20,
+    },
+    {
+        "sector": "Industrials",
+        "item_code": "1.01",
+        "template": "{company} ({ticker}) executed an amended commercial delivery schedule with aerospace fuselage partners, adjusting milestone acceptance buffers by 60 days.",
+        "z_center": -1.92,
+        "car_center": -2.35,
+    },
+    {
+        "sector": "Energy",
+        "item_code": "1.01",
+        "template": "{company} ({ticker}) renegotiated deepwater offshore gathering and handling tariff agreements, securing long-term acreage dedication with modified index escalation formulas.",
+        "z_center": 2.04,
+        "car_center": 2.85,
+    },
 ]
 
 DISTRACTOR_CONTAGION_TEMPLATES = [
@@ -1138,6 +1282,70 @@ DISTRACTOR_CONTAGION_TEMPLATES = [
         "shock": "ERP database upgrade outage at auxiliary stationery vendor ODP freezes automated fulfillment of corporate office paper supplies for 14 days.",
         "customer": "Enterprise Cloud Government Accounts",
     },
+    {
+        "sector": "Communication Services",
+        "focal": ("Netflix, Inc.", "NFLX"),
+        "critical": ("Amazon Web Services", "AMZN"),
+        "distractor": ("Aramark", "ARMK"),
+        "shock": "Regional warehouse commissary strike at catering provider Aramark disrupts on-location craft services across studio production lots for 14 days.",
+        "customer": "Global Subscriber Streaming Network",
+    },
+    {
+        "sector": "Materials",
+        "focal": ("Linde plc", "LIN"),
+        "critical": ("Air Products and Chemicals", "APD"),
+        "distractor": ("Veritiv Corporation", "VRTV"),
+        "shock": "Pallet stretch-film delivery delays from secondary packaging vendor Veritiv hold non-hazardous cylinder warehouse staging for 18 days.",
+        "customer": "Industrial Manufacturing Consortia",
+    },
+    {
+        "sector": "Consumer Staples",
+        "focal": ("PepsiCo, Inc.", "PEP"),
+        "critical": ("Ball Corporation", "BALL"),
+        "distractor": ("Packaging Corporation of America", "PKG"),
+        "shock": "Secondary corrugated shipping tray production line breakdown at Packaging Corp of America slows outer transit box replenishment for 21 days.",
+        "customer": "Walmart Supply Distribution Hubs",
+    },
+    {
+        "sector": "Utilities",
+        "focal": ("NextEra Energy", "NEE"),
+        "critical": ("General Electric Company", "GE"),
+        "distractor": ("Iron Mountain Inc.", "IRM"),
+        "shock": "Physical document archival storage center renovation at Iron Mountain delays non-regulatory administrative paper records retrieval for 20 days.",
+        "customer": "Florida Power & Light Retail Grid",
+    },
+    {
+        "sector": "Financials",
+        "focal": ("JPMorgan Chase & Co.", "JPM"),
+        "critical": ("Broadridge Financial Solutions", "BR"),
+        "distractor": ("Pitney Bowes Inc.", "PBI"),
+        "shock": "Postal metering and physical statement folding hardware calibration hold at Pitney Bowes delays mailed print statements for 12 days.",
+        "customer": "Institutional Asset Management Clients",
+    },
+    {
+        "sector": "Real Estate",
+        "focal": ("Prologis, Inc.", "PLD"),
+        "critical": ("CBRE Group, Inc.", "CBRE"),
+        "distractor": ("ABM Industries", "ABM"),
+        "shock": "Auxiliary janitorial staffing reassignment at ABM Industries defers routine warehouse floor power-washing for 14 days.",
+        "customer": "Tier-1 Third-Party Logistics Operators",
+    },
+    {
+        "sector": "Information Technology",
+        "focal": ("NVIDIA Corporation", "NVDA"),
+        "critical": ("Taiwan Semiconductor Manufacturing Company", "TSM"),
+        "distractor": ("Brady Corporation", "BRC"),
+        "shock": "Supply delay at Brady Corporation postpones delivery of custom thermal-resistant barcoded component asset tracking labels by 15 days.",
+        "customer": "Hyperscale Cloud Data Center Operators",
+    },
+    {
+        "sector": "Health Care",
+        "focal": ("Pfizer Inc.", "PFE"),
+        "critical": ("Catalent, Inc.", "CTLT"),
+        "distractor": ("Sonoco Products Company", "SON"),
+        "shock": "Cardboard cylinder winding machine maintenance at Sonoco temporarily holds auxiliary non-sterile shipping protective cores for 16 days.",
+        "customer": "Global Hospital Pharmacy Wholesalers",
+    },
 ]
 
 BOUNDARY_HEDGING_TEMPLATES = [
@@ -1182,6 +1390,62 @@ BOUNDARY_HEDGING_TEMPLATES = [
         "catalyst": "Permian production volumes reached record levels, but international deepwater affiliate maintenance outage deferred 25,000 boe/d, yielding borderline volatility (|z| = 1.91)",
         "z_score": 1.91,
         "hedge": "Hold core dividend position while buying prompt-month Brent crude put options to insulate against spot crack spread softening",
+    },
+    {
+        "sector": "Communication Services",
+        "company": ("Alphabet Inc.", "GOOGL"),
+        "catalyst": "Search advertising revenue grew 4.2%, but substantial compute infrastructure capex and licensing commitments created borderline price action (|z| = 1.93)",
+        "z_score": 1.93,
+        "hedge": "Hold baseline equity weight while executing an out-of-the-money put spread on Communication Services Select SPDR Fund (XLC)",
+    },
+    {
+        "sector": "Materials",
+        "company": ("Dow Inc.", "DOW"),
+        "catalyst": "Polyethylene sales volumes expanded 3%, but European feedstock energy costs and margin compression produced borderline volatility (|z| = -1.94)",
+        "z_score": -1.94,
+        "hedge": "Establish a delta-neutral collar on long equity position and overweight low-beta specialty chemicals peers",
+    },
+    {
+        "sector": "Consumer Staples",
+        "company": ("The Procter & Gamble Company", "PG"),
+        "catalyst": "Pricing power sustained organic revenue, but unit volume in international fabric care slipped 1.5%, yielding borderline volatility (|z| = -1.88)",
+        "z_score": -1.88,
+        "hedge": "Maintain core holding while purchasing defensive put options on the Consumer Staples ETF (XLP)",
+    },
+    {
+        "sector": "Utilities",
+        "company": ("The Southern Company", "SO"),
+        "catalyst": "Industrial retail electricity sales grew 2.8%, but generation storm reserve costs increased, generating borderline market trading (|z| = 1.86)",
+        "z_score": 1.86,
+        "hedge": "Hold high-dividend core shares while hedging interest rate sensitivity via long 5-year Treasury note futures",
+    },
+    {
+        "sector": "Real Estate",
+        "company": ("American Tower Corporation", "AMT"),
+        "catalyst": "Organic tenant billings increased 4.5%, but churn from regional carrier consolidation created borderline volatility (|z| = -1.91)",
+        "z_score": -1.91,
+        "hedge": "Structure a paired long-short trade: long AMT core shares vs. short real estate investment trust ETF (VNQ)",
+    },
+    {
+        "sector": "Information Technology",
+        "company": ("Broadcom Inc.", "AVGO"),
+        "catalyst": "Hyperscale Ethernet switch bookings doubled, but legacy enterprise storage software renewals showed modest softness (|z| = 1.95)",
+        "z_score": 1.95,
+        "hedge": "Deploy an equity collar (90% strike put floor, 110% strike call cap) to protect core unrealized capital gains",
+    },
+    {
+        "sector": "Industrials",
+        "company": ("Honeywell International Inc.", "HON"),
+        "catalyst": "Commercial aerospace original equipment sales rose 8%, but building automation short-cycle orders softened (|z| = 1.89)",
+        "z_score": 1.89,
+        "hedge": "Maintain core industrial allocation while buying put options on the Industrial Select Sector SPDR Fund (XLI)",
+    },
+    {
+        "sector": "Health Care",
+        "company": ("Johnson & Johnson", "JNJ"),
+        "catalyst": "MedTech cardiovascular volume rose 4.8%, but orthopedic elective surgery seasonality yielded borderline reaction (|z| = -1.87)",
+        "z_score": -1.87,
+        "hedge": "Hold core dividend position and establish delta-neutral calendar spreads around upcoming medical device regulatory conferences",
     },
 ]
 
@@ -1324,7 +1588,7 @@ class FullSFTDatasetBuilder:
             count=count,
         )
 
-    def generate_task_d_contagion_records(self, count: int = 400) -> List[SFTRecord]:
+    def generate_task_d_contagion_records(self, count: int = 800) -> List[SFTRecord]:
         """Generate unique, non-duplicative multi-hop shock propagation scenarios with <think> CoT."""
         records: List[SFTRecord] = []
         sectors = [s for s in self.constituents_by_sector.keys() if len(self.constituents_by_sector[s]) >= 2]
@@ -1340,6 +1604,14 @@ class FullSFTDatasetBuilder:
             ("critical cyberattack disrupting pipeline SCADA flow and terminal distribution", "Pipeline Transport Capacity", "1–2 quarters"),
             ("liquidity contraction and regional syndication office loan covenant breach", "Core Mainframe Clearing Services", "1–3 quarters"),
             ("centrifuge enrichment outage delaying enriched fuel rod qualification", "Enriched Nuclear Fuel Rods", "2–4 quarters"),
+            ("cleanroom sub-tier filtration contamination halting clean air circulation", "Micro-Optical Sensors", "1–2 quarters"),
+            ("deepwater drilling riser mechanical failure deferring field commissioning", "Offshore Subsea Manifolds", "2–3 quarters"),
+            ("bioreactor cell culture contamination requiring complete batch decontamination", "Monoclonal Antibody Drug Substance", "2–4 quarters"),
+            ("high-voltage grid substation transformer short circuit under peak summer load", "High-Voltage Power Transformers", "1–3 quarters"),
+            ("transatlantic fiber optic cable severing causing network traffic rerouting", "Intercontinental Data Transit", "1–2 quarters"),
+            ("freight rail derailment on chemical corridor interrupting bulk acid transit", "Industrial Process Reagents", "1–2 quarters"),
+            ("customs tariff classification audit holding critical rare-earth magnets", "Neodymium Permanent Magnets", "2–3 quarters"),
+            ("port dockworker labor strike shutting down container gantry cranes", "Intermodal Container Freight", "1–2 quarters"),
         ]
 
         seen_prompts: Set[str] = set()
@@ -1384,7 +1656,7 @@ class FullSFTDatasetBuilder:
         logger.info(f"Generated {len(records)} unique Task D contagion reasoning records (0 duplicates).")
         return records
 
-    def generate_task_e_hedging_records(self, count: int = 400) -> List[SFTRecord]:
+    def generate_task_e_hedging_records(self, count: int = 800) -> List[SFTRecord]:
         """Generate unique, non-duplicative portfolio hedging and risk allocation recommendations with <think> CoT."""
         records: List[SFTRecord] = []
         sectors = list(self.constituents_by_sector.keys())
@@ -1406,6 +1678,30 @@ class FullSFTDatasetBuilder:
              "long utility sector ETF (XLU) put options and hedge via peak-load electricity forward swap contracts"),
             ("critical raw material refining bottleneck and lithium supply chokepoint delaying volume deliveries",
              "purchase call options on lithium mining ETF (LIT) as a direct commodity input price hedge while hedging long delta via index collars"),
+            ("hyperscale cloud customer capex reduction and datacenter hardware spending digestion",
+             "buy put options on technology ETF (XLK) while overweighting enterprise cybersecurity SaaS leaders"),
+            ("Medicare reimbursement rate revision for specialty oncology therapeutics",
+             "initiate long-short paired equity hedge: long diversified pharma vs. short single-asset biopharma"),
+            ("OPEC crude supply quota adjustments triggering spot refining margin volatility",
+             "purchase front-month Brent put options and deploy cross-commodity crack spread calendar spreads"),
+            ("commercial aerospace fuselage assembly quality audit delays",
+             "establish collar on industrial machinery holdings and short single-supplier aerospace component baskets"),
+            ("regional commercial mortgage loan default rate acceleration",
+             "hedge via interest rate swap swaptions and rotate into prime liquidity money market instruments"),
+            ("domestic retail consumer discretionary spending contraction under inflation",
+             "underweight broad consumer discretionary (XLY) and overweight defensive consumer staples (XLP)"),
+            ("nuclear fuel enrichment centrifuge capacity bottlenecks",
+             "purchase uranium commodity ETF (URA) call options while maintaining delta-neutral utility core positions"),
+            ("automotive semiconductor microcontroller delivery lead time elongation",
+             "execute protective index puts and rotate portfolio weighting into fabless semiconductor peers"),
+            ("industrial packaging paperboard input inflation and resin surcharge escalation",
+             "hedge via containerboard commodity swap contracts and paired trades on vertically integrated producers"),
+            ("transatlantic telecom bandwidth transit pricing erosion",
+             "reduce direct telecom exposure and allocate capital toward sovereign communication infrastructure bonds"),
+            ("commercial real estate multi-tenant office occupancy decline",
+             "hedge long REIT exposure via credit default swap indexes (CDX NA HY) and cash preservation"),
+            ("subsea pipeline deepwater transport tariff arbitration risk",
+             "purchase protective put spreads on energy infrastructure ETF (AMLP) with funded call overwriting"),
         ]
 
         seen_prompts: Set[str] = set()
@@ -1441,7 +1737,7 @@ class FullSFTDatasetBuilder:
         logger.info(f"Generated {len(records)} unique Task E portfolio hedging records (0 duplicates).")
         return records
 
-    def generate_task_a_disambiguation_records(self, count: int = 150) -> List[SFTRecord]:
+    def generate_task_a_disambiguation_records(self, count: int = 300) -> List[SFTRecord]:
         """Generate corporate spin-off & entity collision disambiguation samples (Task A)."""
         records: List[SFTRecord] = []
         qualifiers = [
@@ -1451,6 +1747,26 @@ class FullSFTDatasetBuilder:
             "In official disclosures filed with the Securities and Exchange Commission,",
             "As disclosed in the statutory separation and distribution plan,",
             "Per the audited notes to consolidated financial statements,",
+            "In the definitive information statement on Form 10 filed with the Commission,",
+            "Pursuant to the Master Separation and Distribution Agreement,",
+            "As reported under Item 2.01 Completion of Acquisition or Disposition of Assets,",
+            "According to official investor disclosures and regulatory filings,",
+            "Per the audited annual report and statutory SEC disclosures,",
+            "As stated in regulatory disclosures submitted on SEC Form 8-K,",
+            "In accordance with corporate separation documents and audited SEC filings,",
+            "Pursuant to Section 1.01 material definitive contract disclosures,",
+            "Under the corporate restructuring provisions detailed in SEC filings,",
+            "In an official statement of corporate separation filed on Form 8-K,",
+        ]
+        reporting_periods = [
+            "For the fiscal period ended March 31,",
+            "For the quarterly period ended June 30,",
+            "For the fiscal quarter ended September 30,",
+            "For the fiscal year ended December 31,",
+            "In the current annual reporting period,",
+            "Covering the multi-year operating period,",
+            "In audited point-in-time regulatory filings,",
+            "As of the definitive corporate filing date,",
         ]
 
         seen_prompts: Set[str] = set()
@@ -1461,14 +1777,15 @@ class FullSFTDatasetBuilder:
             attempts += 1
             tmpl = self.rng.choice(SPIN_OFF_COLLISION_TEMPLATES)
             qual = self.rng.choice(qualifiers)
+            period = self.rng.choice(reporting_periods)
 
             if tmpl["is_positive"]:
-                ctx = f"{qual} {tmpl['spin_context']} {tmpl['event_desc']}"
+                ctx = f"{period} {qual.lower()} {tmpl['spin_context']} {tmpl['event_desc']}"
                 focal_co, focal_tk = tmpl["spun_off"]
                 conf_co, conf_tk = tmpl["focal"]
                 cypher = tmpl["true_cypher"]
             else:
-                ctx = f"{qual} {tmpl['spin_context']} {tmpl['event_desc']}"
+                ctx = f"{period} {qual.lower()} {tmpl['spin_context']} {tmpl['event_desc']}"
                 focal_co, focal_tk = tmpl["retained_peer"]
                 conf_co, conf_tk = tmpl["spun_off"]
                 cypher = None
@@ -1492,7 +1809,7 @@ class FullSFTDatasetBuilder:
         logger.info(f"Generated {len(records)} Task A disambiguation records.")
         return records
 
-    def generate_task_b_borderline_records(self, count: int = 150) -> List[SFTRecord]:
+    def generate_task_b_borderline_records(self, count: int = 300) -> List[SFTRecord]:
         """Generate borderline event volatility samples with |z| near 2.0 sigma (Task B)."""
         records: List[SFTRecord] = []
         seen_prompts: Set[str] = set()
@@ -1534,7 +1851,7 @@ class FullSFTDatasetBuilder:
         logger.info(f"Generated {len(records)} Task B borderline volatility records.")
         return records
 
-    def generate_task_d_distractor_records(self, count: int = 150) -> List[SFTRecord]:
+    def generate_task_d_distractor_records(self, count: int = 300) -> List[SFTRecord]:
         """Generate multi-hop supply chain graphs with distractor paths (Task D)."""
         records: List[SFTRecord] = []
         seen_prompts: Set[str] = set()
@@ -1547,15 +1864,37 @@ class FullSFTDatasetBuilder:
             "Regional Commercial Fleet Networks",
             "Institutional Distribution Alliances",
             "Major Hospital Purchasing Consortia",
+            "Tier-1 Automotive OEMs",
+            "Commercial Aviation Operators",
+            "Wholesale Pharmaceutical Distributors",
+            "National Telecommunications Backbone Providers",
+            "Enterprise Hyperscale Data Centers",
+        ]
+
+        shock_durations = [10, 14, 18, 21, 25, 30, 45, 60]
+        qualifiers = [
+            "Following an unexpected operational incident,",
+            "According to verified supply chain monitoring intelligence,",
+            "Per real-time counterparty logistics telemetry,",
+            "Under severe acute operational disruptions,",
+            "Pursuant to vendor facility maintenance notices,",
+            "During peak seasonal inventory replenishment,",
+            "In response to unexpected regional transit delays,",
+            "Amid emergency warehouse equipment overhaul,",
         ]
 
         while len(records) < count and attempts < max_attempts:
             attempts += 1
             tmpl = self.rng.choice(DISTRACTOR_CONTAGION_TEMPLATES)
-            customer = self.rng.choice([tmpl["customer"]] + extra_customers)
+            all_customers = [tmpl["customer"]] + extra_customers + [c.company_name for c in self.constituents]
+            customer = self.rng.choice(all_customers)
             focal_name, focal_tk = tmpl["focal"]
             crit_name, crit_tk = tmpl["critical"]
             dist_name, dist_tk = tmpl["distractor"]
+
+            dur = self.rng.choice(shock_durations)
+            qual = self.rng.choice(qualifiers)
+            shock = f"{qual} {tmpl['shock']} The estimated downtime is {dur} days with an expected inventory drawdown across regional hubs."
 
             rec = self.exporter.format_task_d_distractor_contagion(
                 focal_company=focal_name,
@@ -1564,7 +1903,7 @@ class FullSFTDatasetBuilder:
                 critical_supplier_ticker=crit_tk,
                 distractor_supplier=dist_name,
                 distractor_supplier_ticker=dist_tk,
-                shock_scenario=tmpl["shock"],
+                shock_scenario=shock,
                 downstream_customer=customer,
                 gics_sector=tmpl["sector"],
             )
@@ -1578,24 +1917,39 @@ class FullSFTDatasetBuilder:
         logger.info(f"Generated {len(records)} Task D distractor contagion records.")
         return records
 
-    def generate_task_e_boundary_hedging_records(self, count: int = 150) -> List[SFTRecord]:
+    def generate_task_e_boundary_hedging_records(self, count: int = 300) -> List[SFTRecord]:
         """Generate portfolio hedging records under divergent catalyst signals (Task E)."""
         records: List[SFTRecord] = []
         seen_prompts: Set[str] = set()
         attempts = 0
         max_attempts = count * 20
 
+        qualifiers = [
+            "In response to recent market disclosures,",
+            "Following the release of updated corporate guidance,",
+            "According to consensus earnings revision telemetry,",
+            "Per real-time fundamental institutional equity analytics,",
+            "Amid conflicting macro and microeconomic indicators,",
+            "Following an audited earnings restatement,",
+            "In light of divergent trailing operating metrics,",
+            "Reflecting intermediate-term guidance revisions,",
+            "Pursuant to post-announcement equity market model updates,",
+            "In the context of multi-quarter institutional risk rebalancing,",
+        ]
+
         while len(records) < count and attempts < max_attempts:
             attempts += 1
             tmpl = self.rng.choice(BOUNDARY_HEDGING_TEMPLATES)
             comp_name, comp_tk = tmpl["company"]
-            z_offset = self.rng.uniform(-0.08, 0.08)
+            z_offset = self.rng.uniform(-0.10, 0.10)
             z_score = round(tmpl["z_score"] + z_offset, 2)
+            qual = self.rng.choice(qualifiers)
+            catalyst = f"{qual} {tmpl['catalyst']}"
 
             rec = self.exporter.format_task_e_boundary_hedging(
                 focal_company=comp_name,
                 focal_ticker=comp_tk,
-                divergent_catalyst=tmpl["catalyst"],
+                divergent_catalyst=catalyst,
                 z_score=z_score,
                 recommended_hedging=tmpl["hedge"],
                 gics_sector=tmpl["sector"],
@@ -1737,16 +2091,16 @@ class FullSFTDatasetBuilder:
             extractor_records.extend(recs_c)
 
         # Task D: Contagion Reasoning (Multi-hop shock propagation with <think>, 0 duplicates)
-        reasoner_records.extend(self.generate_task_d_contagion_records(count=400))
+        reasoner_records.extend(self.generate_task_d_contagion_records(count=800))
 
         # Task E: Portfolio Hedging & Risk Rebalancing with <think>, 0 duplicates
-        reasoner_records.extend(self.generate_task_e_hedging_records(count=400))
+        reasoner_records.extend(self.generate_task_e_hedging_records(count=800))
 
-        # Phase 2 Enhanced: Boundary, Disambiguation & Distractor Records
-        disambig_records = self.generate_task_a_disambiguation_records(count=150)
-        borderline_records = self.generate_task_b_borderline_records(count=150)
-        distractor_records = self.generate_task_d_distractor_records(count=150)
-        boundary_hedging_records = self.generate_task_e_boundary_hedging_records(count=150)
+        # Phase 2 Enhanced: Boundary, Disambiguation & Distractor Records (Doubled Ambiguous Set)
+        disambig_records = self.generate_task_a_disambiguation_records(count=300)
+        borderline_records = self.generate_task_b_borderline_records(count=300)
+        distractor_records = self.generate_task_d_distractor_records(count=300)
+        boundary_hedging_records = self.generate_task_e_boundary_hedging_records(count=300)
 
         extractor_records.extend(disambig_records)
         extractor_records.extend(borderline_records)
@@ -1754,7 +2108,7 @@ class FullSFTDatasetBuilder:
         reasoner_records.extend(boundary_hedging_records)
 
         logger.info(
-            f"Phase 2 additions injected: {len(disambig_records)} Task A disambiguation, "
+            f"Phase 2 additions injected (Doubled Ambiguous Set): {len(disambig_records)} Task A disambiguation, "
             f"{len(borderline_records)} Task B borderline, {len(distractor_records)} Task D distractor, "
             f"{len(boundary_hedging_records)} Task E boundary hedging records."
         )
