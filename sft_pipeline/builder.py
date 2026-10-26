@@ -842,6 +842,349 @@ HEDGING_SCENARIOS = [
     },
 ]
 
+# ----------------------------------------------------------------------
+# Phase 2 Scenario Templates (Hard Negative Mining, Disambiguation & Boundaries)
+# ----------------------------------------------------------------------
+SPIN_OFF_COLLISION_TEMPLATES = [
+    {
+        "focal": ("General Electric Company", "GE_HIST"),
+        "spun_off": ("GE Vernova", "GEV"),
+        "retained_peer": ("GE Aerospace", "GE"),
+        "sector": "Industrials",
+        "date": "2024-04-02",
+        "spin_context": (
+            "Pursuant to the separation transaction completed on April 2, 2024, General Electric Company spun off "
+            "GE Vernova Inc. (NYSE: GEV) to encompass its Power, Wind, and Electrification business segments. "
+            "The remaining corporate entity operates as GE Aerospace (NYSE: GE) focusing exclusively on commercial "
+            "and defense aviation propulsion systems and avionics."
+        ),
+        "event_desc": "GE Vernova (NYSE: GEV) entered into a 15-year offshore wind turbine maintenance agreement.",
+        "target_entity": ("GE Aerospace", "GE"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("General Electric Company", "GE_HIST"),
+        "spun_off": ("GE Vernova", "GEV"),
+        "retained_peer": ("GE Aerospace", "GE"),
+        "sector": "Industrials",
+        "date": "2024-04-02",
+        "spin_context": (
+            "Following the completion of its tax-free spin-off from General Electric Company on April 2, 2024, "
+            "GE Vernova Inc. (NYSE: GEV) established independent commercial operations covering gas turbines and grid solutions."
+        ),
+        "event_desc": "GE Vernova (NYSE: GEV) executed formal separation agreements with parent General Electric Company.",
+        "target_entity": ("GE Vernova", "GEV"),
+        "is_positive": True,
+        "true_cypher": "(:Company {name: 'GE Vernova', ticker: 'GEV'})-[:SPUN_OFF_FROM {effective_date: '2024-04-02'}]->(:Company {name: 'General Electric Company'})",
+    },
+    {
+        "focal": ("United Technologies Corporation", "UTX"),
+        "spun_off": ("Carrier Global Corporation", "CARR"),
+        "retained_peer": ("RTX Corporation", "RTX"),
+        "sector": "Industrials",
+        "date": "2020-04-03",
+        "spin_context": (
+            "On April 3, 2020, United Technologies Corporation completed the spin-offs of Carrier Global Corporation (NYSE: CARR) "
+            "and Otis Worldwide Corporation (NYSE: OTIS), immediately prior to merging with Raytheon Company to form RTX Corporation (NYSE: RTX)."
+        ),
+        "event_desc": "Carrier Global (NYSE: CARR) finalized a commercial HVAC equipment supply contract with regional distribution hubs.",
+        "target_entity": ("RTX Corporation", "RTX"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("United Technologies Corporation", "UTX"),
+        "spun_off": ("Otis Worldwide Corporation", "OTIS"),
+        "retained_peer": ("RTX Corporation", "RTX"),
+        "sector": "Industrials",
+        "date": "2020-04-03",
+        "spin_context": (
+            "Following the statutory separation from United Technologies Corporation on April 3, 2020, "
+            "Otis Worldwide Corporation (NYSE: OTIS) operates as an independent elevator and escalator manufacturer."
+        ),
+        "event_desc": "Otis Worldwide Corporation (NYSE: OTIS) completed its separation agreement with United Technologies Corporation.",
+        "target_entity": ("Otis Worldwide Corporation", "OTIS"),
+        "is_positive": True,
+        "true_cypher": "(:Company {name: 'Otis Worldwide Corporation', ticker: 'OTIS'})-[:SPUN_OFF_FROM {effective_date: '2020-04-03'}]->(:Company {name: 'United Technologies Corporation'})",
+    },
+    {
+        "focal": ("Novartis AG", "NVS"),
+        "spun_off": ("Alcon Inc.", "ALC"),
+        "retained_peer": ("Novartis AG", "NVS"),
+        "sector": "Health Care",
+        "date": "2019-04-09",
+        "spin_context": (
+            "On April 9, 2019, Novartis AG completed the 100% spin-off of Alcon Inc. (NYSE: ALC), its eye care devices division, "
+            "into an independently traded Swiss and American company. Novartis retained all core innovative pharmaceuticals."
+        ),
+        "event_desc": "Alcon Inc. (NYSE: ALC) received FDA 510(k) clearance for intraocular surgical phacoemulsification systems.",
+        "target_entity": ("Novartis AG", "NVS"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("Novartis AG", "NVS"),
+        "spun_off": ("Alcon Inc.", "ALC"),
+        "retained_peer": ("Novartis AG", "NVS"),
+        "sector": "Health Care",
+        "date": "2019-04-09",
+        "spin_context": (
+            "Pursuant to the Master Separation Agreement dated April 9, 2019, Alcon Inc. (NYSE: ALC) legally separated from "
+            "Novartis AG to pursue specialized ophthalmology and ophthalmic surgical solutions."
+        ),
+        "event_desc": "Alcon Inc. (NYSE: ALC) executed the separation agreement with Novartis AG.",
+        "target_entity": ("Alcon Inc.", "ALC"),
+        "is_positive": True,
+        "true_cypher": "(:Company {name: 'Alcon Inc.', ticker: 'ALC'})-[:SPUN_OFF_FROM {effective_date: '2019-04-09'}]->(:Company {name: 'Novartis AG'})",
+    },
+    {
+        "focal": ("Pfizer Inc.", "PFE"),
+        "spun_off": ("Viatris Inc.", "VTRS"),
+        "retained_peer": ("Pfizer Inc.", "PFE"),
+        "sector": "Health Care",
+        "date": "2020-11-16",
+        "spin_context": (
+            "On November 16, 2020, Pfizer Inc. spun off its Upjohn generic pharmaceuticals business, which merged with Mylan N.V. "
+            "to create Viatris Inc. (NASDAQ: VTRS). Pfizer retained its proprietary innovative biopharmaceutical pipeline."
+        ),
+        "event_desc": "Viatris Inc. (NASDAQ: VTRS) assumed primary commercial distribution of legacy Lipitor and Norvasc formulations.",
+        "target_entity": ("Pfizer Inc.", "PFE"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("Pfizer Inc.", "PFE"),
+        "spun_off": ("Viatris Inc.", "VTRS"),
+        "retained_peer": ("Pfizer Inc.", "PFE"),
+        "sector": "Health Care",
+        "date": "2020-11-16",
+        "spin_context": (
+            "Under the definitive combination agreement dated November 16, 2020, Pfizer Inc. separated its Upjohn business "
+            "which combined with Mylan to form Viatris Inc. (NASDAQ: VTRS)."
+        ),
+        "event_desc": "Viatris Inc. completed the spin-off combination from Pfizer Inc.",
+        "target_entity": ("Viatris Inc.", "VTRS"),
+        "is_positive": True,
+        "true_cypher": "(:Company {name: 'Viatris Inc.', ticker: 'VTRS'})-[:SPUN_OFF_FROM {effective_date: '2020-11-16'}]->(:Company {name: 'Pfizer Inc.'})",
+    },
+    {
+        "focal": ("Abbott Laboratories", "ABT"),
+        "spun_off": ("AbbVie Inc.", "ABBV"),
+        "retained_peer": ("Abbott Laboratories", "ABT"),
+        "sector": "Health Care",
+        "date": "2013-01-01",
+        "spin_context": (
+            "On January 1, 2013, Abbott Laboratories separated into two publicly traded companies: Abbott Laboratories (NYSE: ABT), "
+            "retaining medical devices, nutritionals, diagnostics, and branded generics; and AbbVie Inc. (NYSE: ABBV), containing "
+            "proprietary research-based specialty pharmaceuticals including Humira."
+        ),
+        "event_desc": "AbbVie Inc. (NYSE: ABBV) entered a multi-year global oncology clinical trial collaboration for antibody-drug conjugates.",
+        "target_entity": ("Abbott Laboratories", "ABT"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("Abbott Laboratories", "ABT"),
+        "spun_off": ("AbbVie Inc.", "ABBV"),
+        "retained_peer": ("Abbott Laboratories", "ABT"),
+        "sector": "Health Care",
+        "date": "2013-01-01",
+        "spin_context": (
+            "Under the statutory plan of separation effective January 1, 2013, AbbVie Inc. (NYSE: ABBV) formally separated from Abbott Laboratories."
+        ),
+        "event_desc": "AbbVie Inc. (NYSE: ABBV) completed the separation from Abbott Laboratories.",
+        "target_entity": ("AbbVie Inc.", "ABBV"),
+        "is_positive": True,
+        "true_cypher": "(:Company {name: 'AbbVie Inc.', ticker: 'ABBV'})-[:SPUN_OFF_FROM {effective_date: '2013-01-01'}]->(:Company {name: 'Abbott Laboratories'})",
+    },
+    {
+        "focal": ("3M Company", "MMM"),
+        "spun_off": ("Solventum Corporation", "SOLV"),
+        "retained_peer": ("3M Company", "MMM"),
+        "sector": "Health Care",
+        "date": "2024-04-01",
+        "spin_context": (
+            "On April 1, 2024, 3M Company completed the planned spin-off of its healthcare operations into Solventum Corporation (NYSE: SOLV). "
+            "Solventum assumed wound care, dental solutions, health information systems, and purification business units."
+        ),
+        "event_desc": "Solventum Corporation (NYSE: SOLV) contracted for dental consumables distribution across national clinical networks.",
+        "target_entity": ("3M Company", "MMM"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+    {
+        "focal": ("Johnson & Johnson", "JNJ"),
+        "spun_off": ("Kenvue Inc.", "KVUE"),
+        "retained_peer": ("Johnson & Johnson", "JNJ"),
+        "sector": "Consumer Staples",
+        "date": "2023-08-23",
+        "spin_context": (
+            "On August 23, 2023, Johnson & Johnson completed the final exchange offer separating its consumer health business, Kenvue Inc. (NYSE: KVUE). "
+            "Kenvue operates independently with self-care, skin health, and essential health brands."
+        ),
+        "event_desc": "Kenvue Inc. (NYSE: KVUE) renewed national retail stocking terms for OTC analgesics and topical ointments.",
+        "target_entity": ("Johnson & Johnson", "JNJ"),
+        "is_positive": False,
+        "true_cypher": None,
+    },
+]
+
+BORDERLINE_VOLATILITY_TEMPLATES = [
+    {
+        "sector": "Information Technology",
+        "item_code": "1.01",
+        "template": "{company} ({ticker}) announced an amended commercial cloud infrastructure supply agreement, adjusting minimum volume commitments by 6.5% with extended multi-year payment milestones.",
+        "z_center": 1.94,
+        "car_center": 2.65,
+    },
+    {
+        "sector": "Health Care",
+        "item_code": "2.02",
+        "template": "{company} ({ticker}) furnished Item 2.02 quarterly operating results exceeding consensus top-line revenue forecasts by 1.8%, while full-year operating margin guidance was adjusted by 40 basis points due to clinical trial timing.",
+        "z_center": -1.91,
+        "car_center": -2.45,
+    },
+    {
+        "sector": "Industrials",
+        "item_code": "1.02",
+        "template": "{company} ({ticker}) disclosed the mutual termination of an auxiliary sub-assembly manufacturing contract with a regional supplier, with production transitioned to primary domestic facilities.",
+        "z_center": -1.88,
+        "car_center": -2.25,
+    },
+    {
+        "sector": "Financials",
+        "item_code": "4.02",
+        "template": "{company} ({ticker}) disclosed an accounting classification adjustment regarding collateralized loan valuation reserves under Item 4.02, confirming no restatement is required for cash balances or net interest income.",
+        "z_center": -2.06,
+        "car_center": -3.15,
+    },
+    {
+        "sector": "Consumer Discretionary",
+        "item_code": "5.02",
+        "template": "{company} ({ticker}) announced an orderly senior leadership succession under Item 5.02, with the Chief Operating Officer transitioning to an advisory capacity over six months.",
+        "z_center": 1.86,
+        "car_center": 2.10,
+    },
+    {
+        "sector": "Energy",
+        "item_code": "2.01",
+        "template": "{company} ({ticker}) completed the non-core disposition of mature shallow-water production acreage under Item 2.01 for $210 million in net proceeds, reallocating proceeds to Permian gathering infrastructure.",
+        "z_center": 2.05,
+        "car_center": 2.95,
+    },
+    {
+        "sector": "Communication Services",
+        "item_code": "1.01",
+        "template": "{company} ({ticker}) executed an amended digital content syndication agreement with regional telecommunications carriers, modifying carriage fees by 4.2% across international territories.",
+        "z_center": 1.89,
+        "car_center": 2.30,
+    },
+    {
+        "sector": "Materials",
+        "item_code": "2.02",
+        "template": "{company} ({ticker}) reported preliminary quarterly shipments reflecting resilient specialized chemical demand offset by cyclical pricing pressure in basic polymers.",
+        "z_center": -1.95,
+        "car_center": -2.60,
+    },
+]
+
+DISTRACTOR_CONTAGION_TEMPLATES = [
+    {
+        "sector": "Information Technology",
+        "focal": ("Apple Inc.", "AAPL"),
+        "critical": ("Taiwan Semiconductor Manufacturing Company", "TSM"),
+        "distractor": ("Avery Dennison Corp", "AVY"),
+        "shock": "Severe localized warehouse fire destroys secondary cardboard packaging inventory and barcoding label materials at Avery Dennison, delaying label shipments by 25 days.",
+        "customer": "Best Buy Co., Inc.",
+    },
+    {
+        "sector": "Industrials",
+        "focal": ("The Boeing Company", "BA"),
+        "critical": ("Spirit AeroSystems", "SPR"),
+        "distractor": ("Cintas Corporation", "CTAS"),
+        "shock": "Facility maintenance workers union strike interrupts deliveries of technician uniforms, cleanroom garments, and floor absorbent pads from Cintas for 14 days.",
+        "customer": "United Airlines Holdings",
+    },
+    {
+        "sector": "Health Care",
+        "focal": ("Eli Lilly and Company", "LLY"),
+        "critical": ("Lonza Group", "LONN"),
+        "distractor": ("Sealed Air Corporation", "SEE"),
+        "shock": "Extrusion line machinery malfunction at Sealed Air disrupts production of secondary protective bubble wrap and thermal insulation blankets for 20 days.",
+        "customer": "McKesson Corporation",
+    },
+    {
+        "sector": "Automotive & Clean Tech",
+        "focal": ("Tesla, Inc.", "TSLA"),
+        "critical": ("Panasonic Energy", "PCRFY"),
+        "distractor": ("Fastenal Company", "FAST"),
+        "shock": "Port container backlog delays delivery of standard non-structural zinc-plated washers and commodity interior clips from Fastenal for 12 days.",
+        "customer": "Hertz Global Holdings",
+    },
+    {
+        "sector": "Energy",
+        "focal": ("Exxon Mobil Corporation", "XOM"),
+        "critical": ("Baker Hughes", "BKR"),
+        "distractor": ("Grainger (W.W.) Inc.", "GWW"),
+        "shock": "Regional distribution center flood at Grainger temporarily holds shipments of general-purpose protective gloves and disposable eye protection for 10 days.",
+        "customer": "Marathon Petroleum Corporation",
+    },
+    {
+        "sector": "Consumer Discretionary",
+        "focal": ("Amazon.com, Inc.", "AMZN"),
+        "critical": ("Intel Corporation", "INTC"),
+        "distractor": ("Office Depot / ODP", "ODP"),
+        "shock": "ERP database upgrade outage at auxiliary stationery vendor ODP freezes automated fulfillment of corporate office paper supplies for 14 days.",
+        "customer": "Enterprise Cloud Government Accounts",
+    },
+]
+
+BOUNDARY_HEDGING_TEMPLATES = [
+    {
+        "sector": "Information Technology",
+        "company": ("Microsoft Corporation", "MSFT"),
+        "catalyst": "Quarterly cloud commercial bookings exceeded consensus by 3.5%, but hyperscale data center capex guidance was increased by $4.2B with extended depreciation schedules, creating market uncertainty (|z| = 1.92)",
+        "z_score": 1.92,
+        "hedge": "Structure a zero-cost equity collar (buying 92% strike floor put funded by selling 108% strike cap call) on baseline equity holding",
+    },
+    {
+        "sector": "Health Care",
+        "company": ("Pfizer Inc.", "PFE"),
+        "catalyst": "Phase III trial achieved primary endpoint for novel oncology conjugate, but regulatory pricing guidance indicates mandatory 16% statutory rebates, resulting in borderline price action (|z| = -1.89)",
+        "z_score": -1.89,
+        "hedge": "Maintain core long equity stake while acquiring out-of-the-money put spreads on the Health Care Select Sector SPDR Fund (XLV)",
+    },
+    {
+        "sector": "Financials",
+        "company": ("Bank of America Corporation", "BAC"),
+        "catalyst": "Net interest margin expanded by 5 bps, but commercial real estate credit provision was increased by $340M, generating borderline volatility (|z| = -1.95)",
+        "z_score": -1.95,
+        "hedge": "Execute an interest rate swaption collar to hedge against curve steepening while trimming high-yield loan exposure",
+    },
+    {
+        "sector": "Industrials",
+        "company": ("Caterpillar Inc.", "CAT"),
+        "catalyst": "Mining machinery order backlog rose 7%, but independent dealer machinery inventory destocking signaled softening regional earthmoving demand, producing borderline trading volatility (|z| = 1.88)",
+        "z_score": 1.88,
+        "hedge": "Implement a paired long-short equity hedge: long core holding in CAT versus short industrial machinery ETF basket (XLI)",
+    },
+    {
+        "sector": "Consumer Discretionary",
+        "company": ("Nike, Inc.", "NKE"),
+        "catalyst": "Direct-to-consumer digital revenue rose 4.5%, but wholesale partner order cancellations in Greater China accelerated, driving borderline price volatility (|z| = -1.96)",
+        "z_score": -1.96,
+        "hedge": "Maintain core position while executing delta-neutral put calendar spreads to hedge intermediate earnings revision volatility",
+    },
+    {
+        "sector": "Energy",
+        "company": ("Chevron Corporation", "CVX"),
+        "catalyst": "Permian production volumes reached record levels, but international deepwater affiliate maintenance outage deferred 25,000 boe/d, yielding borderline volatility (|z| = 1.91)",
+        "z_score": 1.91,
+        "hedge": "Hold core dividend position while buying prompt-month Brent crude put options to insulate against spot crack spread softening",
+    },
+]
+
 
 class FullSFTDatasetBuilder:
     """Orchestrates large-scale multi-sector SFT dataset generation for unified Qwen2.5-7B."""
@@ -1098,6 +1441,175 @@ class FullSFTDatasetBuilder:
         logger.info(f"Generated {len(records)} unique Task E portfolio hedging records (0 duplicates).")
         return records
 
+    def generate_task_a_disambiguation_records(self, count: int = 150) -> List[SFTRecord]:
+        """Generate corporate spin-off & entity collision disambiguation samples (Task A)."""
+        records: List[SFTRecord] = []
+        qualifiers = [
+            "Pursuant to audited SEC regulatory disclosures on Form 10-K,",
+            "Under Item 1.01 of the Form 8-K current report,",
+            "According to the definitive corporate separation agreement,",
+            "In official disclosures filed with the Securities and Exchange Commission,",
+            "As disclosed in the statutory separation and distribution plan,",
+            "Per the audited notes to consolidated financial statements,",
+        ]
+
+        seen_prompts: Set[str] = set()
+        attempts = 0
+        max_attempts = count * 20
+
+        while len(records) < count and attempts < max_attempts:
+            attempts += 1
+            tmpl = self.rng.choice(SPIN_OFF_COLLISION_TEMPLATES)
+            qual = self.rng.choice(qualifiers)
+
+            if tmpl["is_positive"]:
+                ctx = f"{qual} {tmpl['spin_context']} {tmpl['event_desc']}"
+                focal_co, focal_tk = tmpl["spun_off"]
+                conf_co, conf_tk = tmpl["focal"]
+                cypher = tmpl["true_cypher"]
+            else:
+                ctx = f"{qual} {tmpl['spin_context']} {tmpl['event_desc']}"
+                focal_co, focal_tk = tmpl["retained_peer"]
+                conf_co, conf_tk = tmpl["spun_off"]
+                cypher = None
+
+            rec = self.exporter.format_task_a_disambiguation(
+                focal_company=focal_co,
+                focal_ticker=focal_tk,
+                confusable_company=conf_co,
+                confusable_ticker=conf_tk,
+                relationship_context=ctx,
+                true_relation_cypher=cypher,
+                gics_sector=tmpl["sector"],
+            )
+
+            prompt_sig = rec.prompt.strip()
+            if prompt_sig in seen_prompts:
+                continue
+            seen_prompts.add(prompt_sig)
+            records.append(rec)
+
+        logger.info(f"Generated {len(records)} Task A disambiguation records.")
+        return records
+
+    def generate_task_b_borderline_records(self, count: int = 150) -> List[SFTRecord]:
+        """Generate borderline event volatility samples with |z| near 2.0 sigma (Task B)."""
+        records: List[SFTRecord] = []
+        seen_prompts: Set[str] = set()
+        attempts = 0
+        max_attempts = count * 20
+
+        while len(records) < count and attempts < max_attempts:
+            attempts += 1
+            tmpl = self.rng.choice(BORDERLINE_VOLATILITY_TEMPLATES)
+            sec = tmpl["sector"]
+            candidates = self.constituents_by_sector.get(sec, self.constituents)
+            if not candidates:
+                candidates = self.constituents
+
+            comp = self.rng.choice(candidates)
+            narrative = tmpl["template"].format(company=comp.company_name, ticker=comp.ticker)
+
+            z_offset = self.rng.uniform(-0.12, 0.12)
+            z_score = round(tmpl["z_center"] + z_offset, 2)
+            car_offset = self.rng.uniform(-0.35, 0.35)
+            car_3d = round(tmpl["car_center"] + car_offset, 2)
+
+            rec = self.exporter.format_task_b_borderline_volatility(
+                company_name=comp.company_name,
+                ticker=comp.ticker,
+                event_narrative=narrative,
+                item_code=tmpl["item_code"],
+                car_3d_pct=car_3d,
+                z_score=z_score,
+                gics_sector=sec,
+            )
+
+            prompt_sig = rec.prompt.strip()
+            if prompt_sig in seen_prompts:
+                continue
+            seen_prompts.add(prompt_sig)
+            records.append(rec)
+
+        logger.info(f"Generated {len(records)} Task B borderline volatility records.")
+        return records
+
+    def generate_task_d_distractor_records(self, count: int = 150) -> List[SFTRecord]:
+        """Generate multi-hop supply chain graphs with distractor paths (Task D)."""
+        records: List[SFTRecord] = []
+        seen_prompts: Set[str] = set()
+        attempts = 0
+        max_attempts = count * 20
+
+        extra_customers = [
+            "Global Enterprise Retail Channels",
+            "Defense Logistics Agency",
+            "Regional Commercial Fleet Networks",
+            "Institutional Distribution Alliances",
+            "Major Hospital Purchasing Consortia",
+        ]
+
+        while len(records) < count and attempts < max_attempts:
+            attempts += 1
+            tmpl = self.rng.choice(DISTRACTOR_CONTAGION_TEMPLATES)
+            customer = self.rng.choice([tmpl["customer"]] + extra_customers)
+            focal_name, focal_tk = tmpl["focal"]
+            crit_name, crit_tk = tmpl["critical"]
+            dist_name, dist_tk = tmpl["distractor"]
+
+            rec = self.exporter.format_task_d_distractor_contagion(
+                focal_company=focal_name,
+                focal_ticker=focal_tk,
+                critical_supplier=crit_name,
+                critical_supplier_ticker=crit_tk,
+                distractor_supplier=dist_name,
+                distractor_supplier_ticker=dist_tk,
+                shock_scenario=tmpl["shock"],
+                downstream_customer=customer,
+                gics_sector=tmpl["sector"],
+            )
+
+            prompt_sig = rec.prompt.strip()
+            if prompt_sig in seen_prompts:
+                continue
+            seen_prompts.add(prompt_sig)
+            records.append(rec)
+
+        logger.info(f"Generated {len(records)} Task D distractor contagion records.")
+        return records
+
+    def generate_task_e_boundary_hedging_records(self, count: int = 150) -> List[SFTRecord]:
+        """Generate portfolio hedging records under divergent catalyst signals (Task E)."""
+        records: List[SFTRecord] = []
+        seen_prompts: Set[str] = set()
+        attempts = 0
+        max_attempts = count * 20
+
+        while len(records) < count and attempts < max_attempts:
+            attempts += 1
+            tmpl = self.rng.choice(BOUNDARY_HEDGING_TEMPLATES)
+            comp_name, comp_tk = tmpl["company"]
+            z_offset = self.rng.uniform(-0.08, 0.08)
+            z_score = round(tmpl["z_score"] + z_offset, 2)
+
+            rec = self.exporter.format_task_e_boundary_hedging(
+                focal_company=comp_name,
+                focal_ticker=comp_tk,
+                divergent_catalyst=tmpl["catalyst"],
+                z_score=z_score,
+                recommended_hedging=tmpl["hedge"],
+                gics_sector=tmpl["sector"],
+            )
+
+            prompt_sig = rec.prompt.strip()
+            if prompt_sig in seen_prompts:
+                continue
+            seen_prompts.add(prompt_sig)
+            records.append(rec)
+
+        logger.info(f"Generated {len(records)} Task E boundary hedging records.")
+        return records
+
     def apply_cold_start_curation(
         self,
         samples: List[ManifoldSample],
@@ -1229,6 +1741,23 @@ class FullSFTDatasetBuilder:
 
         # Task E: Portfolio Hedging & Risk Rebalancing with <think>, 0 duplicates
         reasoner_records.extend(self.generate_task_e_hedging_records(count=400))
+
+        # Phase 2 Enhanced: Boundary, Disambiguation & Distractor Records
+        disambig_records = self.generate_task_a_disambiguation_records(count=150)
+        borderline_records = self.generate_task_b_borderline_records(count=150)
+        distractor_records = self.generate_task_d_distractor_records(count=150)
+        boundary_hedging_records = self.generate_task_e_boundary_hedging_records(count=150)
+
+        extractor_records.extend(disambig_records)
+        extractor_records.extend(borderline_records)
+        reasoner_records.extend(distractor_records)
+        reasoner_records.extend(boundary_hedging_records)
+
+        logger.info(
+            f"Phase 2 additions injected: {len(disambig_records)} Task A disambiguation, "
+            f"{len(borderline_records)} Task B borderline, {len(distractor_records)} Task D distractor, "
+            f"{len(boundary_hedging_records)} Task E boundary hedging records."
+        )
 
         # 4. Partition into 80/10/10 Train/Val/Test Splits with zero split leakage
         summary = self.exporter.export_full_sft_splits(extractor_records, reasoner_records)

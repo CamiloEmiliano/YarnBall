@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock
 
-from sft_pipeline import SFTDatasetExporter, SFTRecord, ManifoldSample, AnnotatedTriple
+from sft_pipeline import (
+    FullSFTDatasetBuilder,
+    SFTDatasetExporter,
+    SFTRecord,
+    ManifoldSample,
+    AnnotatedTriple,
+)
 from universe import SP500Constituent
 
 
@@ -163,3 +169,132 @@ def test_export_full_sft_splits_80_10_10(mock_universe_mgr, tmp_path: Path):
     with open(tmp_path / "yarnball_sft_train.jsonl", "r", encoding="utf-8") as f:
         first_line = json.loads(f.readline())
     assert first_line["schema_version"] == "1.0.0"
+
+
+def test_format_task_a_disambiguation(mock_universe_mgr, tmp_path: Path):
+    exporter = SFTDatasetExporter(output_dir=tmp_path, universe_mgr=mock_universe_mgr)
+
+    # Positive spin-off target
+    rec_pos = exporter.format_task_a_disambiguation(
+        focal_company="GE Vernova",
+        focal_ticker="GEV",
+        confusable_company="General Electric Company",
+        confusable_ticker="GE_HIST",
+        relationship_context="GE Vernova executed formal separation agreements with General Electric Company.",
+        true_relation_cypher="(:Company {name: 'GE Vernova', ticker: 'GEV'})-[:SPUN_OFF_FROM]->(:Company {name: 'General Electric Company'})",
+        gics_sector="Industrials",
+    )
+    assert rec_pos.metadata["task_type"] == "EXTRACT_SEC_GRAPH"
+    assert rec_pos.metadata["is_disambiguation"] is True
+    assert rec_pos.metadata["focal_entity"] == "GE Vernova"
+    assert "SPUN_OFF_FROM" in rec_pos.target_completion
+
+    # Negative target (none) when querying unrelated peer
+    rec_neg = exporter.format_task_a_disambiguation(
+        focal_company="GE Aerospace",
+        focal_ticker="GE",
+        confusable_company="GE Vernova",
+        confusable_ticker="GEV",
+        relationship_context="GE Vernova entered into a 15-year offshore wind turbine maintenance agreement.",
+        true_relation_cypher=None,
+        gics_sector="Industrials",
+    )
+    assert rec_neg.target_completion == "(none)"
+
+
+def test_format_task_b_borderline_volatility(mock_universe_mgr, tmp_path: Path):
+    exporter = SFTDatasetExporter(output_dir=tmp_path, universe_mgr=mock_universe_mgr)
+
+    # Borderline volatility (|z| < 2.0) -> MIXED_UNCERTAIN_SIGNAL
+    rec_border = exporter.format_task_b_borderline_volatility(
+        company_name="Microsoft Corporation",
+        ticker="MSFT",
+        event_narrative="Quarterly cloud revenue beat expectations but capex expanded.",
+        item_code="1.01",
+        car_3d_pct=2.45,
+        z_score=1.92,
+        gics_sector="Information Technology",
+    )
+    assert rec_border.metadata["task_type"] == "EXTRACT_NEWS_EVENT"
+    assert rec_border.metadata["is_borderline_volatility"] is True
+    assert "MIXED_UNCERTAIN_SIGNAL" in rec_border.target_completion
+    assert "BORDERLINE_SIGNIFICANT" in rec_border.target_completion
+    assert "car_3d: 0.0245" in rec_border.target_completion
+
+    # Significant volatility (|z| >= 2.0) -> EXPANDING_BULLISH / STATISTICALLY_SIGNIFICANT
+    rec_sig = exporter.format_task_b_borderline_volatility(
+        company_name="Microsoft Corporation",
+        ticker="MSFT",
+        event_narrative="Quarterly results exceeded all guidance metrics.",
+        item_code="2.02",
+        car_3d_pct=3.80,
+        z_score=2.12,
+        gics_sector="Information Technology",
+    )
+    assert "EXPANDING_BULLISH" in rec_sig.target_completion
+    assert "STATISTICALLY_SIGNIFICANT" in rec_sig.target_completion
+
+
+def test_format_task_d_distractor_contagion(mock_universe_mgr, tmp_path: Path):
+    exporter = SFTDatasetExporter(output_dir=tmp_path, universe_mgr=mock_universe_mgr)
+
+    rec = exporter.format_task_d_distractor_contagion(
+        focal_company="Apple Inc.",
+        focal_ticker="AAPL",
+        critical_supplier="TSMC",
+        critical_supplier_ticker="TSM",
+        distractor_supplier="Avery Dennison Corp",
+        distractor_supplier_ticker="AVY",
+        shock_scenario="Warehouse fire destroys cardboard packaging inventory at Avery Dennison.",
+        downstream_customer="Best Buy Co., Inc.",
+        gics_sector="Information Technology",
+    )
+
+    assert rec.metadata["task_type"] == "CONTAGION_REASONING"
+    assert rec.metadata["has_distractor_path"] is True
+    assert "<think>" in rec.target_completion
+    assert "</think>" in rec.target_completion
+    assert "CONTAINED_MINIMAL_CONTAGION" in rec.target_completion
+    assert "Avery Dennison" in rec.prompt
+    assert "TSMC" in rec.prompt
+
+
+def test_format_task_e_boundary_hedging(mock_universe_mgr, tmp_path: Path):
+    exporter = SFTDatasetExporter(output_dir=tmp_path, universe_mgr=mock_universe_mgr)
+
+    rec = exporter.format_task_e_boundary_hedging(
+        focal_company="Pfizer Inc.",
+        focal_ticker="PFE",
+        divergent_catalyst="Phase III trial achieved primary endpoint, but regulatory rebates mandate 16% discount (|z| = -1.89)",
+        z_score=-1.89,
+        recommended_hedging="Out-of-the-money put spreads on XLV",
+        gics_sector="Health Care",
+    )
+
+    assert rec.metadata["task_type"] == "PORTFOLIO_RECOMMENDATION"
+    assert rec.metadata["is_boundary_hedging"] is True
+    assert "<think>" in rec.target_completion
+    assert "</think>" in rec.target_completion
+    assert "Strategic Portfolio Recommendation" in rec.target_completion
+    assert "Out-of-the-money put spreads on XLV" in rec.target_completion
+
+
+def test_builder_phase2_generators(mock_universe_mgr, tmp_path: Path):
+    builder = FullSFTDatasetBuilder(output_dir=tmp_path, universe_mgr=mock_universe_mgr, seed=42)
+
+    disambig = builder.generate_task_a_disambiguation_records(count=15)
+    assert len(disambig) == 15
+    assert all(r.metadata["is_disambiguation"] for r in disambig)
+
+    border = builder.generate_task_b_borderline_records(count=15)
+    assert len(border) == 15
+    assert all(r.metadata["is_borderline_volatility"] for r in border)
+
+    distract = builder.generate_task_d_distractor_records(count=15)
+    assert len(distract) == 15
+    assert all(r.metadata["has_distractor_path"] for r in distract)
+
+    hedging = builder.generate_task_e_boundary_hedging_records(count=15)
+    assert len(hedging) == 15
+    assert all(r.metadata["is_boundary_hedging"] for r in hedging)
+
