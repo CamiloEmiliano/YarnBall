@@ -84,22 +84,9 @@ The **YarnBall SFT Dataset** is mathematically engineered to transform `Qwen2.5-
 
 This dataset is explicitly designed and diagnosed using the **Dataset Cartography** framework (Swayamdipta et al., EMNLP 2020) and **Example Forgetting** dynamics (Toneva et al., ICLR 2019).
 
-```
-Confidence
-  1.0 +---------------------------------------------------------------+
-      |  [EASY-TO-LEARN] (~52%)             |  [AMBIGUOUS] (~35%)     |
-      |  - Direct 10-K subsidiary trees     |  - Multi-hop contagion  |
-      |  - Standard Text-to-Cypher queries  |  - Borderline CAR (|z| ~2)|
-      |  - Canonical 8-K filings            |  - Guidance divergence  |
-  0.7 +-------------------------------------+-------------------------+
-      |  [HARD-TO-LEARN] (~13%)             |                         |
-      |  - Spin-off corporate collisions    |                         |
-      |  - Commentary co-occurrence negatives|                         |
-      |  - Debt covenant technical defaults |                         |
-  0.0 +-------------------------------------+-------------------------+
-      0.0                                  0.15                      0.5
-                                                                 Variability
-```
+<p align="center">
+  <img src="https://huggingface.co/datasets/CamiloEmiliano/yarnball-sft/resolve/main/assets/dataset_cartography_map.png" alt="YarnBall Dataset Cartography Architecture" width="100%">
+</p>
 
 ### 2.1 The Three Pillars of the Dataset Architecture
 
