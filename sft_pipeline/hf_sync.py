@@ -101,14 +101,7 @@ Confidence
                                                                  Variability
 ```
 
-### 2.1 Post-Mortem of Run v1 (The 100% "Easy" Collapse)
-During initial baseline fine-tuning on an A100 GPU (Run v1, 936 steps), the generated Data Map collapsed into an uninformative cluster at (Variability ≈ 0.00, Confidence ≈ 1.00), with 100% of samples categorized as "Easy-to-Learn". Three structural root causes were decomposed:
-
-1. **Missing Step 0 (Zero-Shot Base Prior)**: Training dynamics were logged strictly at Epochs 1, 2, and 3 (steps 312, 624, 936). By step 312, the model had completed 10,000 forward passes and fully converged. The critical learning struggle occurred between steps 0 and 100, which went unprobed.
-2. **Whole-Sequence Teacher-Forcing Dilution**: Cross-entropy loss was averaged across entire completion sequences. Over 80% of tokens in JSON and Cypher completions consist of invariant formatting boilerplate (brackets, quotes, whitespace, and static keywords like `MATCH`, `WHERE`, `RETURN`). 99.99% accuracy on whitespace drowned out learning errors on informative payload tokens.
-3. **Unimodal Deterministic Grounding**: Absence of borderline volatility thresholds, corporate spin-off collisions, or supply chain distractor paths presented the model with zero epistemic contradiction.
-
-### 2.2 The Three Pillars of the v2 Architecture
+### 2.1 The Three Pillars of the Dataset Architecture
 
 #### Pillar 1: Focal Payload Token Masking
 Rather than naive whole-sequence averaging, training dynamics probing isolates cross-entropy evaluation exclusively to informational payload tokens:
@@ -126,7 +119,7 @@ Dynamics probing is decoupled from epoch boundaries. An 8-checkpoint evaluation 
 #### Pillar 3: Doubled Ambiguous Cohort (Optimizing OOD Transferability)
 A foundational finding of Swayamdipta et al. (EMNLP 2020) is that **training on ambiguous samples (high variability, located near the decision boundary) produces the greatest out-of-distribution (OOD) generalization and task transferability**, substantially outperforming models trained on easy instances or random subsets.
 
-To maximize transferability, the ambiguous cohort in YarnBall v2 has been systematically doubled:
+To maximize transferability, the ambiguous cohort in YarnBall has been systematically doubled:
 - **Task D Contagion Reasoning**: Scaled from 400 to **800** deep `<think>` reasoning records.
 - **Task E Portfolio Hedging**: Scaled from 400 to **800** institutional risk-hedging `<think>` records.
 - **Task D Distractor Pruning**: Scaled from 150 to **300** multi-hop graphs with distractor paths.
