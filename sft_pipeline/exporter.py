@@ -332,6 +332,218 @@ class SFTDatasetExporter:
         )
 
     # ----------------------------------------------------------------------
+    # Phase 2 Enhanced Boundary, Disambiguation & Distractor Formatters
+    # ----------------------------------------------------------------------
+    def format_task_a_disambiguation(
+        self,
+        focal_company: str,
+        focal_ticker: str,
+        confusable_company: str,
+        confusable_ticker: str,
+        relationship_context: str,
+        true_relation_cypher: Optional[str] = None,
+        gics_sector: str = "Industrials",
+    ) -> SFTRecord:
+        """
+        Task A Disambiguation: Entity collision & corporate spin-off resolution.
+        Tests model's precision in distinguishing historically affiliated or similarly named entities.
+        """
+        prompt = (
+            f"<|extract_sec_graph|>\n"
+            f"Document: SEC 10-K / Form 8-K Filing ({gics_sector})\n"
+            f"Context: {relationship_context}\n\n"
+            f"Triples:"
+        )
+
+        target = true_relation_cypher if true_relation_cypher else "(none)"
+        sample_id = f"TASK_A_DISAMBIG_{focal_ticker}_{confusable_ticker}_{hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:8]}"
+
+        return SFTRecord(
+            sample_id=sample_id,
+            prompt=prompt,
+            target_completion=target,
+            metadata={
+                "task_type": "EXTRACT_SEC_GRAPH",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
+                "cognitive_tier": "MEDIUM",
+                "difficulty_score": 0.78,
+                "is_disambiguation": True,
+                "focal_entity": focal_company,
+                "confusable_entity": confusable_company,
+                "gics_sector": gics_sector,
+                "provenance": "ENTITY_COLLISION_MINING",
+            },
+        )
+
+    def format_task_b_borderline_volatility(
+        self,
+        company_name: str,
+        ticker: str,
+        event_narrative: str,
+        item_code: str,
+        car_3d_pct: float,
+        z_score: float,
+        gics_sector: str = "Financials",
+    ) -> SFTRecord:
+        """
+        Task B Borderline Volatility: Events with Cumulative Abnormal Returns near the 2.0 sigma boundary.
+        Forces the model to accurately classify mixed or borderline material events.
+        """
+        prompt = (
+            f"<|extract_news_event|>\n"
+            f"Filing: SEC Form 8-K (Item {item_code}) - {company_name} ({ticker})\n"
+            f"Event Context:\n{event_narrative}\n"
+            f"Market Telemetry: 3-Day CAR = {car_3d_pct:+.2f}%, Volatility Z-Score = {z_score:+.2f}\n\n"
+            f"Directional Event:"
+        )
+
+        polarity = "MIXED_UNCERTAIN_SIGNAL" if abs(z_score) < 2.0 else ("EXPANDING_BULLISH" if z_score > 0 else "CONTRACTING_BEARISH")
+        materiality = "BORDERLINE_SIGNIFICANT" if abs(z_score) < 2.0 else "STATISTICALLY_SIGNIFICANT"
+
+        target = (
+            f"(:Company {{name: '{company_name}', ticker: '{ticker}'}})"
+            f"-[:FILED {{item_code: '{item_code}', materiality: '{materiality}', polarity: '{polarity}', "
+            f"car_3d: {car_3d_pct / 100.0:.4f}, z_score: {z_score:.2f}}}]->"
+            f"(:Event {{type: 'FORM_8K_FILING', item_code: '{item_code}'}})"
+        )
+
+        sample_id = f"TASK_B_BORDER_{ticker}_{item_code}_{hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:8]}"
+
+        return SFTRecord(
+            sample_id=sample_id,
+            prompt=prompt,
+            target_completion=target,
+            metadata={
+                "task_type": "EXTRACT_NEWS_EVENT",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
+                "cognitive_tier": "MEDIUM",
+                "difficulty_score": 0.82,
+                "is_borderline_volatility": True,
+                "z_score": z_score,
+                "car_3d_pct": car_3d_pct,
+                "gics_sector": gics_sector,
+                "provenance": "VOLATILITY_BOUNDARY_TELEMETRY",
+            },
+        )
+
+    def format_task_d_distractor_contagion(
+        self,
+        focal_company: str,
+        focal_ticker: str,
+        critical_supplier: str,
+        critical_supplier_ticker: str,
+        distractor_supplier: str,
+        distractor_supplier_ticker: str,
+        shock_scenario: str,
+        downstream_customer: str,
+        gics_sector: str = "Information Technology",
+    ) -> SFTRecord:
+        """
+        Task D Distractor Contagion: Multi-hop graph with critical vs distractor supplier paths.
+        The shock hits the distractor; <think> reasoning must prune the false-positive propagation.
+        """
+        prompt = (
+            f"<|contagion_reasoning|>\n"
+            f"Sector: {gics_sector}\n"
+            f"Scenario: {shock_scenario}\n"
+            f"Knowledge Graph Subgraph Context:\n"
+            f"({critical_supplier}:Company {{ticker: '{critical_supplier_ticker}'}})-[:SUPPLIES_TO {{nature: 'Core Processors', materiality: 'CRITICAL_TIER_1'}}]->({focal_company}:Company {{ticker: '{focal_ticker}'}})\n"
+            f"({distractor_supplier}:Company {{ticker: '{distractor_supplier_ticker}'}})-[:SUPPLIES_TO {{nature: 'Secondary Packaging', materiality: 'NON_CRITICAL_SECONDARY'}}]->({focal_company}:Company {{ticker: '{focal_ticker}'}})\n"
+            f"({focal_company}:Company {{ticker: '{focal_ticker}'}})-[:SUPPLIES_TO {{nature: 'Enterprise Hardware'}}]->({downstream_customer}:Company)\n\n"
+            f"Question: Analyze whether the disruption at {distractor_supplier} ({distractor_supplier_ticker}) propagates to halt production or delivery to {downstream_customer}."
+        )
+
+        reasoning_thought = (
+            f"<think>\n"
+            f"1. Identify the disruption source: The operational shock exclusively impacts {distractor_supplier} ({distractor_supplier_ticker}).\n"
+            f"2. Evaluate component criticality: {distractor_supplier} supplies secondary packaging with standardized specs and pre-existing multi-vendor redundancy.\n"
+            f"3. Verify critical path operational status: {critical_supplier} ({critical_supplier_ticker}) remains fully operational at 100% capacity with zero supply curtailment.\n"
+            f"4. Assess focal buffer inventory: {focal_company} maintains a 90-day buffer inventory of packaging consumables, allowing seamless vendor transition.\n"
+            f"5. Conclude contagion propagation: Downstream delivery to {downstream_customer} is fully protected; the shock does NOT propagate.\n"
+            f"</think>\n"
+        )
+
+        completion = (
+            f"{reasoning_thought}"
+            f"**Contagion Analysis Summary**:\n"
+            f"- **Shock Isolation**: Disruption at {distractor_supplier} is contained to non-critical secondary inputs.\n"
+            f"- **Critical Path Integrity**: Core production driven by {critical_supplier} operates normally.\n"
+            f"- **Contagion Verdict**: `CONTAINED_MINIMAL_CONTAGION`. Zero material disruption to downstream deliveries for {downstream_customer}."
+        )
+
+        sample_id = f"TASK_D_DISTRACT_{focal_ticker}_{distractor_supplier_ticker}_{hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:8]}"
+
+        return SFTRecord(
+            sample_id=sample_id,
+            prompt=prompt,
+            target_completion=completion,
+            metadata={
+                "task_type": "CONTAGION_REASONING",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
+                "cognitive_tier": "HIGH",
+                "difficulty_score": 0.92,
+                "has_distractor_path": True,
+                "gics_sector": gics_sector,
+                "provenance": "DISTRACTOR_CONTAGION_SYNTHESIS",
+            },
+        )
+
+    def format_task_e_boundary_hedging(
+        self,
+        focal_company: str,
+        focal_ticker: str,
+        divergent_catalyst: str,
+        z_score: float,
+        recommended_hedging: str,
+        gics_sector: str = "Health Care",
+    ) -> SFTRecord:
+        """
+        Task E Boundary Hedging: Portfolio decision under divergent guidance vs GAAP metrics.
+        """
+        prompt = (
+            f"<|portfolio_recommendation|>\n"
+            f"Entity: {focal_company} ({focal_ticker})\n"
+            f"Sector: {gics_sector}\n"
+            f"Market Telemetry: Post-event Volatility Z-score = {z_score:+.2f} (Borderline Significance).\n"
+            f"Fundamental Signal: {divergent_catalyst}.\n"
+            f"Objective: Formulate a balanced institutional risk-hedging strategy addressing the signal divergence."
+        )
+
+        reasoning_thought = (
+            f"<think>\n"
+            f"1. Evaluate signal divergence: Market reaction is ambiguous (|z| = {abs(z_score):.2f} near 2.0 threshold) due to conflicting fundamental disclosures.\n"
+            f"2. Assess downside asymmetric risk: Headline guidance remains positive, but GAAP operating margin compression suggests latent structural cost inflation.\n"
+            f"3. Structure capital-efficient risk management: Rather than outright divestment, deploy delta-neutral hedging to isolate core operational exposure.\n"
+            f"</think>\n"
+        )
+
+        completion = (
+            f"{reasoning_thought}"
+            f"**Strategic Portfolio Recommendation**:\n"
+            f"- **Action**: Hold baseline position in {focal_ticker} while establishing a tactical delta-neutral hedge.\n"
+            f"- **Hedging Strategy**: {recommended_hedging}.\n"
+            f"- **Rationale**: Protects against latent earnings revision risk without prematurely triggering capital gains on structural winners."
+        )
+
+        sample_id = f"TASK_E_BOUND_{focal_ticker}_{hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:8]}"
+
+        return SFTRecord(
+            sample_id=sample_id,
+            prompt=prompt,
+            target_completion=completion,
+            metadata={
+                "task_type": "PORTFOLIO_RECOMMENDATION",
+                "assigned_student": "QWEN_2.5_7B_UNIFIED",
+                "cognitive_tier": "HIGH",
+                "difficulty_score": 0.86,
+                "is_boundary_hedging": True,
+                "z_score": z_score,
+                "gics_sector": gics_sector,
+                "provenance": "DIVERGENT_SIGNAL_HEDGING",
+            },
+        )
+
+    # ----------------------------------------------------------------------
     # Partitioning & Export Pipeline
     # ----------------------------------------------------------------------
     def export_full_sft_splits(
