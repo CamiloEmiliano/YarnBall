@@ -33,7 +33,11 @@ from dotenv import load_dotenv
 # Resolve project paths
 PIPELINE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = PIPELINE_DIR.parent
-QWEN_ROOT = PROJECT_ROOT.parent.parent / "QwenSFT_YarnBall"
+QWEN_ROOT = (
+    PROJECT_ROOT.parent / "QwenSFT_YarnBall"
+    if (PROJECT_ROOT.parent / "QwenSFT_YarnBall").exists()
+    else PROJECT_ROOT.parent.parent / "QwenSFT_YarnBall"
+)
 
 # Load environment configuration
 load_dotenv(PROJECT_ROOT / ".env")
