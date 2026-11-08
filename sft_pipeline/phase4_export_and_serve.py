@@ -723,21 +723,14 @@ def apply_runtime_guardrails(prompt: str, prediction: str, task_type: str) -> st
     1. Roll up known Exhibit 21 operating subsidiary CIKs (e.g. DISH DBS 0001001811 -> 0001001082)
        when the parent entity is referenced.
     2. Enforce the bounded Axis-2 Relational Ontology on Tasks A and B (`EXTRACT_SEC_GRAPH`,
-       `EXTRACT_NEWS_EVENT`): if the model emits a descriptive non-schema commentary predicate
-       (e.g. `COMPARES_TO`, `RISES_WITH_BENCHMARK`, `TRADED_IN`, `REACTS_TO`) outside
-       `CANONICAL_EXTRACTION_RELATIONS`, prune the non-schema triple to `(none)`.
+       `EXTRACT_NEWS_EVENT`):
+       - Automatically repairs lifecycle termination predicates (e.g. [:TERMINATED]) to canonical
+         relations with status: 'TERMINATED' instead of pruning valid extractions to (none).
+       - Prunes non-schema descriptive commentary predicates (e.g. [:COMPARES_TO]) to (none).
     """
-    cleaned = prediction.strip()
-    for sub_cik, parent_cik in SUBSIDIARY_TO_PARENT_CIK_MAP.items():
-        if sub_cik in cleaned and parent_cik not in cleaned:
-            cleaned = cleaned.replace(sub_cik, parent_cik)
+    from ontology.guardrails import DEFAULT_ONTOLOGY_GATE
 
-    if task_type in ("EXTRACT_SEC_GRAPH", "EXTRACT_NEWS_EVENT") and cleaned.lower() != "(none)":
-        rels = re.findall(r"-\[:([A-Z0-9_]+)", cleaned)
-        if not rels or not any(r in CANONICAL_EXTRACTION_RELATIONS for r in rels):
-            return "(none)"
-
-    return cleaned
+    return DEFAULT_ONTOLOGY_GATE.apply_guardrails(prediction, task_type)
 
 
 def validate_cypher_syntax(text: str) -> Tuple[bool, str]:
