@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from pydantic import BaseModel, Field
+
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail, ValidationResult
 from retrieval.temporal import TemporalQueryFilter
 from sft_pipeline.rejection_queue import ErrorStage, RuntimeRejectionQueue
@@ -35,8 +37,7 @@ logger = logging.getLogger("retrieval.pipeline")
 MAX_SUBGRAPH_EDGES = 25
 
 
-@dataclass
-class AnalystQuery:
+class AnalystQuery(BaseModel):
     """Input query specification for the GraphRAG pipeline."""
 
     query: str
@@ -48,42 +49,28 @@ class AnalystQuery:
     market_telemetry: Optional[Dict[str, Any]] = None
 
 
-@dataclass
-class PipelineResult:
+class PipelineResult(BaseModel):
     """Unified response object from the end-to-end GraphRAG pipeline."""
 
     query: str
-    as_of_date: Optional[str]
-    cypher_query: Optional[str]
+    as_of_date: Optional[str] = None
+    cypher_query: Optional[str] = None
     is_valid_query: bool
-    refusal_reason: Optional[str]
-    retrieved_subgraph: List[Dict[str, Any]]
+    refusal_reason: Optional[str] = None
+    retrieved_subgraph: List[Dict[str, Any]] = Field(default_factory=list)
     verbalized_subgraph: str
     contagion_verdict: str
-    contagion_think_trace: Optional[str]
-    hedging_recommendation: Optional[str]
-    hedging_think_trace: Optional[str]
-    latency_breakdown_ms: Dict[str, float]
+    contagion_think_trace: Optional[str] = None
+    hedging_recommendation: Optional[str] = None
+    hedging_think_trace: Optional[str] = None
+    latency_breakdown_ms: Dict[str, float] = Field(default_factory=dict)
     total_latency_ms: float
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert pipeline result to JSON-serializable dictionary."""
-        return {
-            "query": self.query,
-            "as_of_date": self.as_of_date,
-            "cypher_query": self.cypher_query,
-            "is_valid_query": self.is_valid_query,
-            "refusal_reason": self.refusal_reason,
-            "edge_count": len(self.retrieved_subgraph),
-            "retrieved_subgraph": self.retrieved_subgraph,
-            "verbalized_subgraph": self.verbalized_subgraph,
-            "contagion_verdict": self.contagion_verdict,
-            "contagion_think_trace": self.contagion_think_trace,
-            "hedging_recommendation": self.hedging_recommendation,
-            "hedging_think_trace": self.hedging_think_trace,
-            "latency_breakdown_ms": self.latency_breakdown_ms,
-            "total_latency_ms": self.total_latency_ms,
-        }
+        d = self.model_dump()
+        d["edge_count"] = len(self.retrieved_subgraph)
+        return d
 
 
 class HopOrderedSubgraphVerbalizer:

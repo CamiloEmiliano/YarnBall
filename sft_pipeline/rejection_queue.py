@@ -250,7 +250,7 @@ def log_runtime_rejection(
     )
 
 
-def main():
+def main() -> None:
     """CLI utility for inspecting stats and exporting DPO candidate datasets."""
     parser = argparse.ArgumentParser(description="YarnBall Runtime Rejection Queue CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)

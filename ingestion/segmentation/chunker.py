@@ -27,7 +27,7 @@ class FilingMetadata:
     period: Optional[str] = None
     filing_date: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Enforce zero-padded 10-digit CIK
         self.cik = str(self.cik).strip().zfill(10)
         if self.ticker:

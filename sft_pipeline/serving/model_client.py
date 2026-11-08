@@ -79,7 +79,7 @@ class YarnBallModelClient:
         timeout_sec: float = 120.0,
         transport_fn: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
     ):
-        base_url = ollama_url or os.getenv("OLLAMA_API_BASE", "http://127.0.0.1:11434")
+        base_url = ollama_url or os.getenv("OLLAMA_API_BASE") or "http://127.0.0.1:11434"
         if not base_url.endswith("/api/generate"):
             self.ollama_url = f"{base_url.rstrip('/')}/api/generate"
         else:
@@ -205,7 +205,8 @@ class YarnBallModelClient:
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            data: Dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+            return data
 
     @staticmethod
     def demux_cot(

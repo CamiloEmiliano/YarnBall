@@ -14,8 +14,11 @@ client = TestClient(app)
 
 @pytest.fixture(scope="module")
 def insert_test_embeddings():
-    # Insert two dummy node embeddings into PGVECTOR
+    # Insert two dummy node embeddings into PGVECTOR if connection is available
     from knowledge_graph.db import pg_connection
+    conn_ctx = pg_connection()
+    if conn_ctx is None:
+        pytest.skip("PostgreSQL connection not available for test_retriever")
     create_sql = """
         CREATE EXTENSION IF NOT EXISTS vector;
         CREATE TABLE IF NOT EXISTS node_embeddings (
@@ -33,7 +36,9 @@ def insert_test_embeddings():
         SET embedding = EXCLUDED.embedding;
     """
     dummy_vec = [0.0] * 768
-    with pg_connection() as conn:
+    with conn_ctx as conn:
+        if conn is None:
+            pytest.skip("PostgreSQL connection not available for test_retriever")
         with conn.cursor() as cur:
             cur.execute(create_sql)
             cur.execute("DELETE FROM node_embeddings;")
@@ -42,10 +47,13 @@ def insert_test_embeddings():
         conn.commit()
     yield
     # Cleanup after tests
-    with pg_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM node_embeddings WHERE node_id IN ('TestNode1','TestNode2');")
-        conn.commit()
+    cleanup_ctx = pg_connection()
+    if cleanup_ctx is not None:
+        with cleanup_ctx as conn:
+            if conn is not None:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM node_embeddings WHERE node_id IN ('TestNode1','TestNode2');")
+                conn.commit()
 
 
 def test_search_endpoint(insert_test_embeddings):

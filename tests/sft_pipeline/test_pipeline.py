@@ -278,9 +278,10 @@ def test_hf_sync_behavior(tmp_path: Path):
 
     # 1. Missing token raises ValueError when HfApi is present
     with patch.object(hf_mod, "HfApi", MagicMock()), patch.object(hf_mod, "create_repo", MagicMock()):
-        with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(ValueError, match="No Hugging Face token"):
-                upload_to_huggingface(data_dir=tmp_path, token="")
+        with patch.object(hf_mod, "get_token", return_value=None):
+            with patch.dict("os.environ", {}, clear=True):
+                with pytest.raises(ValueError, match="No Hugging Face token"):
+                    upload_to_huggingface(data_dir=tmp_path, token="")
 
     # 2. Successful mock upload
     mock_api = MagicMock()

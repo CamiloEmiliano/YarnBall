@@ -101,11 +101,11 @@ class TemporalQueryFilter:
 
         # If anonymous relationships exist: -[:TYPE]->
         anon_pattern = re.compile(r"-\[:([a-zA-Z0-9_|*.]+)(\s*\{[^}]*\})?\]->")
-        m = anon_pattern.search(cypher)
-        if m:
-            rel_type = m.group(1)
-            props = m.group(2) or ""
-            old_span = m.group(0)
+        match = anon_pattern.search(cypher)
+        if match:
+            rel_type = match.group(1)
+            props = match.group(2) or ""
+            old_span = match.group(0)
             new_span = f"-[{default_var}:{rel_type}{props}]->"
             rewritten = cypher.replace(old_span, new_span, 1)
             return rewritten, [default_var]

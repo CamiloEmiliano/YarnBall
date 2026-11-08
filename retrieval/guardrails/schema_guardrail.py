@@ -237,7 +237,7 @@ class CypherASTWhitelistGuardrail:
         words = set(re.findall(r"\b[A-Z_]+\b", masked_query.upper()))
         forbidden_matches = words.intersection(FORBIDDEN_MUTATING_KEYWORDS)
         if forbidden_matches:
-            violations = [
+            mutating_violations = [
                 SchemaViolation(
                     "MUTATING_KEYWORD",
                     kw,
@@ -248,7 +248,7 @@ class CypherASTWhitelistGuardrail:
             return ValidationResult(
                 is_valid=False,
                 sanitized_query=None,
-                violations=violations,
+                violations=mutating_violations,
                 refusal_response="(none)",
             )
 
