@@ -317,7 +317,7 @@ def fetch_remote_artifacts(dest_dir: Optional[Path] = None) -> Path:
     return target
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="YarnBall SFT Pipeline Telemetry & Remote Monitoring")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 

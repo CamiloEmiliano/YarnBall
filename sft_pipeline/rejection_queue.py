@@ -39,8 +39,10 @@ class ErrorStage:
     UNKNOWN = "UNKNOWN"
 
 
-@dataclass
-class RejectionRecord:
+from pydantic import BaseModel, Field
+
+
+class RejectionRecord(BaseModel):
     """Structured record of a single guardrail failure or rejected generation."""
 
     task_id: str
@@ -48,14 +50,14 @@ class RejectionRecord:
     raw_completion: str
     error_stage: str
     error_message: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     sample_id: Optional[str] = None
-    timestamp: str = field(
+    timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        return self.model_dump()
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> RejectionRecord:

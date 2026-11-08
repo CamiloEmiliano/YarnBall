@@ -66,7 +66,7 @@ class HistoricalSECHarvester:
         ticker_dir = self.output_dir / clean_ticker
         ticker_dir.mkdir(parents=True, exist_ok=True)
 
-        summary = {
+        summary: Dict[str, Any] = {
             "ticker": clean_ticker,
             "years_processed": [],
             "10k_count": 0,

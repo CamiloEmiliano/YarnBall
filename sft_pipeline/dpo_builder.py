@@ -228,9 +228,9 @@ class InflectionSliceDPOBuilder:
         the rigid 4-bullet SFT memorization while preserving exact causal accuracy
         and the downstream `**Contagion Analysis Summary**` contract.
         """
-        orig = row["target_completion"]
+        orig = str(row["target_completion"])
         if "</think>" not in orig:
-            return orig
+            return str(orig)
 
         think_part, summary_part = orig.split("</think>", 1)
         # Keep the canonical summary header (`**Contagion Analysis Summary**:`) consistent
@@ -317,7 +317,7 @@ class InflectionSliceDPOBuilder:
                 )
             return f"{new_think}\n{summary_clean}"
 
-        return orig
+        return str(orig)
 
     def _build_task_d_mode_bleed_rejected(self, row: Dict[str, Any], variant: int) -> str:
         """

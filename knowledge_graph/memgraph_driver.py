@@ -11,6 +11,7 @@ import os
 import logging
 import atexit
 from pathlib import Path
+from typing import Any
 
 # Load environment variables
 try:
@@ -26,10 +27,10 @@ try:
     from neo4j import GraphDatabase, Driver
     from neo4j.exceptions import ServiceUnavailable, Neo4jError
 except ImportError:  # pragma: no cover
-    GraphDatabase = None
-    Driver = None
-    ServiceUnavailable = Exception
-    Neo4jError = Exception
+    GraphDatabase = None  # type: ignore[assignment,misc,no-redef]
+    Driver = None  # type: ignore[assignment,misc,no-redef]
+    ServiceUnavailable = Exception  # type: ignore[assignment,misc,no-redef]
+    Neo4jError = Exception  # type: ignore[assignment,misc,no-redef]
 
 
 class _DummySession:

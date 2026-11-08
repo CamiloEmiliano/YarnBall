@@ -116,7 +116,9 @@ Synthesize a grounded answer with citations:"""
                 with httpx.Client(timeout=45.0) as client:
                     resp = client.post(endpoint, json=payload)
                     resp.raise_for_status()
-                    return resp.json()["choices"][0]["message"]["content"].strip()
+                    data = resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                    return str(content).strip()
             except Exception as exc:
                 logger.warning("Ollama /v1 API call failed: %s; trying /api/generate", exc)
 
@@ -136,7 +138,8 @@ Synthesize a grounded answer with citations:"""
                     },
                 )
                 resp.raise_for_status()
-                return resp.json().get("response", "").strip()
+                data = resp.json()
+                return str(data.get("response", "")).strip()
         except Exception as exc:
             logger.warning("Ollama generation request failed: %s", exc)
             return "Based on the current financial knowledge graph, no verified relationships were found for this query."

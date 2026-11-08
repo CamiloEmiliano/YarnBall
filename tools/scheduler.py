@@ -8,14 +8,14 @@ try:
     from apscheduler.triggers.cron import CronTrigger
 except ImportError:
     # Stub when apscheduler is not installed in local environment
-    class BackgroundScheduler:
+    class BackgroundScheduler:  # type: ignore[no-redef]
         def add_job(self, *args, **kwargs):
             pass
         def start(self):
             pass
         def shutdown(self):
             pass
-    class CronTrigger:
+    class CronTrigger:  # type: ignore[no-redef]
         def __init__(self, *args, **kwargs):
             pass
 
@@ -30,11 +30,8 @@ try:
         logger.info("Executing scheduled ingestion job...")
         asyncio.run(task_runner.run_all())
 except ImportError:
-    try:
-        from jobs.ingest_job import run_ingestion
-    except ImportError:
-        def run_ingestion():
-            logger.info("Ingestion job placeholder executed")
+    def run_ingestion():  # type: ignore[no-redef]
+        logger.info("Ingestion job placeholder executed")
 
 
 def schedule_jobs(scheduler: BackgroundScheduler):

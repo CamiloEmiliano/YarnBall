@@ -57,14 +57,9 @@ except ImportError:
 from ingestion.market import MarketContextIntegrator
 
 # Formal Curation Engine Integration
-try:
-    from curation.cold_start.pipeline import ColdStartCurationPipeline
-    from curation.active_learning.cartographer import DatasetCartographer
-    from curation.contracts import ActiveLearningPartition
-except ImportError:
-    from graphrag_finance.curation.cold_start.pipeline import ColdStartCurationPipeline
-    from graphrag_finance.curation.active_learning.cartographer import DatasetCartographer
-    from graphrag_finance.curation.contracts import ActiveLearningPartition
+from curation.cold_start.pipeline import ColdStartCurationPipeline
+from curation.active_learning.cartographer import DatasetCartographer
+from curation.contracts import ActiveLearningPartition
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,7 +73,7 @@ OUTPUT_SFT_DIR = PROJECT_ROOT / "data" / "sft"
 # ----------------------------------------------------------------------
 # Multi-Sector Curated Relational Skeletons across all 11 GICS Sectors
 # ----------------------------------------------------------------------
-MULTI_SECTOR_RELATION_TEMPLATES = [
+MULTI_SECTOR_RELATION_TEMPLATES: List[Dict[str, Any]] = [
     # 1. Information Technology
     {
         "sector": "Information Technology",
@@ -727,7 +722,7 @@ MULTI_SECTOR_RELATION_TEMPLATES = [
 ]
 
 # Market Commentary Passages for Co-Occurrence Hard Negative Synthesis
-COMMENTARY_TEMPLATES = [
+COMMENTARY_TEMPLATES: List[str] = [
     "Both {comp_a} (${tick_a}) and {comp_b} (${tick_b}) traded higher today alongside the broader {benchmark} benchmark as macroeconomic inflation prints cooled across major markets. Institutional asset managers noted balanced rotation across large-cap holdings.",
     "Treasury yields pressured megacap valuations including {comp_a} (${tick_a}) and {comp_b} (${tick_b}) as the Federal Reserve signaled higher terminal policy rates for longer durations amid resilient labor market data.",
     "Equity index rebalancing triggered elevated trading volumes in {comp_a} (${tick_a}) and {comp_b} (${tick_b}) as passive ETF index funds adjusted sector weightings at the market close.",
@@ -845,7 +840,7 @@ HEDGING_SCENARIOS = [
 # ----------------------------------------------------------------------
 # Phase 2 Scenario Templates (Hard Negative Mining, Disambiguation & Boundaries)
 # ----------------------------------------------------------------------
-SPIN_OFF_COLLISION_TEMPLATES = [
+SPIN_OFF_COLLISION_TEMPLATES: List[Dict[str, Any]] = [
     {
         "focal": ("General Electric Company", "GE_HIST"),
         "spun_off": ("GE Vernova", "GEV"),
@@ -1118,7 +1113,7 @@ SPIN_OFF_COLLISION_TEMPLATES = [
     },
 ]
 
-BORDERLINE_VOLATILITY_TEMPLATES = [
+BORDERLINE_VOLATILITY_TEMPLATES: List[Dict[str, Any]] = [
     {
         "sector": "Information Technology",
         "item_code": "1.01",
@@ -1233,7 +1228,7 @@ BORDERLINE_VOLATILITY_TEMPLATES = [
     },
 ]
 
-DISTRACTOR_CONTAGION_TEMPLATES = [
+DISTRACTOR_CONTAGION_TEMPLATES: List[Dict[str, Any]] = [
     {
         "sector": "Information Technology",
         "focal": ("Apple Inc.", "AAPL"),
@@ -1348,7 +1343,7 @@ DISTRACTOR_CONTAGION_TEMPLATES = [
     },
 ]
 
-BOUNDARY_HEDGING_TEMPLATES = [
+BOUNDARY_HEDGING_TEMPLATES: List[Dict[str, Any]] = [
     {
         "sector": "Information Technology",
         "company": ("Microsoft Corporation", "MSFT"),
@@ -2006,8 +2001,8 @@ class FullSFTDatasetBuilder:
             p_path = Path(partition_or_path)
             if p_path.suffix == ".jsonl":
                 cartographer = DatasetCartographer()
-                dynamics = cartographer.parse_dynamics_log(p_path)
-                partition = cartographer.filter_for_active_learning(dynamics)
+                coordinates = cartographer.map_dataset(p_path)
+                partition = cartographer.filter_active_learning(coordinates)
             else:
                 with open(p_path, "r", encoding="utf-8") as f:
                     partition = ActiveLearningPartition(**json.load(f))
@@ -2126,7 +2121,7 @@ class FullSFTDatasetBuilder:
         return summary
 
 
-def main():
+def main() -> None:
     builder = FullSFTDatasetBuilder()
     builder.build_dataset()
 

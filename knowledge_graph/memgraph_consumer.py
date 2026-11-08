@@ -50,7 +50,10 @@ def _deserialize_message(value: bytes | None) -> dict[str, Any] | None:
     if value is None:
         return None
     try:
-        return json.loads(value.decode("utf-8"))
+        parsed = json.loads(value.decode("utf-8"))
+        if isinstance(parsed, dict):
+            return parsed
+        return {"__malformed__": True, "raw": repr(value)}
     except Exception as exc:
         logger.warning("Malformed message in deserializer: %s", exc)
         return {"__malformed__": True, "raw": repr(value), "error": str(exc)}

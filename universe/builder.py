@@ -97,7 +97,7 @@ def get_historical_turnover_records() -> list[dict]:
     ]
 
 
-def main(wiki_html_path: Path = WIKI_HTML_PATH, output_path: Path = OUTPUT_PATH):
+def main(wiki_html_path: Path = WIKI_HTML_PATH, output_path: Path = OUTPUT_PATH) -> None:
     logger.info(f"Extracting S&P 500 constituents from {wiki_html_path}")
     current_constituents = extract_wiki_constituents(wiki_html_path)
     logger.info(f"Parsed {len(current_constituents)} current constituents.")

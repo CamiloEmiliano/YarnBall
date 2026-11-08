@@ -71,7 +71,9 @@ def _clean_json_response(raw_text: str) -> dict:
 
     # 2. Try direct JSON parse
     try:
-        return json.loads(cleaned)
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
         pass
 
@@ -79,7 +81,9 @@ def _clean_json_response(raw_text: str) -> dict:
     match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group(1))
+            parsed = json.loads(match.group(1))
+            if isinstance(parsed, dict):
+                return parsed
         except Exception:
             pass
 

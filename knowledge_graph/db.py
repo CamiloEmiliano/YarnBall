@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ except ImportError:
 
 OperationalError = getattr(psycopg, "OperationalError", Exception) if psycopg else Exception
 
-def _build_dsn(database: str = None) -> str:
+def _build_dsn(database: Optional[str] = None) -> str:
     """Construct a clean DSN for PostgreSQL, respecting custom database names."""
     target_db = database or os.getenv("FINANCIAL_RAG_DB", "financial_rag")
     url = os.getenv("POSTGRES_URL")
@@ -29,13 +30,13 @@ def _build_dsn(database: str = None) -> str:
     port = os.getenv("POSTGRES_PORT", "5432")
     return f"postgresql://{user}:{password}@{host}:{port}/{target_db}"
 
-def pg_connection(database: str = None):
+def pg_connection(database: Optional[str] = None):
     """Return a PostgreSQL connection.
 
     Prefers tools.init_db._connect_db, then falls back to direct DSN connection.
     Returns _MockConnection for offline test environments if the DB is unreachable.
     """
-    target_db = database or os.getenv("FINANCIAL_RAG_DB", "financial_rag")
+    target_db = database or os.getenv("FINANCIAL_RAG_DB") or "financial_rag"
     try:
         from tools.init_db import _connect_db
         return _connect_db(target_db)

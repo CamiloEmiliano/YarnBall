@@ -16,10 +16,7 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 
-try:
-    from curation.contracts import CartographyCoordinate, CartographyRegion
-except ImportError:
-    from graphrag_finance.curation.contracts import CartographyCoordinate, CartographyRegion
+from curation.contracts import CartographyCoordinate, CartographyRegion
 
 
 class DataMapVisualizer:

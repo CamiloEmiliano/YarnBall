@@ -1,6 +1,7 @@
 import json
 import math
 from pathlib import Path
+from typing import Dict, List
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
@@ -83,8 +84,8 @@ task_info = {
     },
 }
 
-by_task_step = {k: {s: [] for s in steps} for k in task_info.keys()}
-by_guid = {}
+by_task_step: Dict[str, Dict[int, List[float]]] = {k: {s: [] for s in steps} for k in task_info.keys()}
+by_guid: Dict[str, List[float]] = {}
 
 for r in records:
     st = r["step"]
@@ -233,7 +234,7 @@ ax4.set_ylabel("Confidence (Mean Seq Prob)", fontsize=11)
 ax4.grid(True)
 ax4.legend(loc="lower left", framealpha=0.4, fontsize=9.5)
 
-fig.tight_layout(rect=[0, 0, 1, 0.95])
+fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
 
 out_dash = OUT_DIR / "training_dashboard.png"
 qwen_dash = QWEN_OUT_DIR / "training_dashboard.png"

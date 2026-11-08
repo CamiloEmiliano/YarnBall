@@ -117,7 +117,7 @@ def main() -> None:
 
     ingestor = EarningsTranscriptIngestor()
 
-    sample_records = [
+    sample_records: List[Dict[str, Any]] = [
         {
             "ticker": "AAPL",
             "fiscal_year": 2024,

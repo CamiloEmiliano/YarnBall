@@ -19,7 +19,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from dotenv import load_dotenv
 
@@ -89,7 +89,7 @@ def provision_instance(offer_id: Optional[int] = None, disk_gb: int = 60) -> Dic
     existing = get_active_instance()
     if existing:
         print(f"Active instance already exists: ID {existing.get('id')} ({existing.get('gpu_name')})")
-        return existing
+        return cast(Dict[str, Any], existing)
 
     if offer_id is None:
         offers = search_a100_offers()
@@ -124,7 +124,7 @@ def provision_instance(offer_id: Optional[int] = None, disk_gb: int = 60) -> Dic
         raise RuntimeError(f"Failed to create instance: {res.stderr or res.stdout}")
     out = json.loads(res.stdout)
     print(f"Created Vast.ai instance: {json.dumps(out)}")
-    return out
+    return cast(Dict[str, Any], out)
 
 
 def wait_for_ssh(timeout_sec: int = 360) -> Dict[str, Any]:
@@ -148,7 +148,7 @@ def wait_for_ssh(timeout_sec: int = 360) -> Dict[str, Any]:
                         ping = run_ssh_command("echo READY", ssh_host=ssh_host, ssh_port=ssh_port, timeout=10)
                         if ping.returncode == 0 and "READY" in ping.stdout:
                             print("SSH connection established!")
-                            return inst
+                            return cast(Dict[str, Any], inst)
                     except Exception:
                         pass
         time.sleep(10)

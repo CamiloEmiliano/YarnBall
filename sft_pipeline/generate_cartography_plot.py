@@ -15,7 +15,8 @@ out_jpg = assets_dir / "dataset_cartography_map.jpg"
 
 # High-resolution canvas: 18x11 inches @ 160 DPI -> 2880x1760 px
 fig = plt.figure(figsize=(18, 11), facecolor="#0B0F19")
-ax = fig.add_axes([0.095, 0.135, 0.865, 0.75], facecolor="#0D1322")
+ax = fig.add_axes([0.095, 0.135, 0.865, 0.75])  # type: ignore[call-overload]
+ax.set_facecolor("#0D1322")
 
 # Set limits with comfortable margins
 ax.set_xlim(-0.015, 0.515)

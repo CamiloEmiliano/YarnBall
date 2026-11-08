@@ -8,7 +8,6 @@ CIK mappings, index turnover (additions/deletions), and PostgreSQL synchronizati
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
 from datetime import date, datetime
 import json
 import logging
@@ -16,6 +15,8 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional
+from pydantic.dataclasses import dataclass
+from dataclasses import asdict
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

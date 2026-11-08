@@ -8,7 +8,7 @@ import argparse
 import os
 from pathlib import Path
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 # Dynamically determine project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -28,9 +28,9 @@ except ImportError:
 try:
     from huggingface_hub import HfApi, create_repo, get_token
 except ImportError:
-    HfApi = None
-    create_repo = None
-    get_token = None
+    HfApi = None  # type: ignore[assignment,misc,no-redef]
+    create_repo = None  # type: ignore[assignment,misc,no-redef]
+    get_token = None  # type: ignore[assignment,misc,no-redef]
 
 
 DATASET_CARD_TEMPLATE = """---
@@ -408,7 +408,7 @@ def upload_dpo_to_huggingface(
     return f"https://huggingface.co/datasets/{target_repo_id}"
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Upload YarnBall SFT & DPO datasets to Hugging Face Hub")
     parser.add_argument(
         "--target",

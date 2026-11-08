@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Any, Union
 import numpy as np
 
 from curation.cold_start.minhash_lsh import MinHashLSHDeduplicator
@@ -68,7 +68,7 @@ class ColdStartCurationPipeline:
             records, text_key=text_key, id_key=id_key
         )
 
-        pruned_semdedup = []
+        pruned_semdedup: List[Dict[str, Any]] = []
         after_semdedup = after_minhash
 
         # Stage 2: Semantic Deduplication (if embeddings are provided)
@@ -78,18 +78,19 @@ class ColdStartCurationPipeline:
                 (rec.get(id_key) or rec.get("guid") or str(idx)): idx
                 for idx, rec in enumerate(records)
             }
-            active_rows = [
+            active_rows_opt = [
                 guid_to_row.get(rec.get(id_key) or rec.get("guid") or "")
                 for rec in after_minhash
                 if (rec.get(id_key) or rec.get("guid") or "") in guid_to_row
             ]
+            active_rows: List[int] = [r for r in active_rows_opt if r is not None]
             if len(active_rows) == len(after_minhash):
                 sub_embeddings = embeddings[active_rows]
                 after_semdedup, pruned_semdedup = self.semantic_dedup.deduplicate_with_embeddings(
                     after_minhash, sub_embeddings, id_key=id_key, text_key=text_key
                 )
 
-        pruned_coreset = []
+        pruned_coreset: List[Dict[str, Any]] = []
         final_retained = after_semdedup
 
         # Stage 3: Submodular Coreset Selection (if embeddings available)
@@ -98,11 +99,12 @@ class ColdStartCurationPipeline:
                 (rec.get(id_key) or rec.get("guid") or str(idx)): idx
                 for idx, rec in enumerate(records)
             }
-            active_rows = [
+            active_rows_opt = [
                 guid_to_row.get(rec.get(id_key) or rec.get("guid") or "")
                 for rec in after_semdedup
                 if (rec.get(id_key) or rec.get("guid") or "") in guid_to_row
             ]
+            active_rows = [r for r in active_rows_opt if r is not None]
             if len(active_rows) == len(after_semdedup):
                 sub_embeddings = embeddings[active_rows]
                 final_retained, pruned_coreset = self.coreset_selector.select_coreset(

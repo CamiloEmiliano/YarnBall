@@ -14,28 +14,12 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional
 
-try:
-    from .reification import (
-        AnnotatedTriple,
-        CRITICAL_MATERIALITY_TERMS,
-        MaterialityTier,
-        PolarityAxis,
-    )
-except ImportError:
-    try:
-        from ontology.reification import (
-            AnnotatedTriple,
-            CRITICAL_MATERIALITY_TERMS,
-            MaterialityTier,
-            PolarityAxis,
-        )
-    except ImportError:
-        from graphrag_finance.ontology.reification import (
-            AnnotatedTriple,
-            CRITICAL_MATERIALITY_TERMS,
-            MaterialityTier,
-            PolarityAxis,
-        )
+from ontology.reification import (
+    AnnotatedTriple,
+    CRITICAL_MATERIALITY_TERMS,
+    MaterialityTier,
+    PolarityAxis,
+)
 
 # ----------------------------------------------------------------------
 # Polarity Lexical Triggers (Semantic Frame Anchors)

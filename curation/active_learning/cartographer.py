@@ -20,18 +20,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 import numpy as np
 
-try:
-    from curation.contracts import (
-        ActiveLearningPartition,
-        CartographyCoordinate,
-        CartographyRegion,
-    )
-except ImportError:
-    from graphrag_finance.curation.contracts import (
-        ActiveLearningPartition,
-        CartographyCoordinate,
-        CartographyRegion,
-    )
+from curation.contracts import (
+    ActiveLearningPartition,
+    CartographyCoordinate,
+    CartographyRegion,
+)
 
 
 class DatasetCartographer:

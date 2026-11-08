@@ -17,44 +17,24 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import date
 
-try:
-    from ontology.schema import (
-        ONTOLOGY_SCHEMA,
-        SYMMETRIC_RELATIONSHIPS,
-        DEFAULT_ALLOWED_LABELS,
-    )
-    from ontology.validation import (
-        GENERIC_NOUN_STOPLIST,
-        is_generic_placeholder,
-        validate_and_orient_triple,
-        PROVENANCE_CONFIDENCE_MAP,
-        compute_edge_confidence,
-        detect_and_break_ownership_cycles,
-        parse_iso_date,
-        validate_temporal_consistency,
-        resolve_edge_state_transitions,
-        BENCHMARK_TOP_COMPANIES,
-        check_degree_anomaly_quarantine,
-    )
-except ImportError:
-    from graphrag_finance.ontology.schema import (
-        ONTOLOGY_SCHEMA,
-        SYMMETRIC_RELATIONSHIPS,
-        DEFAULT_ALLOWED_LABELS,
-    )
-    from graphrag_finance.ontology.validation import (
-        GENERIC_NOUN_STOPLIST,
-        is_generic_placeholder,
-        validate_and_orient_triple,
-        PROVENANCE_CONFIDENCE_MAP,
-        compute_edge_confidence,
-        detect_and_break_ownership_cycles,
-        parse_iso_date,
-        validate_temporal_consistency,
-        resolve_edge_state_transitions,
-        BENCHMARK_TOP_COMPANIES,
-        check_degree_anomaly_quarantine,
-    )
+from ontology.schema import (
+    ONTOLOGY_SCHEMA,
+    SYMMETRIC_RELATIONSHIPS,
+    DEFAULT_ALLOWED_LABELS,
+)
+from ontology.validation import (
+    GENERIC_NOUN_STOPLIST,
+    is_generic_placeholder,
+    validate_and_orient_triple,
+    PROVENANCE_CONFIDENCE_MAP,
+    compute_edge_confidence,
+    detect_and_break_ownership_cycles,
+    parse_iso_date,
+    validate_temporal_consistency,
+    resolve_edge_state_transitions,
+    BENCHMARK_TOP_COMPANIES,
+    check_degree_anomaly_quarantine,
+)
 
 logger = logging.getLogger("graph_quality_controls")
 

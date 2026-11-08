@@ -4,6 +4,8 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Callable, Optional, TypeVar, cast
+
 try:
     import psycopg2
 except ImportError:
@@ -12,37 +14,43 @@ try:
     from dotenv import load_dotenv
 except ImportError:
     # dotenv not available; define no-op
-    def load_dotenv(*args, **kwargs):
-        pass
+    def load_dotenv(  # type: ignore[misc]
+        dotenv_path: Any = None,
+        stream: Any = None,
+        verbose: bool = False,
+        override: bool = False,
+        interpolate: bool = True,
+        encoding: Optional[str] = None,
+    ) -> bool:
+        return False
 try:
     from tenacity import retry, stop_after_attempt, wait_exponential
 except ImportError:
     # tenacity not installed; provide no-op decorators and helpers
-    def retry(*dargs, **dkwargs):
-        def decorator(fn):
+    F = TypeVar("F", bound=Callable[..., Any])
+    def retry(*dargs: Any, **dkwargs: Any) -> Callable[[F], F]:  # type: ignore[no-redef]
+        def decorator(fn: F) -> F:
             return fn
         return decorator
-    def stop_after_attempt(n):
+    def stop_after_attempt(n: int) -> Any:  # type: ignore[no-redef]
         return None
-    def wait_exponential(*args, **kwargs):
+    def wait_exponential(*args: Any, **kwargs: Any) -> Any:  # type: ignore[no-redef]
         return None
 
 class KafkaProducerFallback:
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         raise RuntimeError("kafka-python is required for queue publishing")
 
-    def send(self, *args, **kwargs):
+    def send(self, *args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("kafka-python is required for queue publishing")
 
     def close(self) -> None:
         return None
 
 try:
-    from kafka import KafkaProducer as KafkaProducerType
-except ImportError:  # pragma: no cover - exercised in minimal environments
-    KafkaProducerType = KafkaProducerFallback
-
-KafkaProducer = KafkaProducerType
+    from kafka import KafkaProducer  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover
+    KafkaProducer = KafkaProducerFallback  # type: ignore[misc,assignment]
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 from .init_db import get_dsn

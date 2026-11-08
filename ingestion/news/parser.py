@@ -21,12 +21,12 @@ from urllib.parse import urlparse
 try:
     import trafilatura
 except ImportError:
-    trafilatura = None
+    trafilatura = None  # type: ignore[assignment,no-redef]
 
 try:
     from tools.init_db import _connect_db
 except ImportError:
-    _connect_db = None
+    _connect_db = None  # type: ignore[assignment,no-redef]
 
 logger = logging.getLogger("ingestion.news.parser")
 

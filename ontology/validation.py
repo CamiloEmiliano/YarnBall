@@ -23,13 +23,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-try:
-    from .schema import ONTOLOGY_SCHEMA
-except ImportError:
-    try:
-        from ontology.schema import ONTOLOGY_SCHEMA
-    except ImportError:
-        from graphrag_finance.ontology.schema import ONTOLOGY_SCHEMA
+from ontology.schema import ONTOLOGY_SCHEMA
 
 logger = logging.getLogger("ontology_validation")
 
@@ -326,7 +320,8 @@ def resolve_edge_state_transitions(
                 ex_src = ex_edge.get("source_id")
                 ex_tgt = ex_edge.get("target_id")
                 if (ex_src == src and ex_tgt == tgt) or (ex_src == tgt and ex_tgt == src):
-                    if not ex_edge.get("valid_to") or ex_edge.get("valid_to") > event_date:
+                    ex_valid_to = ex_edge.get("valid_to")
+                    if not ex_valid_to or (event_date is not None and ex_valid_to > event_date):
                         ex_edge["valid_to"] = event_date
                         ex_edge["status"] = "TERMINATED"
                         logger.info(f"Closed predecessor edge ({ex_src}->{ex_tgt}) at {event_date} due to terminal event.")

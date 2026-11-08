@@ -45,7 +45,7 @@ class TranscriptSourceClient:
         target = Path(directory or self.data_dir)
         if not target.is_dir():
             return []
-        found = []
+        found: List[Path] = []
         for ext in ("*.txt", "*.md", "*.json", "*.jsonl"):
             found.extend(target.rglob(ext))
         return sorted(found)

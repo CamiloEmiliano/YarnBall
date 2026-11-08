@@ -47,20 +47,20 @@ except ImportError:
             return _Response()
         def head(self, url, headers=None, timeout=None):
             return _Response()
-    class httpx:
+    class httpx:  # type: ignore[no-redef]
         Client = _Client
         HTTPError = Exception
 
 try:
     from tenacity import retry, stop_after_attempt, wait_exponential
 except ImportError:
-    def retry(*dargs, **dkwargs):
+    def retry(*dargs, **dkwargs):  # type: ignore[no-redef]
         def decorator(fn):
             return fn
         return decorator
-    def stop_after_attempt(n):
+    def stop_after_attempt(n):  # type: ignore[no-redef]
         return None
-    def wait_exponential(*args, **kwargs):
+    def wait_exponential(*args, **kwargs):  # type: ignore[no-redef]
         return None
 
 from ingestion import ingest_task
@@ -68,7 +68,8 @@ from ingestion import ingest_task
 try:
     from streaming.driver import send_record
 except ImportError:
-    send_record = lambda src, payload: None
+    def send_record(src: str, payload: Any) -> bool:  # type: ignore[misc]
+        return False
 
 logger = logging.getLogger("ingestion.news.client")
 
@@ -82,8 +83,8 @@ class TokenBucket:
     Respects the free-tier 60 calls/minute limit by default.
     """
     def __init__(self, capacity: int = 60, refill_seconds: int = 60):
-        self.capacity = capacity
-        self.tokens = capacity
+        self.capacity: float = float(capacity)
+        self.tokens: float = float(capacity)
         self.refill_rate = capacity / float(refill_seconds)
         self.last_refill = time.monotonic()
         self.lock = Lock()

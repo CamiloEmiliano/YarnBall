@@ -24,24 +24,14 @@ from .db import pg_connection
 
 logger = logging.getLogger(__name__)
 
-try:
-    from ontology import (
-        SYMMETRIC_RELATIONSHIPS,
-        CORPORATE_SUFFIXES,
-        KNOWN_PUBLISHER_NAMES,
-        normalize_entity_name,
-        canonicalize_symmetric_edge,
-        jaro_winkler_similarity,
-    )
-except ImportError:
-    from graphrag_finance.ontology import (
-        SYMMETRIC_RELATIONSHIPS,
-        CORPORATE_SUFFIXES,
-        KNOWN_PUBLISHER_NAMES,
-        normalize_entity_name,
-        canonicalize_symmetric_edge,
-        jaro_winkler_similarity,
-    )
+from ontology import (
+    SYMMETRIC_RELATIONSHIPS,
+    CORPORATE_SUFFIXES,
+    KNOWN_PUBLISHER_NAMES,
+    normalize_entity_name,
+    canonicalize_symmetric_edge,
+    jaro_winkler_similarity,
+)
 
 # Backward-compatible internal aliases
 _normalize_name = normalize_entity_name

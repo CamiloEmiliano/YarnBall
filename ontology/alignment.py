@@ -14,13 +14,7 @@ from __future__ import annotations
 import re
 from typing import List, Optional, Set, Tuple
 
-try:
-    from .schema import SYMMETRIC_RELATIONSHIPS
-except ImportError:
-    try:
-        from ontology.schema import SYMMETRIC_RELATIONSHIPS
-    except ImportError:
-        from graphrag_finance.ontology.schema import SYMMETRIC_RELATIONSHIPS
+from ontology.schema import SYMMETRIC_RELATIONSHIPS
 
 # Common corporate suffixes for name normalization
 CORPORATE_SUFFIXES: List[str] = [

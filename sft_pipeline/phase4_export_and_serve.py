@@ -23,6 +23,7 @@ import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import numpy as np
 
 os.environ.setdefault("EDGAR_LOCAL_DATA_DIR", "/tmp/.edgar")
 
@@ -542,8 +543,11 @@ def convert_safetensors_to_gguf(merged_dir: Path, output_gguf_path: Path) -> Pat
                 if expected_pos > cur_pos:
                     fout.write(b"\x00" * (expected_pos - cur_pos))
 
-                fin.seek(te["shard_byte_start"])
-                raw = fin.read(te["shard_byte_len"])
+                if fin is not None:
+                    fin.seek(te["shard_byte_start"])
+                    raw = fin.read(te["shard_byte_len"])
+                else:
+                    raw = b""
                 if te["ggml_type"] == GGML_TYPE_F32:
                     if te["dtype"] == "BF16":
                         arr_f32 = bf16_bytes_to_fp32(raw, te["shape"])

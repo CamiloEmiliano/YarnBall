@@ -52,12 +52,14 @@ TASK_NORMALIZATION: Dict[str, str] = {
 }
 
 
-@dataclass
-class ModelResponse:
+from pydantic import BaseModel, Field
+
+
+class ModelResponse(BaseModel):
     """Structured response from the YarnBall model engine."""
 
     raw_text: str
-    think_trace: Optional[str]
+    think_trace: Optional[str] = None
     final_output: str
     task: str
     latency_sec: float

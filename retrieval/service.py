@@ -2,6 +2,7 @@
 FastAPI Microservice for Hybrid Retrieval & Node Enrichment.
 """
 
+from typing import Any, Dict, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from embedding.embedder import embed_texts
@@ -17,7 +18,7 @@ class SearchRequest(BaseModel):
 
 
 @app.post("/search")
-async def search(req: SearchRequest):
+async def search(req: SearchRequest) -> List[Dict[str, Any]]:
     # 1. Embed the user query
     query_vec = embed_texts([req.query])[0]
 

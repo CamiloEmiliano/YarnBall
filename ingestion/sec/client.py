@@ -25,10 +25,10 @@ try:
     from edgar import Company, Filing, get_filings, set_identity
     EDGAR_AVAILABLE = True
 except ImportError:
-    Company = None
-    Filing = None
-    get_filings = None
-    set_identity = None
+    Company = None  # type: ignore[assignment,misc,no-redef]
+    Filing = None  # type: ignore[assignment,misc,no-redef]
+    get_filings = None  # type: ignore[assignment,no-redef]
+    set_identity = None  # type: ignore[assignment,no-redef]
     EDGAR_AVAILABLE = False
 
 logger = logging.getLogger("ingestion.sec.client")
@@ -50,7 +50,7 @@ class EdgarClient:
         self.user_agent = user_agent or os.getenv(
             "SEC_EDGAR_USER_AGENT", "YarnBallResearch admin@yarnball.org"
         )
-        if EDGAR_AVAILABLE:
+        if EDGAR_AVAILABLE and self.user_agent:
             try:
                 set_identity(self.user_agent)
                 logger.info(f"Initialized SEC Edgar identity: {self.user_agent}")
@@ -91,7 +91,7 @@ class EdgarClient:
 
     def extract_10k_sections(self, filing: Any) -> Dict[str, Any]:
         """Extract structured sections from a 10-K filing using edgartools TenK parser."""
-        result = {
+        result: Dict[str, Any] = {
             "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
             "filing_date": str(getattr(filing, "filing_date", "")),
             "report_date": str(getattr(filing, "report_date", "")),
@@ -139,7 +139,7 @@ class EdgarClient:
 
     def extract_exhibit_21_subsidiaries(self, filing: Any) -> List[Dict[str, str]]:
         """Find and parse Exhibit 21 attachments from filing."""
-        subsidiaries = []
+        subsidiaries: List[Dict[str, str]] = []
         if not filing:
             return subsidiaries
 

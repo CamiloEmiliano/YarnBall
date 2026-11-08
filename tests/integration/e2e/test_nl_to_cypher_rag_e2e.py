@@ -267,3 +267,4 @@ def test_e2e_schema_trap_refusal_short_circuits_and_logs(tmp_path: Path):
     assert len(rejections) == 1
     assert rejections[0].error_stage == ErrorStage.SCHEMA_AST_VIOLATION
     assert "ceo_age" in rejections[0].error_message
+

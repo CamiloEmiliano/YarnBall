@@ -32,19 +32,19 @@ except ImportError:
     pass
 
 try:
-    from kafka import KafkaConsumer
+    from kafka import KafkaConsumer  # type: ignore[import-untyped]
 except ImportError:
     KafkaConsumer = None
 
 try:
     import httpx
 except ImportError:
-    httpx = None
+    httpx = None  # type: ignore[assignment,no-redef]
 
 try:
     import trafilatura
 except ImportError:
-    trafilatura = None
+    trafilatura = None  # type: ignore[assignment,no-redef]
 
 from knowledge_graph.db import pg_connection
 from knowledge_graph.entity_resolver import is_clickbait_article_source, is_generic_placeholder

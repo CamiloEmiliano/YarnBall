@@ -27,32 +27,18 @@ try:
 except ImportError:
     pass
 
-try:
-    from ontology import (
-        AnnotatedTriple,
-        CRITICAL_MATERIALITY_TERMS,
-        POLARITY_TRIGGERS,
-        NEGATION_REGEX,
-        has_unnegated_pattern,
-        classify_polarity_from_text,
-        classify_financial_materiality,
-        validate_and_orient_triple,
-        compute_edge_confidence,
-        is_generic_placeholder,
-    )
-except ImportError:
-    from graphrag_finance.ontology import (
-        AnnotatedTriple,
-        CRITICAL_MATERIALITY_TERMS,
-        POLARITY_TRIGGERS,
-        NEGATION_REGEX,
-        has_unnegated_pattern,
-        classify_polarity_from_text,
-        classify_financial_materiality,
-        validate_and_orient_triple,
-        compute_edge_confidence,
-        is_generic_placeholder,
-    )
+from ontology import (
+    AnnotatedTriple,
+    CRITICAL_MATERIALITY_TERMS,
+    POLARITY_TRIGGERS,
+    NEGATION_REGEX,
+    has_unnegated_pattern,
+    classify_polarity_from_text,
+    classify_financial_materiality,
+    validate_and_orient_triple,
+    compute_edge_confidence,
+    is_generic_placeholder,
+)
 
 from knowledge_graph.entity_resolver import _jaro_winkler_similarity
 from universe import SP500UniverseManager
@@ -132,9 +118,9 @@ class FinancialTaxonomyAnnotator:
 
         # Fallback to general universe if event_date was restrictive
         if event_date and (clean_upper in self.ticker_to_constituent or name_lower in self.name_to_constituent):
-            c = self.ticker_to_constituent.get(clean_upper) or self.name_to_constituent.get(name_lower)
-            if c:
-                return ("Company", c.ticker, c.cik)
+            c_opt = self.ticker_to_constituent.get(clean_upper) or self.name_to_constituent.get(name_lower)
+            if c_opt:
+                return ("Company", c_opt.ticker, c_opt.cik)
 
         # 4. Infer Non-Company Typologies
         if explicit_type:
