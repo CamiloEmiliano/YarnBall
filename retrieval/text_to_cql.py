@@ -23,6 +23,10 @@ except ImportError:
     pass
 
 from knowledge_graph.memgraph_driver import get_memgraph_driver
+from retrieval.guardrails.schema_guardrail import (
+    CypherASTWhitelistGuardrail,
+    DEFAULT_FINANCE_SCHEMA,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +120,10 @@ class TextToCQL:
         self.model_name = model_name or OLLAMA_MODEL_NAME
         self.max_limit = max_limit
         self.query_timeout_sec = query_timeout_sec
+        self.guardrail = CypherASTWhitelistGuardrail(
+            schema=DEFAULT_FINANCE_SCHEMA,
+            max_limit=self.max_limit,
+        )
 
     # ----------------------------------------------------------------------
     # 1. Dynamic Schema Extraction
@@ -268,7 +276,7 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
     def validate_cypher(
         self, cypher: str, schema: Optional[Dict[str, Any]] = None
     ) -> Tuple[bool, Optional[str]]:
-        """Validate that the Cypher query satisfies safety and read-only constraints.
+        """Validate that the Cypher query satisfies safety, schema, and read-only constraints.
 
         Args:
             cypher: The Cypher query string to validate.
@@ -277,57 +285,14 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
         Returns:
             Tuple of (is_valid: bool, error_message: Optional[str]).
         """
-        if not cypher or not cypher.strip():
-            return False, "Generated Cypher query is empty."
-
-        clean = cypher.strip()
-
-        # 1. Must start with MATCH or WITH
-        if not re.match(r"^(MATCH|WITH|UNWIND)\b", clean, re.IGNORECASE):
-            return False, f"Query must begin with MATCH or WITH. Got: '{clean[:20]}...'"
-
-        # 2. Read-Only AST / Keyword Enforcer: Block mutating keywords
-        # Tokenize by word boundary to prevent matching substrings inside identifiers
-        words = set(re.findall(r"\b[A-Z_]+\b", clean.upper()))
-        forbidden_matches = words.intersection(FORBIDDEN_MUTATING_KEYWORDS)
-        if forbidden_matches:
-            return False, f"Mutating operations forbidden in read-only query: {sorted(list(forbidden_matches))}"
-
-        # 3. Block administrative procedure calls
-        upper_query = clean.upper()
-        for proc in FORBIDDEN_PROCEDURE_PREFIXES:
-            if proc in upper_query:
-                return False, f"Administrative procedure calls are forbidden: '{proc}'"
-
-        # 4. Schema Whitelist Validation (if schema provided)
-        if schema:
-            allowed_labels = set(l.upper() for l in schema.get("labels", []))
-            allowed_rels = set(r.upper() for r in schema.get("relationship_types", []))
-
-            # Extract node labels in query: `:Label`
-            query_labels = set(re.findall(r":([a-zA-Z0-9_]+)", clean))
-            for lbl in query_labels:
-                # Check if it's a relationship type or a label
-                if lbl.upper() not in allowed_labels and lbl.upper() not in allowed_rels:
-                    logger.debug("Warning: referenced label '%s' not explicitly in active schema", lbl)
-
+        result = self.guardrail.validate(cypher)
+        if not result.is_valid:
+            return False, result.error_summary
         return True, None
 
     def enforce_limit(self, cypher: str) -> str:
         """Ensure the Cypher query contains a bounded LIMIT clause."""
-        clean = cypher.strip().rstrip(";")
-        limit_match = re.search(r"\bLIMIT\s+(\d+)", clean, re.IGNORECASE)
-
-        if limit_match:
-            current_limit = int(limit_match.group(1))
-            if current_limit > self.max_limit:
-                # Clamp limit to max_limit
-                clean = re.sub(r"\bLIMIT\s+\d+", f"LIMIT {self.max_limit}", clean, flags=re.IGNORECASE)
-        else:
-            # Append LIMIT clause
-            clean = f"{clean} LIMIT {self.max_limit}"
-
-        return clean
+        return self.guardrail.enforce_limit(cypher)
 
     # ----------------------------------------------------------------------
     # 4. Guarded Execution with Auto-Correction Loop
