@@ -8,6 +8,7 @@ self-loops, and canonicalizes symmetric relationships.
 """
 
 import os
+import re
 import json
 import logging
 from datetime import datetime, timezone
@@ -17,6 +18,8 @@ from collections import defaultdict
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+import rapidfuzz.distance.Levenshtein as lev
 
 from .snapshot_manager import SnapshotManager, DEFAULT_SNAPSHOT_BASE_DIR
 from .memgraph_driver import get_memgraph_driver
@@ -31,8 +34,25 @@ from ontology import (
     KNOWN_PUBLISHER_NAMES,
     normalize_entity_name,
     canonicalize_symmetric_edge,
+    extract_initialism,
     jaro_winkler_similarity,
 )
+
+# Canonical Alias Registry for High-Entropy Acronyms and Global Conglomerates
+# Map: alias_lower -> (canonical_name, cik, ticker, listing_exchange)
+KNOWN_ALIASES: Dict[str, Tuple[str, str, str, str]] = {
+    "tsmc": ("Taiwan Semiconductor Manufacturing Company", "0001045810", "TSM", "NYSE"),
+    "taiwan semiconductor": ("Taiwan Semiconductor Manufacturing Company", "0001045810", "TSM", "NYSE"),
+    "foxconn": ("Hon Hai Precision Industry Co., Ltd.", "0001844510", "HNHPF", "OTC"),
+    "google": ("Alphabet Inc.", "0001652044", "GOOGL", "NASDAQ"),
+    "facebook": ("Meta Platforms, Inc.", "0001326801", "META", "NASDAQ"),
+    "bofa": ("Bank of America Corporation", "0000070858", "BAC", "NYSE"),
+    "apple": ("Apple Inc.", "0000320193", "AAPL", "NASDAQ"),
+    "microsoft": ("Microsoft Corporation", "0000789019", "MSFT", "NASDAQ"),
+    "nvidia": ("NVIDIA Corporation", "0001045810", "NVDA", "NASDAQ"),
+    "broadcom": ("Broadcom Inc.", "0001730168", "AVGO", "NASDAQ"),
+    "cisco": ("Cisco Systems, Inc.", "0000858877", "CSCO", "NASDAQ"),
+}
 
 # Backward-compatible internal aliases
 _normalize_name = normalize_entity_name
@@ -203,12 +223,45 @@ class EntityResolver:
                     norm_j = _normalize_name(id_j)
                     ticker_j = (nodes_by_id[id_j].get("ticker") or "").upper()
 
-                    # Exact normalized name match (e.g. "Apple Inc" == "Apple Inc.")
+                    # 1. Known Alias Resolution (Tier 2)
+                    alias_i = KNOWN_ALIASES.get(id_i.lower().strip()) or KNOWN_ALIASES.get(norm_i)
+                    alias_j = KNOWN_ALIASES.get(id_j.lower().strip()) or KNOWN_ALIASES.get(norm_j)
+                    if alias_i and (
+                        alias_i[0].lower() in id_j.lower()
+                        or id_j.lower() in alias_i[0].lower()
+                        or _normalize_name(alias_i[0]) == norm_j
+                        or (ticker_j and ticker_j == alias_i[2])
+                    ):
+                        safe_union(id_i, id_j)
+                        continue
+                    if alias_j and (
+                        alias_j[0].lower() in id_i.lower()
+                        or id_i.lower() in alias_j[0].lower()
+                        or _normalize_name(alias_j[0]) == norm_i
+                        or (ticker_i and ticker_i == alias_j[2])
+                    ):
+                        safe_union(id_i, id_j)
+                        continue
+
+                    # 2. Acronym / Initialism Matching (Tier 3)
+                    # When one token is a short uppercase acronym matching the initialism of the multi-word entity
+                    if 2 <= len(id_i) <= 5 and id_i.isupper() and not is_dictionary_ticker(id_i):
+                        init_j = extract_initialism(id_j)
+                        if init_j and init_j == id_i:
+                            safe_union(id_i, id_j)
+                            continue
+                    if 2 <= len(id_j) <= 5 and id_j.isupper() and not is_dictionary_ticker(id_j):
+                        init_i = extract_initialism(id_i)
+                        if init_i and init_i == id_j:
+                            safe_union(id_i, id_j)
+                            continue
+
+                    # 3. Exact normalized name match (e.g. "Apple Inc" == "Apple Inc.")
                     if norm_i and norm_j and norm_i == norm_j:
                         safe_union(id_i, id_j)
                         continue
 
-                    # Direct ticker match as name (e.g. name is "AAPL" and other node has ticker "AAPL")
+                    # 4. Direct ticker match as name (e.g. name is "AAPL" and other node has ticker "AAPL")
                     # Protected against common English dictionary tickers (e.g. "ALL", "NOW", "KEY", "ARE")
                     if (ticker_i and ticker_i == id_j.upper() and not is_dictionary_ticker(ticker_i)) or (
                         ticker_j and ticker_j == id_i.upper() and not is_dictionary_ticker(ticker_j)
@@ -216,7 +269,7 @@ class EntityResolver:
                         safe_union(id_i, id_j)
                         continue
 
-                    # Substring containment with corporate suffix and word boundary check
+                    # 5. Substring containment with corporate suffix and word boundary check
                     if len(norm_i) >= 6 and len(norm_j) >= 6:
                         tokens_i = set(norm_i.split())
                         tokens_j = set(norm_j.split())
@@ -225,8 +278,15 @@ class EntityResolver:
                                 safe_union(id_i, id_j)
                                 continue
 
-                    # Jaro-Winkler similarity >= 0.88 on normalized names
-                    if norm_i and norm_j and norm_i[:1] == norm_j[:1]:
+                    # 6. Typo Tolerance via Bounded Levenshtein (<= 2 edits on comparable length)
+                    if abs(len(norm_i) - len(norm_j)) <= 2 and min(len(norm_i), len(norm_j)) >= 4:
+                        dist = lev.distance(norm_i, norm_j)
+                        if dist <= 1 or (dist <= 2 and min(len(norm_i), len(norm_j)) >= 6):
+                            safe_union(id_i, id_j)
+                            continue
+
+                    # 7. Jaro-Winkler similarity >= 0.88 on normalized names of comparable length
+                    if norm_i and norm_j and norm_i[:1] == norm_j[:1] and abs(len(norm_i) - len(norm_j)) <= 5:
                         score = _jaro_winkler_similarity(norm_i, norm_j)
                         if score >= 0.88:
                             safe_union(id_i, id_j)
@@ -242,9 +302,13 @@ class EntityResolver:
         resolved_nodes: List[Dict[str, Any]] = []
 
         for root, cluster_ids in clusters.items():
-            def score_candidate(name: str) -> Tuple[int, int]:
-                has_suffix = int(any(s in name.lower() for s in CORPORATE_SUFFIXES))
-                return (has_suffix, len(name))
+            def score_candidate(name: str) -> Tuple[int, int, int]:
+                # Penalize descriptive noun phrases / definite descriptions
+                is_descriptive = int(bool(re.search(r"^(the|our|this)\b|\b(giant|maker|supplier|customer|counterparty|firm)\b", name, re.IGNORECASE)))
+                clean_words = set(re.findall(r"\b[a-zA-Z]+\b", name.lower()))
+                has_suffix = int(any(s.rstrip(".") in clean_words for s in CORPORATE_SUFFIXES))
+                length_score = -len(name) if is_descriptive else len(name)
+                return (-is_descriptive, has_suffix, length_score)
 
             canonical_id = max(cluster_ids, key=score_candidate)
 
@@ -260,11 +324,22 @@ class EntityResolver:
             aliases = [cid for cid in cluster_ids if cid != canonical_id]
 
             for cid in cluster_ids:
+                alias_info = KNOWN_ALIASES.get(cid.lower().strip())
+                if alias_info:
+                    if not canonical_ticker:
+                        canonical_ticker = alias_info[2]
+                    if not canonical_exchange:
+                        canonical_exchange = alias_info[3]
+                    if "cik" not in merged_props:
+                        merged_props["cik"] = alias_info[1]
+
                 n = nodes_by_id[cid]
                 if not canonical_ticker and n.get("ticker"):
                     canonical_ticker = n["ticker"]
                 if not canonical_exchange and (n.get("listing_exchange") or n.get("exchange")):
                     canonical_exchange = n.get("listing_exchange") or n.get("exchange")
+                if "cik" not in merged_props and n.get("cik"):
+                    merged_props["cik"] = n["cik"]
                 if n.get("source_hash"):
                     all_source_hashes.add(n["source_hash"])
 

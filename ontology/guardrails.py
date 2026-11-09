@@ -14,6 +14,8 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
+from ontology.compiler import is_hypothetical_or_hedged
+
 # Known Exhibit 21 Operating Subsidiary -> Parent CIK Rollup Map
 # (e.g. DISH DBS Corporation 0001001811 rolls up to parent DISH Network Corp 0001001082)
 SUBSIDIARY_TO_PARENT_CIK_MAP: Dict[str, str] = {
@@ -92,12 +94,13 @@ class Tier4OntologyGate:
         )
         self.default_repaired_relation = default_repaired_relation
 
-    def apply_guardrails(self, prediction: str, task_type: str) -> str:
+    def apply_guardrails(self, prediction: str, task_type: str, prompt: Optional[str] = None) -> str:
         """Apply deterministic Tier-4 post-processing guardrails to an extraction prediction.
 
         Args:
             prediction: Raw output from the model.
             task_type: Task identifier ('EXTRACT_SEC_GRAPH', 'EXTRACT_NEWS_EVENT', etc.)
+            prompt: Optional input context / prompt string to check for epistemic hedging.
 
         Returns:
             Sanitized, repaired prediction or '(none)'.
@@ -106,6 +109,12 @@ class Tier4OntologyGate:
         if not cleaned:
             return "(none)"
         if cleaned.lower() == "(none)":
+            return "(none)"
+
+        # Check epistemic hedging / counterfactual conditions
+        if prompt and is_hypothetical_or_hedged(prompt):
+            return "(none)"
+        if is_hypothetical_or_hedged(cleaned):
             return "(none)"
 
         # 1. Subsidiary CIK Rollup
@@ -202,5 +211,5 @@ DEFAULT_ONTOLOGY_GATE = Tier4OntologyGate()
 
 def apply_runtime_guardrails(prompt: str, prediction: str, task_type: str) -> str:
     """Convenience functional wrapper matching the Phase 4 runtime guardrail interface."""
-    return DEFAULT_ONTOLOGY_GATE.apply_guardrails(prediction, task_type)
+    return DEFAULT_ONTOLOGY_GATE.apply_guardrails(prediction, task_type, prompt=prompt)
 

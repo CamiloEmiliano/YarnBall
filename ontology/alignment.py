@@ -52,6 +52,25 @@ def normalize_entity_name(name: Optional[str]) -> str:
     return " ".join(filtered) if filtered else norm
 
 
+def extract_initialism(name: Optional[str]) -> str:
+    """Extract word initialism from multi-word company name.
+
+    e.g. 'Taiwan Semiconductor Manufacturing Company' -> 'TSMC'
+         'International Business Machines' -> 'IBM'
+         'Advanced Micro Devices' -> 'AMD'
+    Excludes minor grammatical stopwords (of, and, the, etc.) while preserving
+    substantive initialism tokens.
+    """
+    if not name or not str(name).strip():
+        return ""
+    clean = re.sub(r"[,\.\(\)\-\&]", " ", str(name))
+    stopwords = {"of", "and", "the", "for", "in", "to", "a", "an", "at", "by", "on"}
+    tokens = [t for t in clean.split() if t.lower() not in stopwords]
+    if len(tokens) < 2:
+        return ""
+    return "".join(t[0].upper() for t in tokens if t)
+
+
 def canonicalize_symmetric_edge(src: str, tgt: str, rel_type: str) -> Tuple[str, str]:
     """
     Canonicalizes endpoint ordering for symmetric ontological relationships (R(a, b) == R(b, a)).

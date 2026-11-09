@@ -20,3 +20,7 @@ host_dsn = f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
 # Override POSTGRES_URL for all tests running on the host system
 os.environ["POSTGRES_URL"] = host_dsn
+
+# Ensure EDGAR library writes to /tmp instead of read-only ~/.edgar
+os.environ["EDGAR_LOCAL_DATA_DIR"] = "/tmp/edgar"
+Path("/tmp/edgar").mkdir(parents=True, exist_ok=True)

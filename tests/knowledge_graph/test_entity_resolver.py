@@ -214,3 +214,54 @@ def test_resolve_snapshot_full_pipeline(temp_resolver, tmp_path):
         resolved_dir = mgr.base_dir / "G_resolved"
         assert (resolved_dir / "nodes.parquet").exists()
         assert (resolved_dir / "edges.parquet").exists()
+
+
+def test_resolve_nodes_known_aliases_tsmc(temp_resolver):
+    """Test that TSMC resolves to Taiwan Semiconductor Manufacturing Company via KNOWN_ALIASES."""
+    raw_nodes = [
+        {"id": "TSMC", "label": "Company", "ticker": None, "source_hash": "h1"},
+        {"id": "Taiwan Semiconductor Manufacturing Company", "label": "Company", "ticker": None, "source_hash": "h2"},
+    ]
+
+    mapping, resolved = temp_resolver.resolve_nodes(raw_nodes)
+
+    assert mapping["TSMC"] == "Taiwan Semiconductor Manufacturing Company"
+    assert mapping["Taiwan Semiconductor Manufacturing Company"] == "Taiwan Semiconductor Manufacturing Company"
+    assert len(resolved) == 1
+
+    node = resolved[0]
+    assert node["id"] == "Taiwan Semiconductor Manufacturing Company"
+    assert node["ticker"] == "TSM"
+    assert node["listing_exchange"] == "NYSE"
+    props = json.loads(node["properties_json"])
+    assert props["cik"] == "0001045810"
+
+
+def test_resolve_nodes_initialism_acronym(temp_resolver):
+    """Test that multi-word company initialisms resolve cleanly."""
+    raw_nodes = [
+        {"id": "IBM", "label": "Company", "ticker": "IBM", "source_hash": "h1"},
+        {"id": "International Business Machines", "label": "Company", "ticker": None, "source_hash": "h2"},
+    ]
+
+    mapping, resolved = temp_resolver.resolve_nodes(raw_nodes)
+
+    assert mapping["IBM"] == "International Business Machines"
+    assert len(resolved) == 1
+    assert resolved[0]["id"] == "International Business Machines"
+
+
+def test_resolve_nodes_typo_tolerance(temp_resolver):
+    """Test bounded Levenshtein typo tolerance (Nvida -> NVIDIA Corporation)."""
+    raw_nodes = [
+        {"id": "Nvida", "label": "Company", "ticker": None, "source_hash": "h1"},
+        {"id": "NVIDIA Corporation", "label": "Company", "ticker": "NVDA", "source_hash": "h2"},
+    ]
+
+    mapping, resolved = temp_resolver.resolve_nodes(raw_nodes)
+
+    assert mapping["Nvida"] == "NVIDIA Corporation"
+    assert len(resolved) == 1
+    assert resolved[0]["id"] == "NVIDIA Corporation"
+    assert resolved[0]["ticker"] == "NVDA"
+

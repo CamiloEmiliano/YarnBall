@@ -40,6 +40,7 @@ from .alignment import (
     CORPORATE_SUFFIXES,
     KNOWN_PUBLISHER_NAMES,
     canonicalize_symmetric_edge,
+    extract_initialism,
     jaro_winkler_similarity,
     normalize_entity_name,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "KNOWN_PUBLISHER_NAMES",
     "normalize_entity_name",
     "canonicalize_symmetric_edge",
+    "extract_initialism",
     "jaro_winkler_similarity",
     # Compiler
     "POLARITY_TRIGGERS",

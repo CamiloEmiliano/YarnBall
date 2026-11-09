@@ -1,0 +1,325 @@
+[
+  {
+    "id": "srl_01_inv",
+    "capability": "SEMANTIC_ROLE_LABELING",
+    "test_type": "INV",
+    "description": "Active vs passive voice inversion with dative roles. Word order shifts from (Supermicro -> Nvidia) to (modules procured from Supermicro by Nvidia), but edge orientation must strictly remain (Supermicro)-[:SUPPLIES_TO]->(Nvidia).",
+    "input_text": "Supermicro Computer Inc. supplies graphics processing modules to Nvidia Corporation.",
+    "perturbed_text": "Substantially all graphics processing modules utilized in our datacenters are procured from Supermicro Computer Inc. by Nvidia Corporation.",
+    "expected_entities": [
+      {
+        "name": "Supermicro Computer Inc.",
+        "ticker": "SMCI",
+        "cik": "0001375365",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      },
+      {
+        "name": "Nvidia Corporation",
+        "ticker": "NVDA",
+        "cik": "0001045810",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      }
+    ],
+    "expected_edges": [
+      {
+        "source_name": "Supermicro Computer Inc.",
+        "target_name": "Nvidia Corporation",
+        "rel_type": "SUPPLIES_TO",
+        "is_active": true,
+        "status": "ACTIVE_CURRENT"
+      }
+    ],
+    "expected_action": "EMIT",
+    "metadata": {
+      "semantic_role": "Agent-to-Patient invariance"
+    }
+  },
+  {
+    "id": "negation_02_dir",
+    "capability": "NEGATION_POLARITY",
+    "test_type": "DIR",
+    "description": "Multi-clause contract dissolution and retraction. Negative subordinate clause must flip edge lifecycle to status: TERMINATED and is_active: false.",
+    "input_text": "LegacyChip Ltd serves as our primary substrate provider under a multi-year commercial agreement.",
+    "perturbed_text": "While LegacyChip Ltd previously served as our primary substrate provider under our 2021 agreement, that commercial relationship was formally dissolved in Q3 2023 following recurring packaging defects.",
+    "expected_entities": [
+      {
+        "name": "LegacyChip Ltd",
+        "entity_class": "COMPANY"
+      }
+    ],
+    "expected_edges": [
+      {
+        "source_name": "LegacyChip Ltd",
+        "target_name": "The Company",
+        "rel_type": "SUPPLIES_TO",
+        "is_active": false,
+        "status": "TERMINATED"
+      }
+    ],
+    "expected_action": "TERMINATE",
+    "metadata": {
+      "negation_cues": ["dissolved", "terminated", "no longer"]
+    }
+  },
+  {
+    "id": "temporal_03_mft",
+    "capability": "TEMPORAL_ASPECT",
+    "test_type": "MFT",
+    "description": "Point-in-Time event sequencing and telicity. Contracts executed in August 2023 must NOT appear in knowledge graph snapshots evaluated as of January 1, 2023 (zero lookahead leakage).",
+    "input_text": "On August 15, 2023, the Company entered into a master supply agreement with FabCo.",
+    "expected_entities": [
+      {
+        "name": "FabCo",
+        "entity_class": "COMPANY"
+      }
+    ],
+    "expected_edges": [],
+    "expected_action": "REFUSE",
+    "metadata": {
+      "as_of_date": "2023-01-01",
+      "event_date": "2023-08-15"
+    }
+  },
+  {
+    "id": "logic_04_dir",
+    "capability": "LOGIC_CONDITIONALS",
+    "test_type": "DIR",
+    "description": "Epistemic hedging and counterfactual condition filtering. Modal auxiliaries ('may consider', 'if market conditions warrant') must directionally suppress edge creation to (none).",
+    "input_text": "We entered into a long-term wafer fabrication agreement with Intel Foundry Services.",
+    "perturbed_text": "We may from time to time consider entering into long-term wafer fabrication agreements with Intel Foundry Services if market conditions warrant.",
+    "expected_entities": [
+      {
+        "name": "Intel Foundry Services",
+        "entity_class": "COMPANY"
+      }
+    ],
+    "expected_edges": [],
+    "expected_action": "REFUSE",
+    "metadata": {
+      "modal_hedges": ["may consider", "if market conditions warrant"]
+    }
+  },
+  {
+    "id": "ner_05_inv",
+    "capability": "NAMED_ENTITY_RECOGNITION",
+    "test_type": "INV",
+    "description": "Acronyms, tickers, and CIK resolution without raw edit distance failure (The TSMC Dilemma). 'TSMC' (4 chars) and 'Taiwan Semiconductor Manufacturing Company' (43 chars) must resolve to identical canonical node (CIK 0001045810).",
+    "input_text": "Taiwan Semiconductor Manufacturing Company supplies advanced 3nm packaging to Apple.",
+    "perturbed_text": "TSMC supplies advanced 3nm packaging to Apple.",
+    "expected_entities": [
+      {
+        "name": "Taiwan Semiconductor Manufacturing Company",
+        "ticker": "TSM",
+        "cik": "0001045810",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NYSE"
+      },
+      {
+        "name": "Apple",
+        "ticker": "AAPL",
+        "cik": "0000320193",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      }
+    ],
+    "expected_edges": [
+      {
+        "source_name": "Taiwan Semiconductor Manufacturing Company",
+        "target_name": "Apple",
+        "rel_type": "SUPPLIES_TO",
+        "is_active": true
+      }
+    ],
+    "expected_action": "EMIT",
+    "metadata": {
+      "acronym": "TSMC",
+      "canonical_name": "Taiwan Semiconductor Manufacturing Company"
+    }
+  },
+  {
+    "id": "taxonomy_06_dir",
+    "capability": "TAXONOMY_HIERARCHY",
+    "test_type": "DIR",
+    "description": "Corporate parent/subsidiary rollup. Offshore financing subsidiary 'Broadcom Cayman Finance Ltd' must roll up to parent issuer Broadcom Inc. (CIK 0001730168).",
+    "input_text": "Broadcom Cayman Finance Ltd, an indirect wholly-owned financing subsidiary of Broadcom Inc., entered into an exclusive distribution pact with Cisco Systems.",
+    "perturbed_text": "Broadcom Inc. entered into an exclusive distribution pact with Cisco Systems.",
+    "expected_entities": [
+      {
+        "name": "Broadcom Inc.",
+        "ticker": "AVGO",
+        "cik": "0001730168",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      },
+      {
+        "name": "Cisco Systems",
+        "ticker": "CSCO",
+        "cik": "0000858877",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      }
+    ],
+    "expected_edges": [
+      {
+        "source_name": "Broadcom Inc.",
+        "target_name": "Cisco Systems",
+        "rel_type": "PARTNERED_WITH",
+        "is_active": true
+      }
+    ],
+    "expected_action": "EMIT",
+    "metadata": {
+      "subsidiary": "Broadcom Cayman Finance Ltd",
+      "parent": "Broadcom Inc."
+    }
+  },
+  {
+    "id": "coreference_07_mft",
+    "capability": "COREFERENCE_ANAPHORA",
+    "test_type": "MFT",
+    "description": "Definite descriptions and anaphoric bridging across sentences. 'The Cupertino-based consumer electronics giant' and 'this strategic partner' must bind to Apple and Taiwan Semiconductor respectively.",
+    "input_text": "We maintain an exclusive foundry agreement with Taiwan Semiconductor. The Cupertino-based consumer electronics giant relies on this strategic partner for all primary mobile processors.",
+    "expected_entities": [
+      {
+        "name": "Apple Inc.",
+        "ticker": "AAPL",
+        "cik": "0000320193",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      },
+      {
+        "name": "Taiwan Semiconductor",
+        "ticker": "TSM",
+        "cik": "0001045810",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NYSE"
+      }
+    ],
+    "expected_edges": [
+      {
+        "source_name": "Taiwan Semiconductor",
+        "target_name": "Apple Inc.",
+        "rel_type": "SUPPLIES_TO",
+        "is_active": true
+      }
+    ],
+    "expected_action": "EMIT",
+    "metadata": {
+      "definite_description": "The Cupertino-based consumer electronics giant",
+      "anaphoric_reference": "this strategic partner"
+    }
+  },
+  {
+    "id": "robustness_08_inv",
+    "capability": "ROBUSTNESS_INVARIANCE",
+    "test_type": "INV",
+    "description": "Typo, casing, and whitespace invariance. '  nvida  ' with 1-character edit distance, lowercase, and padding must resolve to canonical NVIDIA Corporation.",
+    "input_text": "NVIDIA Corporation supplies graphics hardware to Microsoft.",
+    "perturbed_text": "  nvida   supplies graphics hardware to Microsoft.",
+    "expected_entities": [
+      {
+        "name": "NVIDIA Corporation",
+        "ticker": "NVDA",
+        "cik": "0001045810",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      },
+      {
+        "name": "Microsoft",
+        "ticker": "MSFT",
+        "cik": "0000789019",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      }
+    ],
+    "expected_edges": [
+      {
+        "source_name": "NVIDIA Corporation",
+        "target_name": "Microsoft",
+        "rel_type": "SUPPLIES_TO",
+        "is_active": true
+      }
+    ],
+    "expected_action": "EMIT",
+    "metadata": {
+      "typo_token": "nvida",
+      "canonical_token": "NVIDIA Corporation"
+    }
+  },
+  {
+    "id": "vocabulary_09_dir",
+    "capability": "VOCABULARY_MATERIALITY",
+    "test_type": "DIR",
+    "description": "Legal terms of art ('Material Adverse Effect', 'sole source') directionally escalating materiality tier from COMMODITY_TIER_3 to CRITICAL_TIER_1.",
+    "input_text": "We experienced minor shipping delays with our secondary component supplier FabCo.",
+    "perturbed_text": "The operational disruption constitutes a Material Adverse Effect under our sole source wafer supply agreement with FabCo.",
+    "expected_entities": [
+      {
+        "name": "FabCo",
+        "entity_class": "COMPANY"
+      }
+    ],
+    "expected_edges": [
+      {
+        "source_name": "FabCo",
+        "target_name": "The Company",
+        "rel_type": "SUPPLIES_TO",
+        "materiality": "CRITICAL_TIER_1",
+        "is_active": true
+      }
+    ],
+    "expected_action": "ESCALATE",
+    "metadata": {
+      "legal_term_of_art": "Material Adverse Effect",
+      "critical_cue": "sole source"
+    }
+  },
+  {
+    "id": "coordination_10_mft",
+    "capability": "COORDINATION_SCOPE",
+    "test_type": "MFT",
+    "description": "Distributive respective coordination scope. Emits exactly two uncrossed parallel edges: (The Company -> Apple for PMIC) and (The Company -> Microsoft for optical transceivers), avoiding 4-edge combinatorial cross-product.",
+    "input_text": "The Company supplies specialized power-management ICs and optical transceivers to Apple and Microsoft for their smartphone and datacenter products, respectively.",
+    "expected_entities": [
+      {
+        "name": "Apple",
+        "ticker": "AAPL",
+        "cik": "0000320193",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      },
+      {
+        "name": "Microsoft",
+        "ticker": "MSFT",
+        "cik": "0000789019",
+        "entity_class": "COMPANY",
+        "listing_exchange": "NASDAQ"
+      }
+    ],
+    "expected_edges": [
+      {
+        "source_name": "The Company",
+        "target_name": "Apple",
+        "rel_type": "SUPPLIES_TO",
+        "properties": {
+          "product": "power-management IC"
+        }
+      },
+      {
+        "source_name": "The Company",
+        "target_name": "Microsoft",
+        "rel_type": "SUPPLIES_TO",
+        "properties": {
+          "product": "optical transceivers"
+        }
+      }
+    ],
+    "expected_action": "EMIT",
+    "metadata": {
+      "coordination_type": "respective_distributive"
+    }
+  }
+]
+

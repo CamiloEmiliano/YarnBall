@@ -52,6 +52,7 @@ class TemporalQueryFilter:
         date_expr = f"'{as_of_date}'" if as_of_date else self.default_as_of_date_param
         temporal_pred = (
             f"coalesce({primary_var}.status, 'ACTIVE_CURRENT') = 'ACTIVE_CURRENT' "
+            f"AND ({primary_var}.valid_from IS NULL OR {primary_var}.valid_from <= {date_expr}) "
             f"AND ({primary_var}.valid_to IS NULL OR {primary_var}.valid_to >= {date_expr})"
         )
 

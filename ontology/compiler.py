@@ -12,6 +12,7 @@ Extracts discourse polarity cues with local clause negation-boundary checking.
 from __future__ import annotations
 
 import re
+import regex
 from typing import Dict, List, Optional
 
 from ontology.reification import (
@@ -44,20 +45,34 @@ POLARITY_TRIGGERS: Dict[str, List[str]] = {
     ],
 }
 
-NEGATION_REGEX = re.compile(
-    r"\b(not|no|never|avoided|avoiding|without|prevented|preventing|neither|nor|denied|unlikely\s+to)\b",
-    re.IGNORECASE,
+NEGATION_REGEX = regex.compile(
+    r"\b(not|no|never|avoided|avoiding|without|prevented|preventing|neither|nor|denied|unlikely\s+to|no\s+longer|terminated|dissolved|ended|cancelled|canceled)\b",
+    regex.IGNORECASE,
+)
+
+MODAL_HEDGE_REGEX = regex.compile(
+    r"\b(may\s+consider|may\s+from\s+time\s+to\s+time\s+consider|might\s+consider|might|evaluating|exploring(?:\s+the\s+possibility)?|preliminary\s+talks|if\s+market\s+conditions\s+warrant|conditional\s+upon|subject\s+to\s+customary\s+closing)\b",
+    regex.IGNORECASE,
 )
 
 
-def has_unnegated_pattern(pattern: str, text: str, window_chars: int = 45) -> bool:
+def is_hypothetical_or_hedged(text: Optional[str]) -> bool:
+    """Check if statement contains epistemic hedging or counterfactual condition cues
+    that suppress executed economic commitment.
+    """
+    if not text:
+        return False
+    return bool(MODAL_HEDGE_REGEX.search(str(text)))
+
+
+def has_unnegated_pattern(pattern: str, text: str, window_chars: int = 60) -> bool:
     """
     Check if regex pattern matches in text without being preceded by a negation cue
     in the local syntactic clause.
     """
     if not text:
         return False
-    for m in re.finditer(pattern, text, flags=re.IGNORECASE):
+    for m in regex.finditer(pattern, text, flags=regex.IGNORECASE):
         start = m.start()
         # Look back within the local clause (stopping at clause/sentence boundaries ., ;, !)
         preceding = text[max(0, start - window_chars) : start]

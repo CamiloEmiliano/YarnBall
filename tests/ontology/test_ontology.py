@@ -357,3 +357,33 @@ def test_compile_to_cypher_dsl_wrapper():
     dsl = compile_to_cypher_dsl(triple)
     assert '(:Company {name: "NVIDIA"})-[:CUSTOMER_OF' in dsl
     assert '(:Company {name: "TSMC"})' in dsl
+
+
+def test_extract_initialism():
+    """Verify word initialism extraction for acronym clustering."""
+    from ontology.alignment import extract_initialism
+
+    assert extract_initialism("Taiwan Semiconductor Manufacturing Company") == "TSMC"
+    assert extract_initialism("Advanced Micro Devices") == "AMD"
+    assert extract_initialism("International Business Machines") == "IBM"
+    assert extract_initialism("Apple") == ""  # Single word returns empty
+
+
+def test_modal_hedging_suppression():
+    """Verify detection of epistemic hedging and counterfactual conditionals."""
+    from ontology.compiler import is_hypothetical_or_hedged
+    from ontology.guardrails import apply_runtime_guardrails
+
+    hedged_1 = "We may from time to time consider entering into long-term wafer fabrication agreements."
+    hedged_2 = "Management is exploring the possibility of strategic collaboration if market conditions warrant."
+    affirmative = "We entered into a three-year master supply contract with FabCo."
+
+    assert is_hypothetical_or_hedged(hedged_1) is True
+    assert is_hypothetical_or_hedged(hedged_2) is True
+    assert is_hypothetical_or_hedged(affirmative) is False
+
+    # Guardrail suppresses hedged extraction to (none)
+    mock_prediction = "(:Company {name: 'We'})-[:SUPPLIES_TO]->(:Company {name: 'FabCo'})"
+    assert apply_runtime_guardrails(hedged_1, mock_prediction, "EXTRACT_SEC_GRAPH") == "(none)"
+    assert apply_runtime_guardrails(affirmative, mock_prediction, "EXTRACT_SEC_GRAPH") != "(none)"
+
