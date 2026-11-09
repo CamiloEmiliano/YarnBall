@@ -88,6 +88,40 @@ def test_resolve_nodes_short_substring_guard(temp_resolver):
     assert len(resolved) == 2
 
 
+def test_resolve_nodes_dictionary_ticker_guard(temp_resolver):
+    """Test that English dictionary tickers (ALL, NOW, KEY) do not falsely merge raw word nodes.
+    
+    Verifies that a generic token 'ALL' is not collapsed into 'Allstate Corp',
+    while a distinct ticker 'AAPL' safely merges with 'Apple Inc.'.
+    """
+    raw_nodes = [
+        {"id": "ALL", "label": "Concept", "ticker": None, "source_hash": "h1"},
+        {"id": "Allstate Corp", "label": "Company", "ticker": "ALL", "listing_exchange": "NYSE", "source_hash": "h2"},
+        {"id": "NOW", "label": "Concept", "ticker": None, "source_hash": "h3"},
+        {"id": "ServiceNow Inc", "label": "Company", "ticker": "NOW", "listing_exchange": "NYSE", "source_hash": "h4"},
+        {"id": "AAPL", "label": "Company", "ticker": None, "source_hash": "h5"},
+        {"id": "Apple Inc.", "label": "Company", "ticker": "AAPL", "listing_exchange": "NASDAQ", "source_hash": "h6"},
+    ]
+
+    mapping, resolved = temp_resolver.resolve_nodes(raw_nodes)
+
+    # Dictionary words must remain distinct
+    assert mapping["ALL"] == "ALL"
+    assert mapping["Allstate Corp"] == "Allstate Corp"
+    assert mapping["NOW"] == "NOW"
+    assert mapping["ServiceNow Inc"] == "ServiceNow Inc"
+
+    # Distinct equity ticker safely merges
+    assert mapping["AAPL"] == "Apple Inc."
+    assert mapping["Apple Inc."] == "Apple Inc."
+
+    # Verify listing exchange propagation
+    apple_node = next(n for n in resolved if n["id"] == "Apple Inc.")
+    assert apple_node["listing_exchange"] == "NASDAQ"
+    allstate_node = next(n for n in resolved if n["id"] == "Allstate Corp")
+    assert allstate_node["listing_exchange"] == "NYSE"
+
+
 def test_rewire_edges_remaps_and_drops_self_loops(temp_resolver):
     """Test that edge endpoints are remapped and internal self-loops are dropped."""
     node_mapping = {

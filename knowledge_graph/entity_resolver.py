@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 from .snapshot_manager import SnapshotManager, DEFAULT_SNAPSHOT_BASE_DIR
 from .memgraph_driver import get_memgraph_driver
 from .db import pg_connection
+from universe.sp500 import is_dictionary_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,10 @@ class EntityResolver:
                         continue
 
                     # Direct ticker match as name (e.g. name is "AAPL" and other node has ticker "AAPL")
-                    if (ticker_i and ticker_i == id_j.upper()) or (ticker_j and ticker_j == id_i.upper()):
+                    # Protected against common English dictionary tickers (e.g. "ALL", "NOW", "KEY", "ARE")
+                    if (ticker_i and ticker_i == id_j.upper() and not is_dictionary_ticker(ticker_i)) or (
+                        ticker_j and ticker_j == id_i.upper() and not is_dictionary_ticker(ticker_j)
+                    ):
                         safe_union(id_i, id_j)
                         continue
 
@@ -248,6 +252,7 @@ class EntityResolver:
                 node_mapping[raw_id] = canonical_id
 
             canonical_ticker = None
+            canonical_exchange = None
             primary_label = nodes_by_id[canonical_id].get("label") or "Entity"
             all_source_hashes = set()
             merged_props: Dict[str, Any] = {}
@@ -258,6 +263,8 @@ class EntityResolver:
                 n = nodes_by_id[cid]
                 if not canonical_ticker and n.get("ticker"):
                     canonical_ticker = n["ticker"]
+                if not canonical_exchange and (n.get("listing_exchange") or n.get("exchange")):
+                    canonical_exchange = n.get("listing_exchange") or n.get("exchange")
                 if n.get("source_hash"):
                     all_source_hashes.add(n["source_hash"])
 
@@ -265,11 +272,15 @@ class EntityResolver:
                     try:
                         p = json.loads(n["properties_json"])
                         merged_props.update(p)
+                        if not canonical_exchange and (p.get("listing_exchange") or p.get("exchange")):
+                            canonical_exchange = p.get("listing_exchange") or p.get("exchange")
                     except Exception:
                         pass
 
             merged_props["aliases"] = aliases
             merged_props["mention_count"] = len(cluster_ids)
+            if canonical_exchange:
+                merged_props["listing_exchange"] = canonical_exchange
             if all_source_hashes:
                 merged_props["source_hashes"] = list(all_source_hashes)
 
@@ -277,6 +288,7 @@ class EntityResolver:
                 "id": canonical_id,
                 "label": primary_label,
                 "ticker": canonical_ticker,
+                "listing_exchange": canonical_exchange,
                 "source_hash": next(iter(all_source_hashes), None) if all_source_hashes else None,
                 "properties_json": json.dumps(merged_props, default=str),
             })

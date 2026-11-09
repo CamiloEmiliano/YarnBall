@@ -336,10 +336,12 @@ def create_queue_table(db_name: str = "financial_rag"):
             date_removed DATE,
             reason_for_change TEXT,
             is_current BOOLEAN DEFAULT TRUE,
+            listing_exchange VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',
             created_at TIMESTAMPTZ DEFAULT now()
         );
         CREATE INDEX IF NOT EXISTS idx_sp500_ticker ON sp500_historical_constituents(ticker);
         CREATE INDEX IF NOT EXISTS idx_sp500_cik ON sp500_historical_constituents(cik);
+        CREATE INDEX IF NOT EXISTS idx_sp500_exchange ON sp500_historical_constituents(listing_exchange);
         CREATE INDEX IF NOT EXISTS idx_sp500_gics_sector ON sp500_historical_constituents(gics_sector);
         CREATE INDEX IF NOT EXISTS idx_sp500_dates ON sp500_historical_constituents(date_added, date_removed);
         CREATE INDEX IF NOT EXISTS idx_sp500_is_current ON sp500_historical_constituents(is_current);

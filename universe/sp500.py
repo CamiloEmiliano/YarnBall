@@ -43,6 +43,46 @@ if not logger.handlers:
 DATA_DIR = Path(__file__).parent.parent / "data"
 DEFAULT_CACHE_PATH = DATA_DIR / "sp500_constituents_historical.json"
 
+VALID_EXCHANGES: set[str] = {"NASDAQ", "NYSE", "AMEX", "CBOE", "OTC", "UNKNOWN"}
+
+# Common English dictionary words and single-letter symbols that collide with real stock tickers
+# (e.g. ALL, NOW, KEY, ARE, FAST, LOW, ON, SO, IT, WELL, A).
+# Naked string matching on these tickers is strictly guarded against false-positive entity merges.
+DICTIONARY_TICKERS: set[str] = {
+    "A", "ALL", "ARE", "BE", "BEST", "BIG", "CAN", "CAT", "FAST", "FOR",
+    "GAP", "HAS", "IT", "KEY", "LOW", "MAN", "NET", "NEW", "NOW", "ON",
+    "ONE", "OUT", "SEE", "SO", "STAY", "TRUE", "TWO", "WELL",
+}
+
+
+def is_dictionary_ticker(ticker: Optional[str]) -> bool:
+    """Check if a ticker symbol collides with a common English dictionary word or single-character symbol.
+    
+    Prevents false-positive entity clustering when unanchored short strings match real tickers.
+    """
+    if not ticker:
+        return False
+    clean = str(ticker).strip().upper()
+    return len(clean) == 1 or clean in DICTIONARY_TICKERS
+
+
+def normalize_exchange(exchange: Optional[str]) -> str:
+    """Normalize exchange string to canonical uppercase identifier (NASDAQ, NYSE, AMEX, CBOE, OTC, UNKNOWN)."""
+    if not exchange:
+        return "UNKNOWN"
+    clean = str(exchange).strip().upper()
+    if "NASDAQ" in clean or "ISLAND" in clean:
+        return "NASDAQ"
+    if "NYSE" in clean:
+        return "NYSE"
+    if "CBOE" in clean or "BATS" in clean:
+        return "CBOE"
+    if "AMEX" in clean or "ARCA" in clean:
+        return "AMEX"
+    if "OTC" in clean:
+        return "OTC"
+    return clean
+
 
 @dataclass
 class SP500Constituent:
@@ -56,6 +96,18 @@ class SP500Constituent:
     date_removed: Optional[str] = None  # YYYY-MM-DD
     reason_for_change: Optional[str] = None
     is_current: bool = True
+    listing_exchange: str = "UNKNOWN"
+
+    def __post_init__(self) -> None:
+        self.ticker = self.ticker.strip().upper()
+        if self.cik:
+            self.cik = str(self.cik).strip().zfill(10)
+        self.listing_exchange = normalize_exchange(self.listing_exchange)
+
+    @property
+    def canonical_ticker(self) -> str:
+        """Returns standard hyphenated ticker notation (e.g., BRK-B, BF-B) for SEC/yfinance consistency."""
+        return self.ticker.replace(".", "-").upper()
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -119,6 +171,26 @@ class SP500UniverseManager:
         """Return all currently active S&P 500 constituents."""
         return [c for c in self._constituents if c.is_current and (c.date_removed is None)]
 
+    def get_constituents_by_exchange(
+        self, exchange: str, target_date: Optional[str | date | datetime] = None
+    ) -> List[SP500Constituent]:
+        """Return point-in-time S&P 500 constituents active on target_date and listed on target exchange."""
+        norm_exch = normalize_exchange(exchange)
+        constituents = self.get_constituents_at_date(target_date) if target_date else self.get_current_constituents()
+        return [c for c in constituents if c.listing_exchange == norm_exch]
+
+    def get_primary_exchange(self, identifier: str) -> Optional[str]:
+        """Look up official primary listing exchange for a ticker or CIK."""
+        ident_clean = identifier.strip().upper()
+        ident_norm = ident_clean.replace(".", "-")
+        ident_cik = str(int(ident_clean)).zfill(10) if ident_clean.isdigit() else ""
+
+        for c in self._constituents:
+            c_tick_norm = c.ticker.replace(".", "-").upper()
+            if c_tick_norm in (ident_clean, ident_norm) or (ident_cik and c.cik.zfill(10) == ident_cik):
+                return c.listing_exchange
+        return None
+
     def get_sector_distribution(self, target_date: Optional[str | date | datetime] = None) -> Dict[str, int]:
         """Calculate distribution across the 11 GICS economic sectors."""
         constituents = self.get_constituents_at_date(target_date) if target_date else self.get_current_constituents()
@@ -128,13 +200,15 @@ class SP500UniverseManager:
         return dict(sorted(dist.items(), key=lambda x: x[1], reverse=True))
 
     def is_sp500(self, identifier: str, target_date: Optional[str | date | datetime] = None) -> bool:
-        """Check if a ticker or CIK was in the S&P 500 at target_date (or current if None)."""
+        """Check if a ticker or CIK was in the S&P 500 at target_date (or current if None). Supports dot/hyphen share class notation."""
         ident_clean = identifier.strip().upper()
+        ident_norm = ident_clean.replace(".", "-")
         ident_cik = str(int(ident_clean)).zfill(10) if ident_clean.isdigit() else ""
 
         constituents = self.get_constituents_at_date(target_date) if target_date else self.get_current_constituents()
         for c in constituents:
-            if c.ticker.upper() == ident_clean or (ident_cik and c.cik.zfill(10) == ident_cik):
+            c_tick_norm = c.ticker.replace(".", "-").upper()
+            if c_tick_norm in (ident_clean, ident_norm) or (ident_cik and c.cik.zfill(10) == ident_cik):
                 return True
         return False
 
@@ -156,8 +230,9 @@ class SP500UniverseManager:
                 cur.execute("""
                     INSERT INTO sp500_historical_constituents (
                         ticker, cik, company_name, gics_sector, gics_sub_industry,
-                        headquarters_location, date_added, date_removed, reason_for_change, is_current
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        headquarters_location, date_added, date_removed, reason_for_change,
+                        is_current, listing_exchange
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT DO NOTHING;
                 """, (
                     c.ticker,
@@ -169,7 +244,8 @@ class SP500UniverseManager:
                     c.date_added,
                     c.date_removed,
                     c.reason_for_change,
-                    c.is_current
+                    c.is_current,
+                    c.listing_exchange
                 ))
 
                 # Also mark is_sp500 in sec_companies if ticker or CIK matches

@@ -26,7 +26,7 @@ class YahooFinanceClient:
         end_date: str,
     ) -> List[Dict[str, Any]]:
         """Fetch daily price history using yfinance."""
-        clean_ticker = ticker.strip().upper()
+        clean_ticker = ticker.strip().upper().replace(".", "-")
         prices: List[Dict[str, Any]] = []
 
         try:

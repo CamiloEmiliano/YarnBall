@@ -2,6 +2,8 @@
 Build full S&P 500 Historical Dataset from cached Wikipedia snapshot and SEC master registry.
 """
 
+from __future__ import annotations
+
 from bs4 import BeautifulSoup
 from datetime import datetime
 import json
@@ -9,18 +11,33 @@ import logging
 from pathlib import Path
 import re
 import sys
+from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from .sp500 import SP500Constituent, SP500UniverseManager
+try:
+    from universe.sp500 import SP500Constituent, SP500UniverseManager, normalize_exchange
+except ImportError:
+    from .sp500 import SP500Constituent, SP500UniverseManager, normalize_exchange
 
 logging.basicConfig(level=logging.INFO, format='{"time":"%(asctime)s", "level":"%(levelname)s", "msg":"%(message)s"}')
 logger = logging.getLogger("universe.builder")
 
-WIKI_HTML_PATH = Path("/home/caspe/.gemini/antigravity-ide/brain/e461f87a-63c3-4226-8b4c-61de3eb9e162/.system_generated/steps/2019/content.md")
+WIKI_HTML_PATH = PROJECT_ROOT / "data" / "sp500_wikipedia.html"
+SEC_EXCHANGE_MAP_PATH = PROJECT_ROOT / "data" / "company_tickers_exchange.json"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "sp500_constituents_historical.json"
+
+# Verified primary exchanges for historical turnover companies removed before current SEC snapshot
+HISTORICAL_DELISTED_EXCHANGES: dict[str, str] = {
+    "TWTR": "NYSE", "SIVB": "NASDAQ", "FRC": "NYSE", "SBNY": "NASDAQ",
+    "ATVI": "NASDAQ", "CTXS": "NASDAQ", "CERN": "NASDAQ", "DISCA": "NASDAQ",
+    "XLNX": "NASDAQ", "MXIM": "NASDAQ", "ALXN": "NASDAQ", "CXO": "NYSE",
+    "TIF": "NYSE", "RTN": "NYSE", "CELG": "NASDAQ", "APC": "NYSE",
+    "TWX": "NYSE", "MON": "NYSE", "HES": "NYSE", "DISH": "NASDAQ",
+    "LUMN": "NYSE", "VNO": "NYSE", "NLSN": "NYSE", "FBHS": "NYSE",
+}
 
 
 def extract_wiki_constituents(html_path: Path) -> list[dict]:
@@ -61,7 +78,8 @@ def extract_wiki_constituents(html_path: Path) -> list[dict]:
                 "date_added": date_added,
                 "date_removed": None,
                 "reason_for_change": None,
-                "is_current": True
+                "is_current": True,
+                "listing_exchange": "UNKNOWN",
             })
 
     return constituents
@@ -69,7 +87,7 @@ def extract_wiki_constituents(html_path: Path) -> list[dict]:
 
 def get_historical_turnover_records() -> list[dict]:
     """Historical additions/deletions/mergers (2018-2025) for survivorship-bias-free tracking."""
-    return [
+    raw_records = [
         {"ticker": "TWTR", "cik": "0001418091", "company_name": "Twitter, Inc.", "gics_sector": "Communication Services", "gics_sub_industry": "Interactive Media & Services", "headquarters_location": "San Francisco, California", "date_added": "2018-06-07", "date_removed": "2022-10-28", "reason_for_change": "Acquired by X Holdings / Elon Musk", "is_current": False},
         {"ticker": "SIVB", "cik": "0000719739", "company_name": "SVB Financial Group", "gics_sector": "Financials", "gics_sub_industry": "Regional Banks", "headquarters_location": "Santa Clara, California", "date_added": "2018-12-24", "date_removed": "2023-03-15", "reason_for_change": "FDIC Receivership", "is_current": False},
         {"ticker": "FRC", "cik": "0001130713", "company_name": "First Republic Bank", "gics_sector": "Financials", "gics_sub_industry": "Regional Banks", "headquarters_location": "San Francisco, California", "date_added": "2019-01-02", "date_removed": "2023-05-01", "reason_for_change": "Acquired by JPMorgan Chase via FDIC", "is_current": False},
@@ -95,9 +113,53 @@ def get_historical_turnover_records() -> list[dict]:
         {"ticker": "NLSN", "cik": "0001492633", "company_name": "Nielsen Holdings plc", "gics_sector": "Industrials", "gics_sub_industry": "Research & Consulting Services", "headquarters_location": "New York, New York", "date_added": "2013-07-08", "date_removed": "2022-10-12", "reason_for_change": "Acquired by Private Equity Consortium", "is_current": False},
         {"ticker": "FBHS", "cik": "0001518715", "company_name": "Fortune Brands Home & Security", "gics_sector": "Industrials", "gics_sub_industry": "Building Products", "headquarters_location": "Deerfield, Illinois", "date_added": "2016-06-22", "date_removed": "2022-12-15", "reason_for_change": "Spun off Cabinets business / corporate restructuring", "is_current": False},
     ]
+    for r in raw_records:
+        r["listing_exchange"] = HISTORICAL_DELISTED_EXCHANGES.get(str(r["ticker"]), "UNKNOWN")
+    return raw_records
 
 
-def main(wiki_html_path: Path = WIKI_HTML_PATH, output_path: Path = OUTPUT_PATH) -> None:
+def enrich_constituents_with_exchanges(
+    constituents: list[dict], sec_exchange_path: Path = SEC_EXCHANGE_MAP_PATH
+) -> list[dict]:
+    """Enrich constituent records with verified listing exchanges from SEC master directory."""
+    if not sec_exchange_path.is_file():
+        logger.warning(f"SEC exchange directory not found at {sec_exchange_path}; using existing exchange tags")
+        return constituents
+
+    with open(sec_exchange_path, "r", encoding="utf-8") as f:
+        sec_raw = json.load(f)
+
+    # Map normalized ticker and zero-padded CIK to canonical exchange
+    ticker_to_exchange: dict[str, str] = {}
+    cik_to_exchange: dict[str, str] = {}
+
+    for row in sec_raw.get("data", []):
+        if len(row) >= 4 and row[2] and row[3]:
+            raw_tick = str(row[2]).upper().replace(".", "-")
+            exch = normalize_exchange(str(row[3]))
+            ticker_to_exchange[raw_tick] = exch
+            cik_to_exchange[str(row[0]).zfill(10)] = exch
+
+    enriched = []
+    for c in constituents:
+        tick = str(c["ticker"]).upper().replace(".", "-")
+        cik = str(c.get("cik", "")).zfill(10)
+        # 1. Lookup in SEC master directory
+        matched_exch: Optional[str] = ticker_to_exchange.get(tick) or cik_to_exchange.get(cik)
+        # 2. Fallback to historical delisting table
+        if not matched_exch or matched_exch == "UNKNOWN":
+            matched_exch = HISTORICAL_DELISTED_EXCHANGES.get(str(c["ticker"]), str(c.get("listing_exchange", "UNKNOWN")))
+        c["listing_exchange"] = normalize_exchange(matched_exch)
+        enriched.append(c)
+
+    return enriched
+
+
+def main(
+    wiki_html_path: Path = WIKI_HTML_PATH,
+    sec_exchange_path: Path = SEC_EXCHANGE_MAP_PATH,
+    output_path: Path = OUTPUT_PATH
+) -> None:
     logger.info(f"Extracting S&P 500 constituents from {wiki_html_path}")
     current_constituents = extract_wiki_constituents(wiki_html_path)
     logger.info(f"Parsed {len(current_constituents)} current constituents.")
@@ -111,16 +173,23 @@ def main(wiki_html_path: Path = WIKI_HTML_PATH, output_path: Path = OUTPUT_PATH)
             all_records.append(t)
             seen_tickers.add(t["ticker"])
 
+    # Enrich with verified primary listing exchanges
+    logger.info(f"Enriching {len(all_records)} constituent records with primary listing exchanges...")
+    enriched_records = enrich_constituents_with_exchanges(all_records, sec_exchange_path)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(all_records, f, indent=2)
+        json.dump(enriched_records, f, indent=2)
 
-    logger.info(f"Saved total of {len(all_records)} S&P 500 records to {output_path}")
+    logger.info(f"Saved total of {len(enriched_records)} dual-exchange S&P 500 records to {output_path}")
 
-    # Sync to PostgreSQL using SP500UniverseManager
+    # Verify and summarize exchange distribution
     manager = SP500UniverseManager(cache_file=output_path)
-    synced = manager.sync_to_postgres()
-    logger.info(f"Synced {synced} records to PostgreSQL table sp500_historical_constituents")
+    nasdaq = len(manager.get_constituents_by_exchange("NASDAQ"))
+    nyse = len(manager.get_constituents_by_exchange("NYSE"))
+    cboe = len(manager.get_constituents_by_exchange("CBOE"))
+    unknown = len(manager.get_constituents_by_exchange("UNKNOWN"))
+    logger.info(f"Exchange Breakdown -> NASDAQ: {nasdaq}, NYSE: {nyse}, CBOE: {cboe}, UNKNOWN: {unknown}")
 
     dist = manager.get_sector_distribution()
     logger.info(f"Sector breakdown across {len(dist)} GICS sectors:")

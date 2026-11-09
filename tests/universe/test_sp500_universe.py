@@ -49,6 +49,36 @@ class TestSP500UniverseManager(unittest.TestCase):
         self.assertTrue(self.manager.is_sp500("320193"))
         self.assertFalse(self.manager.is_sp500("9999999999"))
 
+    def test_listing_exchange_and_symbology(self):
+        # 1. Dataclass default and explicit assignment
+        c_default = SP500Constituent("AAPL", "0000320193", "Apple Inc.", "Information Technology")
+        self.assertEqual(c_default.listing_exchange, "UNKNOWN")
+        self.assertEqual(c_default.canonical_ticker, "AAPL")
+
+        c_explicit = SP500Constituent(
+            "TEST.B", "0009999999", "Test Corp", "Financials",
+            listing_exchange="NYSE"
+        )
+        self.assertEqual(c_explicit.listing_exchange, "NYSE")
+        self.assertEqual(c_explicit.canonical_ticker, "TEST-B")
+
+        # 2. Serialization parity
+        data = c_explicit.to_dict()
+        self.assertEqual(data["listing_exchange"], "NYSE")
+        c_loaded = SP500Constituent(**data)
+        self.assertEqual(c_loaded.listing_exchange, "NYSE")
+
+        # 3. Dot vs Hyphen notation support
+        self.manager._constituents.append(c_explicit)
+        self.assertTrue(self.manager.is_sp500("TEST.B"))
+        self.assertTrue(self.manager.is_sp500("TEST-B"))
+
+        # 4. Exchange query methods
+        self.assertEqual(self.manager.get_primary_exchange("TEST.B"), "NYSE")
+        self.assertEqual(self.manager.get_primary_exchange("TEST-B"), "NYSE")
+        nyse_constituents = self.manager.get_constituents_by_exchange("NYSE")
+        self.assertTrue(any(c.ticker == "TEST.B" for c in nyse_constituents))
+
     def test_gics_sector_distribution(self):
         dist = self.manager.get_sector_distribution()
         # Ensure all 11 GICS sectors are represented
