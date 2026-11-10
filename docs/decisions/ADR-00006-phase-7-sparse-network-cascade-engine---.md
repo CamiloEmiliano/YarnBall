@@ -101,7 +101,7 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 
 1. **Additive Diamond Convergence Invariant**:
    - For two parallel suppliers $A$ and $B$ converging on $C$ with zero buffer:
-     $$h_C = \min\left(1.0,\, W_{AC} h_A + W_{BC} h_B\right) \iff S(C) = \min\left(100.0,\, \text{Flux}(A \to C) + \text{Flux}(B \to C)\right)$$
+     $$h_C = \min\left(1.0,\, W_{AC} h_A + W_{BC} h_B\right) \iff S(C) = \min\left(100.0,\, W_{AC} S(A) + W_{BC} S(B)\right)$$
    - Parallel losses must compound additively with zero branch omission [2, 7].
 2. **Buffer Delay & Absorption Invariant**:
    - An active inventory buffer of $B$ days strictly shifts downstream shock onset by $B$ calendar days [6]:
