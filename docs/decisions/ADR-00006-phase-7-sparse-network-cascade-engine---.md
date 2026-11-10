@@ -42,9 +42,8 @@ Language models exhibit persistent mode-bleed, hallucinations, and attention dif
    - Downstream finished goods and component inventory buffers delay shock onset dates by exactly $B$ calendar days and absorb disruption duration under the Time-to-Survive (TTS) framework [6]:
      $$D_{\text{unbuffered}} = \max(0,\, D_{\text{disruption}} - B)$$
 4. **Cycle Damping & Guaranteed Loop Termination**:
-   - Circular supply dependencies (e.g., $A \to B \to C \to A$) must be detected and dampened geometrically ($\gamma = 0.5$ attenuation per cycle traversal) with a strict maximum iteration cap $K = 5$, guaranteeing algorithm termination.
-   - Grounded in empirical production network input-output calibrations where the average intermediate input pass-through share is $\mu \approx 0.50$ [1].
-   - Aligns with systemic financial network stability criteria (e.g., DebtRank) where damping factor $\beta \le 0.5$ guarantees that total secondary feedback cannot exceed the initiating primary shock ($\sum_{k=1}^\infty \beta^k = \frac{\beta}{1-\beta} \le 1.0$) [2, 3].
+   - Formulates systemic shock propagation under the DebtRank recursive distress framework [2], where node impairment $h_v(t) \in [0.0, 1.0]$ compounds incoming parent distress up to a non-linear capacity ceiling.
+   - Circular supply dependencies (e.g., $A \to B \to C \to A$) are dampened under Bardoscia et al.'s spectral radius contraction condition ($\lambda_{\max} < 1.0$) [3], applying geometric cycle attenuation $\gamma = 0.50$ grounded in Acemoglu's intermediate input pass-through share $\mu \approx 0.50$ [1].
    - Consistent with empirical disaster propagation studies showing approximately 50% disruption attenuation beyond immediate Tier-1 links [4, 5].
    - Numerically, $\gamma = 0.5 = 2^{-1}$ provides exact IEEE-754 dyadic floating-point precision, while ensuring the residual shock at $K = 5$ ($\gamma^5 = 3.125\%$) decays strictly below the institutional materiality threshold ($\epsilon = 0.05$) established under SEC SAB 99 [8].
 5. **Formal Mathematical Specification**:
@@ -73,22 +72,24 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
    - `CascadeNode`: Represents an entity with baseline revenue/capacity, active buffers, and accumulated shock state.
    - `CascadeEdge`: Directed relationship carrying capacity exposure $\omega \in [0.0, 100.0]$, inventory buffer days $B \ge 0$, and materiality tier.
    - `CascadeGraph`: Directed graph representation supporting fast in-degree indexing and cycle detection.
-2. **Deterministic Additive Flux Algorithm**:
-   - For each target node $v$, incoming flux from upstream parent $u$ is calculated by integrating the Time-to-Survive (TTS) inventory absorption ratio [6] with intermediate input exposure [1, 4]:
-     $$\text{AbsorptionRatio}(u \to v) = \max\left(0.0,\, 1.0 - \frac{B(u \to v)}{D(u)}\right)$$
-     $$\text{Flux}(u \to v) = S(u) \times \left(\frac{\omega(u \to v)}{100.0}\right) \times \text{AbsorptionRatio}(u \to v)$$
-   - Parallel incoming shocks compound additively under Leontief fixed-coefficient intermediate inputs [7]:
-     $$S(v) = \min\left(100.0,\, \sum_{u \in \text{In}(v)} \text{Flux}(u \to v)\right)$$
+2. **Deterministic Additive Flux Algorithm (DebtRank Formulation)**:
+   - Node operational distress is parameterized as $h_v(t) \in [0.0, 1.0]$ (where percentage capacity shock is $S(v) = 100.0 \times h_v(t)$).
+   - The directed inter-firm impact matrix element $W_{uv}$ integrates intermediate input capacity exposure [1, 4] with the Time-to-Survive (TTS) inventory absorption ratio [6]:
+     $$W_{uv} = \left(\frac{\omega(u \to v)}{100.0}\right) \times \max\left(0.0,\, 1.0 - \frac{B(u \to v)}{D(u)}\right)$$
+   - Following the recursive DebtRank dynamical equation [2], incoming parallel shocks compound additively across upstream suppliers up to a non-linear capacity ceiling [7]:
+     $$h_v(t) = \min\left(1.0,\, h_v(t-1) + \sum_{u \in \text{In}(v)} W_{uv} \cdot \Delta h_u(t-1)\right)$$
+     where $\Delta h_u(t-1) = h_u(t-1) - h_u(t-2)$ is the incremental new distress transmitted from round $t-1$ (with initial condition $\Delta h_{\text{shock}}(0) = h_{\text{shock}}(0) = S_0 / 100.0$).
 3. **Temporal Shock Propagation**:
    - Effective Onset Date at node $v$ is delayed by the active inventory buffer duration (TTS) [6]:
      $$T_{\text{onset}}(v) = T_{\text{onset}}(u) + B(u \to v)$$
    - Unbuffered Duration represents net exposure exceeding the inventory horizon [6]:
      $$D(v) = \max\left(0,\, D(u) - B(u \to v)\right)$$
 4. **Cycle Damping Protocol**:
-   - Traversal tracks path history. When an already-visited node is re-encountered in a cycle, its transmitted shock is attenuated by damping factor $\gamma = 0.5$:
-     $$\text{Flux}_{\text{cycle}}(u \to v) = \gamma \times \text{Flux}(u \to v)$$
-   - Iterations terminate when $\Delta S < 0.01$ or iteration count reaches $K = 5$. Because $\gamma = 0.5 < 1.0$, the geometric cycle series is strictly bounded [2, 3]:
-     $$\sum_{k=0}^{K} \gamma^k < \frac{1}{1 - \gamma} = 2.0, \quad \text{Feedback Ratio} = \sum_{k=1}^{\infty} \gamma^k = \frac{\gamma}{1 - \gamma} = 1.0$$
+   - In accordance with Bardoscia et al.'s spectral stability criterion ($\rho(\mathbf{W}) = \lambda_{\max} < 1.0$) [3], cyclical multi-round reverberation must decay geometrically rather than amplifying into runaway contagion.
+   - When an edge completes a directed cycle (re-encountering an active ancestor in path history), its transmitted incremental distress is attenuated by geometric damping factor $\gamma = 0.50$:
+     $$\Delta h_v^{\text{cycle}}(t) = \gamma \sum_{u \in \text{In}(v) \cap \text{Cycle}} W_{uv} \cdot \Delta h_u(t-1)$$
+   - Across $k$ successive loop traversals, cyclical feedback decays as $\mathcal{O}(\gamma^k)$. Iterations terminate when network incremental distress $\sum_v \Delta h_v(t) < \delta = 0.01$ (1 basis point) or iteration count reaches $K = 5$.
+   - At $K = 5$, the remaining loop reverberation $\gamma^5 = (0.5)^5 = 3.125\% < \epsilon = 0.05$ (the SEC SAB 99 materiality floor [8]), guaranteeing numerical extinction and execution in $< 10$ milliseconds.
 5. **LLM Handshake Interface**:
    - Outputs a structured `ConvergentShockSummary` object injected into the prompt verbalizer in `retrieval/pipeline.py` for Tasks D and E.
 
@@ -98,8 +99,8 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 
 1. **Additive Diamond Convergence Invariant**:
    - For two parallel suppliers $A$ and $B$ converging on $C$ with zero buffer:
-     $$S(C) = \min\left(100.0,\, \text{Flux}(A \to C) + \text{Flux}(B \to C)\right)$$
-   - Parallel losses must compound additively with zero branch omission [7].
+     $$h_C = \min\left(1.0,\, W_{AC} h_A + W_{BC} h_B\right) \iff S(C) = \min\left(100.0,\, \text{Flux}(A \to C) + \text{Flux}(B \to C)\right)$$
+   - Parallel losses must compound additively with zero branch omission [2, 7].
 2. **Buffer Delay & Absorption Invariant**:
    - An active inventory buffer of $B$ days strictly shifts downstream shock onset by $B$ calendar days [6]:
      $$T_{\text{onset}}(v) = T_{\text{event}} + B$$
