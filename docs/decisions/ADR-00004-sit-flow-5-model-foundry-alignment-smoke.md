@@ -12,9 +12,9 @@ Filename: ADR-00004-sit-flow-5-model-foundry-alignment-smoke.md (53 chars)
 - **ADR ID**: ADR-00004
 - **Filename**: `ADR-00004-sit-flow-5-model-foundry-alignment-smoke.md`
 - **Date**: 2026-11-10 01:05
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `sft_pipeline` / `evaluation`
-- **Linked Commits**: *Pending implementation*
+- **Linked Commits**: `a788815` (Flow 5 test harness in `tests/integration/pipelines/test_model_foundry_smoke_flow.py`)
 
 ---
 
