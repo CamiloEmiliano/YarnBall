@@ -12,7 +12,7 @@ Filename: ADR-00002-sit-flow-3-nl-to-cypher-rag-e2e-harness-.md (53 chars)
 - **ADR ID**: ADR-00002
 - **Filename**: `ADR-00002-sit-flow-3-nl-to-cypher-rag-e2e-harness-.md`
 - **Date**: 2026-11-09 22:58
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `retrieval` / `sft_pipeline` / `interactive` / `synthesis`
 - **Linked Commits**: `4ae944b` (Flow 3 test harness implementation), `e9a3ef9` (typing and pydantic standardization)
 
@@ -98,3 +98,4 @@ We establish **Flow 3** as an end-to-end integration and architectural contract 
 - **Negative / Trade-offs**:
   - Introduces slight AST parsing latency overhead (~5 to 10 ms per query).
   - Requires maintaining the Cypher AST whitelist in sync with ontology schema evolutions.
+
