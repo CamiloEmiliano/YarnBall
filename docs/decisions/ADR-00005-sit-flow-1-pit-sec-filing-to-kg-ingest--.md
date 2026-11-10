@@ -12,7 +12,7 @@ Filename: ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md (53 chars)
 - **ADR ID**: ADR-00005
 - **Filename**: `ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md`
 - **Date**: 2026-11-10 03:12
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `universe` / `ingestion` / `curation` / `ontology` / `knowledge_graph`
 - **Linked Commits**: `4ae944b` (Flow 1 pipeline integration test harness), `041e541` (universe constituent resolution and dictionary-ticker guardrails)
 
@@ -101,3 +101,4 @@ We establish **Flow 1** as an automated integration pipeline and architectural c
   - Connects subsidiary disclosures directly to parent issuer equities.
 - **Negative / Trade-offs**:
   - Requires maintaining the Exhibit 21 subsidiary-to-parent CIK mapping registry in `ontology/guardrails.py`.
+
