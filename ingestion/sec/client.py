@@ -22,9 +22,11 @@ import sys
 from typing import Any, Dict, List, Optional
 
 try:
+    os.environ.setdefault("EDGAR_LOCAL_DATA_DIR", "/tmp/edgar")
+    Path("/tmp/edgar").mkdir(parents=True, exist_ok=True)
     from edgar import Company, Filing, get_filings, set_identity
     EDGAR_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     Company = None  # type: ignore[assignment,misc,no-redef]
     Filing = None  # type: ignore[assignment,misc,no-redef]
     get_filings = None  # type: ignore[assignment,no-redef]

@@ -1,0 +1,23 @@
+{
+  "cik": "0000320193",
+  "ticker": "AAPL",
+  "company_name": "Apple Inc.",
+  "form_type": "8-K",
+  "filing_date": "2023-10-18",
+  "period_of_report": "2023-10-17",
+  "items": [
+    "Item 8.01 Other Events"
+  ],
+  "headline": "Operational Disruption at Primary Optical Component Supplier",
+  "content": "On October 17, 2023, Apple Inc. was notified that FabCo Semiconductor, our sole source supplier of specialized optical transceivers utilized across our flagship hardware product lines, experienced a catastrophic facility disruption resulting in an emergency shutdown of its primary fabrication line. Management currently estimates a disruption duration of 90 days. While Apple maintains an active inventory buffer of approximately 45 days for critical components, the shortfall is expected to delay fourth-quarter production yields unless secondary capacity is qualified. This occurrence constitutes a Material Adverse Effect under Section 8.01 of the Master Component Supply Agreement.",
+  "metadata": {
+    "supplier_name": "FabCo Semiconductor",
+    "supplier_cik": "0001555000",
+    "affected_product": "specialized optical transceivers",
+    "disruption_duration_days": 90,
+    "inventory_buffer_days": 45,
+    "materiality_tier": "CRITICAL_TIER_1",
+    "event_date": "2023-10-17",
+    "primary_exchange": "NASDAQ"
+  }
+}

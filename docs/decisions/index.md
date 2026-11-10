@@ -31,7 +31,8 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 
 ## Master Decision Index
 
-| ID | Title | Date | Status | Subsystem | Linked Commits |
+| ID | Title | Date (YYYY-MM-DD HH:MM) | Status | Subsystem | Linked Commits |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| *Pending* | *Initial bootstrap records pending review* | — | — | — | — |
+| [ADR-00001](ADR-00001-sit-flow-2-event-shock-contagion-harness.md) | SIT Flow 2 Event Shock Vector & Contagion | 2026-11-09 22:24 | `PROPOSED` | `retrieval` / `ingestion` | *In Progress* |
+
 
