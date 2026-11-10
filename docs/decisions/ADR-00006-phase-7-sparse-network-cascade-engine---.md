@@ -74,16 +74,18 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
    - `CascadeGraph`: Directed graph representation supporting fast in-degree indexing and cycle detection.
 2. **Deterministic Additive Flux Algorithm (DebtRank Formulation)**:
    - Node operational distress is parameterized as $h_v(t) \in [0.0, 1.0]$ (where percentage capacity shock is $S(v) = 100.0 \times h_v(t)$).
-   - The directed inter-firm impact matrix element $W_{uv}$ integrates intermediate input capacity exposure [1, 4] with the Time-to-Survive (TTS) inventory absorption ratio [6]:
-     $$W_{uv} = \left(\frac{\omega(u \to v)}{100.0}\right) \times \max\left(0.0,\, 1.0 - \frac{B(u \to v)}{D(u)}\right)$$
+   - The directed inter-firm impact matrix element $W_{uv}$ is governed directly by intermediate capacity exposure [1, 4]:
+     $$W_{uv} = \frac{\omega(u \to v)}{100.0}$$
    - Following the recursive DebtRank dynamical equation [2], incoming parallel shocks compound additively across upstream suppliers up to a non-linear capacity ceiling [7]:
      $$h_v(t) = \min\left(1.0,\, h_v(t-1) + \sum_{u \in \text{In}(v)} W_{uv} \cdot \Delta h_u(t-1)\right)$$
      where $\Delta h_u(t-1) = h_u(t-1) - h_u(t-2)$ is the incremental new distress transmitted from round $t-1$ (with initial condition $\Delta h_{\text{shock}}(0) = h_{\text{shock}}(0) = S_0 / 100.0$).
-3. **Temporal Shock Propagation**:
-   - Effective Onset Date at node $v$ is delayed by the active inventory buffer duration (TTS) [6]:
+3. **Temporal Shock Propagation (Ford Downtime Formulation)**:
+   - Inventory buffers operate on time, delaying onset and absorbing downtime without artificial amplitude scaling, following the applied methodology deployed at Ford Motor Company [6]:
+   - Effective Onset Date at node $v$ is delayed by the active inventory buffer duration (Time-to-Survive, TTS):
      $$T_{\text{onset}}(v) = T_{\text{onset}}(u) + B(u \to v)$$
-   - Unbuffered Duration represents net exposure exceeding the inventory horizon [6]:
+   - Unbuffered Duration represents net operational downtime exceeding the inventory survival horizon:
      $$D(v) = \max\left(0,\, D(u) - B(u \to v)\right)$$
+   - Applying buffer absorption strictly to duration eliminates the double-counting anomaly of simultaneously discounting both shock amplitude and timeline.
 4. **Cycle Damping Protocol**:
    - In accordance with Bardoscia et al.'s spectral stability criterion ($\rho(\mathbf{W}) = \lambda_{\max} < 1.0$) [3], cyclical multi-round reverberation must decay geometrically rather than amplifying into runaway contagion.
    - When an edge completes a directed cycle (re-encountering an active ancestor in path history), its transmitted incremental distress is attenuated by geometric damping factor $\gamma = 0.50$:
@@ -133,7 +135,7 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 3. Bardoscia, M., Battiston, S., Caccioli, F., & Caldarelli, G. (2017). Pathways towards instability in financial networks. *Nature Communications*, 8, 14416. https://doi.org/10.1038/ncomms14416
 4. Barrot, J.-N., & Sauvagnat, J. (2016). Input Specificity and the Propagation of Idiosyncratic Shocks in Production Networks. *The Quarterly Journal of Economics*, 131(3), 1543–1592. https://doi.org/10.1093/qje/qjw018
 5. Carvalho, V. M., Nirei, M., Saito, Y. U., & Tahbaz-Salehi, A. (2021). Supply Chain Disruptions: Evidence from the Great East Japan Earthquake. *The Quarterly Journal of Economics*, 136(2), 1255–1321. https://doi.org/10.1093/qje/qjaa044
-6. Gao, S. Y., Simchi-Levi, D., Teo, C.-P., & Yan, Z. (2019). Disruption Risk Mitigation in Supply Chains—The Risk Exposure Index Revisited. *Operations Research*, 67(3), 831–852. https://doi.org/10.1287/opre.2018.1776
+6. Simchi-Levi, D., Schmidt, W., Wei, Y., Zhang, P. Y., Combs, K., Ge, Y., Gusikhin, O., Sanders, M., & Zhang, D. (2015). Identifying Risks and Mitigating Disruptions in the Automotive Supply Chain. *Interfaces*, 45(5), 375–390. https://doi.org/10.1287/inte.2015.0804
 7. Inoue, H., & Todo, Y. (2019). Firm-level propagation of shocks through supply-chain networks. *Nature Sustainability*, 2(9), 841–847. https://doi.org/10.1038/s41893-019-0351-x
 8. U.S. Securities and Exchange Commission. (1999). Staff Accounting Bulletin No. 99: Materiality. *SEC Docket*, 70(16), 1490–1499. Codified at 17 C.F.R. Part 211. https://www.sec.gov/interps/account/sab99.htm
 
