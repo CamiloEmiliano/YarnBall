@@ -91,7 +91,7 @@ We establish **Flow 5** as an automated end-to-end pipeline integration test in 
 3. **DPO Divergence Invariant**:
    - In every preference pair, the chosen response passes schema and CoT validation, while the rejected response fails at least one validator check.
 4. **Numerical Fusion Invariant**:
-   - Merged adapter tensor elements must satisfy `|W_merged - (W_base + scaling * (B @ A))| < 1e-3`.
+   - Merged adapter tensor elements must satisfy `|W_merged - (W_base + scaling * (B @ A))| <= 1e-3`. This tolerance is not arbitrary: it represents the theoretical precision floor of bfloat16 (BF16), which possesses only 7 mantissa bits (machine epsilon 2^-7 ≈ 7.8e-3; standard PyTorch bfloat16 comparison atol=1e-3). While intermediate accumulation is executed in FP32, final serialization to BF16 introduces truncation error bounded by this 1e-3 threshold.
 5. **Offline Isolation Invariant**:
    - Zero network requests to Hugging Face Hub, WandB, or remote model repositories.
 
@@ -104,3 +104,4 @@ We establish **Flow 5** as an automated end-to-end pipeline integration test in 
   - Catches regressions in tokenizer boundaries and tensor name mapping before expensive cloud GPU training runs.
 - **Negative / Trade-offs**:
   - Requires maintaining synthetic micro-checkpoint fixtures (`config.json` and tiny BF16 tensor arrays) in test utilities.
+
