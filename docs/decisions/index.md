@@ -33,6 +33,6 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 
 | ID | Title | Date (YYYY-MM-DD HH:MM) | Status | Subsystem | Linked Commits |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| [ADR-00001](ADR-00001-sit-flow-2-event-shock-contagion-harness.md) | SIT Flow 2 Event Shock Vector & Contagion | 2026-11-09 22:24 | `PROPOSED` | `retrieval` / `ingestion` | *In Progress* |
+| [ADR-00001](ADR-00001-sit-flow-2-event-shock-contagion-harness.md) | SIT Flow 2 Event Shock Vector & Contagion | 2026-11-09 22:24 | `ACCEPTED` | `retrieval` / `ingestion` | [`5d95c75`](../../tests/fixtures/filings/aapl_8k_disruption.json), [`307c79e`](../../retrieval/shock_propagation.py) (*Step 3 pending*) |
 
 
