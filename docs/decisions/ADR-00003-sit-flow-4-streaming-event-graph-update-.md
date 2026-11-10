@@ -12,9 +12,9 @@ Filename: ADR-00003-sit-flow-4-streaming-event-graph-update-.md (53 chars)
 - **ADR ID**: ADR-00003
 - **Filename**: `ADR-00003-sit-flow-4-streaming-event-graph-update-.md`
 - **Date**: 2026-11-10 00:44
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `streaming` / `curation` / `knowledge_graph`
-- **Linked Commits**: *Pending implementation*
+- **Linked Commits**: `68e3884` (Flow 4 implementation and SIT test harness)
 
 ---
 
@@ -92,3 +92,4 @@ We establish **Flow 4** as an architectural contract implemented in `tests/integ
   - Secures the streaming foundation required before deploying Phase 7 continuous market-shock ingestion.
 - **Negative / Trade-offs**:
   - Requires maintaining Cypher `MERGE` statement templates with `ON CREATE` and `ON MATCH` clauses for all streaming graph mutations.
+

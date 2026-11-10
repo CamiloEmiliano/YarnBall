@@ -154,9 +154,15 @@ def extract_entities(text: str) -> dict:
     return _extract_entities_via_ollama(text)
 
 
-def store_graph_entities(source_hash: str, text: str) -> None:
+def store_graph_entities(
+    source_hash: str,
+    text: str,
+    graph_data: Optional[Dict[str, Any]] = None,
+    driver: Optional[Any] = None,
+) -> None:
     """Extract entities and relationships and persist them to Memgraph."""
-    graph_data = extract_entities(text)
+    if graph_data is None:
+        graph_data = extract_entities(text)
 
     nodes: List[Dict[str, Any]] = graph_data.get("nodes", [])
     edges: List[Dict[str, Any]] = graph_data.get("edges", [])
@@ -164,9 +170,9 @@ def store_graph_entities(source_hash: str, text: str) -> None:
     if not nodes and not edges:
         return
 
-    driver = get_memgraph_driver()
+    active_driver = driver if driver is not None else get_memgraph_driver()
 
-    with driver.session() as session:
+    with active_driver.session() as session:
         # 1. Insert/Merge Article News Node
         session.run(
             "MERGE (n:News {id: $source_hash}) SET n.updated_at = datetime()",

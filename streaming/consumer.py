@@ -146,6 +146,76 @@ def ingest_message(
         )
         return False
 
+
+def process_streaming_event(
+    payload: Any,
+    *,
+    dlt_producer: Any | None = None,
+    graph_driver: Any | None = None,
+    graph_data: dict[str, Any] | None = None,
+    skip_embedding: bool = False,
+) -> bool:
+    """Process a single event payload end-to-end: validation, raw storage, embedding, and graph MERGE."""
+    if not _is_valid_payload(payload):
+        _call(
+            "send_to_dlt",
+            dlt_producer,
+            message=None,
+            payload=payload,
+            reason="invalid_kafka_payload",
+        )
+        return False
+
+    try:
+        # 1. Store raw payload
+        _call(
+            "store_raw",
+            raw_payload=payload["raw_payload"],
+            fetched_at=datetime.fromisoformat(payload["fetched_at"]),
+            payload_hash=payload["source_hash"],
+        )
+
+        # 2. Extract free-text for embedding and graph extraction
+        try:
+            data = json.loads(payload["raw_payload"])
+            text_parts = []
+            if "title" in data and data["title"]:
+                text_parts.append(data["title"])
+            if "summary" in data and data["summary"]:
+                text_parts.append(data["summary"])
+            if "content" in data and data["content"]:
+                text_parts.append(data["content"])
+            free_text = " ".join(text_parts) if text_parts else payload["raw_payload"]
+        except Exception:
+            free_text = payload["raw_payload"]
+
+        # 3. Embedding storage
+        if not skip_embedding:
+            try:
+                vector = embed_texts([free_text])[0]
+                store_embedding(payload["source_hash"], vector)
+            except Exception as exc:
+                logger.warning("Embedding generation skipped or failed: %s", exc)
+
+        # 4. Extract and store graph entities via idempotent MERGE
+        store_graph_entities(
+            source_hash=payload["source_hash"],
+            text=free_text,
+            graph_data=graph_data,
+            driver=graph_driver,
+        )
+        return True
+    except Exception as exc:
+        _call(
+            "send_to_dlt",
+            dlt_producer,
+            message=None,
+            payload=payload,
+            reason="consumer_message_failed",
+            error=str(exc),
+        )
+        return False
+
 # ----------------------------------------------------------------------
 # Consumer execution entry point
 # ----------------------------------------------------------------------
@@ -177,65 +247,8 @@ def run_consumer() -> None:
                 consumer.commit()
                 continue
 
-            if not _is_valid_payload(payload):
-                published = send_to_dlt(
-                    dlt_producer,
-                    message=message,
-                    payload=payload,
-                    reason="invalid_kafka_payload",
-                )
-                if published:
-                    consumer.commit()
-                continue
-
-            try:
-                # Store raw payload
-                insert_raw_message(
-                    raw_payload=payload["raw_payload"],
-                    fetched_at=datetime.fromisoformat(payload["fetched_at"]),
-                    payload_hash=payload["source_hash"],
-                )
-
-                # Extract free-text for embedding
-                try:
-                    data = json.loads(payload["raw_payload"])
-                    text_parts = []
-                    if "title" in data and data["title"]:
-                        text_parts.append(data["title"])
-                    if "summary" in data and data["summary"]:
-                        text_parts.append(data["summary"])
-                    free_text = " ".join(text_parts) if text_parts else payload["raw_payload"]
-                except Exception:
-                    free_text = payload["raw_payload"]
-
-                # Generate embedding and store it
-                vector = embed_texts([free_text])[0]
-                store_embedding(payload["source_hash"], vector)
-
-                # Extract and store graph entities
-                store_graph_entities(payload["source_hash"], free_text)
-
-                consumer.commit()
-                logger.info(
-                    json.dumps(
-                        {
-                            "event": "stored_raw_and_embedding",
-                            "source": payload.get("source"),
-                            "hash": payload["source_hash"],
-                            "size": len(payload["raw_payload"]),
-                        }
-                    )
-                )
-            except Exception as exc:
-                published = send_to_dlt(
-                    dlt_producer,
-                    message=message,
-                    payload=payload,
-                    reason="consumer_message_failed",
-                    error=str(exc),
-                )
-                if published:
-                    consumer.commit()
+            process_streaming_event(payload, dlt_producer=dlt_producer)
+            consumer.commit()
     finally:
         consumer.close()
         dlt_producer.close()

@@ -16,6 +16,7 @@ from streaming.consumer import (
     DLTQueueError,
     ingest_message,
     process_message,
+    process_streaming_event,
     run_consumer,
     store_raw,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "DLTQueueError",
     "ingest_message",
     "process_message",
+    "process_streaming_event",
     "run_consumer",
     "store_raw",
 ]
