@@ -37,5 +37,6 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00002](ADR-00002-sit-flow-3-nl-to-cypher-rag-e2e-harness-.md) | SIT Flow 3 NL-to-Cypher RAG E2E Harness | 2026-11-09 22:58 | `ACCEPTED` | `retrieval` / `sft_pipeline` | [`4ae944b`](../../tests/integration/e2e/test_nl_to_cypher_rag_e2e.py), [`e9a3ef9`](../../tests/integration/e2e/test_nl_to_cypher_rag_e2e.py) |
 | [ADR-00003](ADR-00003-sit-flow-4-streaming-event-graph-update-.md) | SIT Flow 4 Streaming Event Graph Update | 2026-11-10 00:44 | `ACCEPTED` | `streaming` / `knowledge_graph` | [`af5be21`](../../tests/integration/pipelines/test_streaming_event_loop_flow.py) |
 | [ADR-00004](ADR-00004-sit-flow-5-model-foundry-alignment-smoke.md) | SIT Flow 5 Model Foundry Alignment Smoke | 2026-11-10 01:05 | `ACCEPTED` | `sft_pipeline` / `evaluation` | [`ef47afa`](../../tests/integration/pipelines/test_model_foundry_smoke_flow.py) |
+| [ADR-00005](ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md) | SIT Flow 1 PiT SEC Filing to KG Ingest | 2026-11-10 03:12 | `PROPOSED` | `universe` / `ontology` | [`4ae944b`](../../tests/integration/pipelines/test_filing_to_graph_flow.py), [`041e541`](../../universe/sp500.py) |
 
 
