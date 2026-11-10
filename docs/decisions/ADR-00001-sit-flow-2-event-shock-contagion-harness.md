@@ -14,7 +14,7 @@ Filename: ADR-00001-sit-flow-2-event-shock-contagion-harness.md (53 chars)
 - **Date**: 2026-11-09 22:24
 - **Status**: ACCEPTED
 - **Target Subsystem**: `retrieval` / `ingestion` / `knowledge_graph`
-- **Linked Commits**: `5d95c75` (Step 1 micro-fixtures), `307c79e` (Step 2 shock propagation), `604db06` (Step 3 integration test)
+- **Linked Commits**: `5d95c75` (Step 1 micro-fixtures), `307c79e` (Step 2 shock propagation), `ad1b83a` (Step 3 integration test)
 
 ---
 
