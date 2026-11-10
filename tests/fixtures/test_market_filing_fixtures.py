@@ -50,3 +50,4 @@ def test_ohlcv_parquet_fixture_integrity_and_shock_metrics():
     assert metrics["car_abnormal_return_pct"] < -5.0
     assert metrics["volatility_zscore"] <= -3.0
     assert metrics["polarity_sentiment"] == "DISRUPTIVE_SHOCK"
+

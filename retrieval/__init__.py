@@ -18,6 +18,13 @@ from .pipeline import (
     HopOrderedSubgraphVerbalizer,
     PipelineResult,
 )
+from .shock_propagation import (
+    PropagatedShock,
+    ShockVector,
+    build_shock_vector_from_metrics,
+    propagate_shock_across_edge,
+    traverse_multi_hop_contagion,
+)
 
 __all__ = [
     "HybridRetriever",
@@ -29,4 +36,9 @@ __all__ = [
     "GraphRAGPipelineOrchestrator",
     "HopOrderedSubgraphVerbalizer",
     "PipelineResult",
+    "PropagatedShock",
+    "ShockVector",
+    "build_shock_vector_from_metrics",
+    "propagate_shock_across_edge",
+    "traverse_multi_hop_contagion",
 ]
