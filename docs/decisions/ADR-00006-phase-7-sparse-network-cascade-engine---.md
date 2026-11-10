@@ -132,7 +132,7 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 3. Bardoscia, M., Battiston, S., Caccioli, F., & Caldarelli, G. (2017). Pathways towards instability in financial networks. *Nature Communications*, 8, 14416. https://doi.org/10.1038/ncomms14416
 4. Barrot, J.-N., & Sauvagnat, J. (2016). Input Specificity and the Propagation of Idiosyncratic Shocks in Production Networks. *The Quarterly Journal of Economics*, 131(3), 1543–1592. https://doi.org/10.1093/qje/qjw018
 5. Carvalho, V. M., Nirei, M., Saito, Y. U., & Tahbaz-Salehi, A. (2021). Supply Chain Disruptions: Evidence from the Great East Japan Earthquake. *The Quarterly Journal of Economics*, 136(2), 1255–1321. https://doi.org/10.1093/qje/qjaa044
-6. Simchi-Levi, D., Schmidt, W., & Wei, Y. (2014). From Superstorms to Factory Fires: Managing Unpredictable Supply-Chain Disruptions. *Harvard Business Review*, 92(1-2), 96–101. https://hbr.org/2014/01/from-superstorms-to-factory-fires
+6. Simchi-Levi, D., Schmidt, W., & Wei, Y. (2014). From Superstorms to Factory Fires: Managing Unpredictable Supply-Chain Disruptions. *Harvard Business Review*, 92(1-2), 96–101. https://hbr.org/2014/01/from-superstorms-to-factory-fires-managing-unpredictable-supply-chain-disruptions
 7. Inoue, H., & Todo, Y. (2019). Firm-level propagation of shocks through supply-chain networks. *Nature Sustainability*, 2(9), 841–847. https://doi.org/10.1038/s41893-019-0351-x
 8. U.S. Securities and Exchange Commission. (1999). Staff Accounting Bulletin No. 99: Materiality. *SEC Docket*, 70(16), 1490–1499. Codified at 17 C.F.R. Part 211. https://www.sec.gov/interps/account/sab99.htm
 
