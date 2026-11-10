@@ -12,7 +12,7 @@ Filename: ADR-00006-phase-7-sparse-network-cascade-engine---.md (53 chars)
 - **ADR ID**: ADR-00006
 - **Filename**: `ADR-00006-phase-7-sparse-network-cascade-engine---.md`
 - **Date**: 2026-11-10 03:32
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `contagion` / `retrieval`
 - **Linked Commits**: *Pending implementation*
 
