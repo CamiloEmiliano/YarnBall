@@ -37,16 +37,16 @@ Language models exhibit persistent mode-bleed, hallucinations, and attention dif
 1. **Deterministic Additive Diamond Compounding**:
    - When multiple upstream suppliers fail simultaneously and converge on a single downstream customer, incoming capacity losses must sum additively rather than being evaluated in isolation.
 2. **Strict Symbolic Division of Labor**:
-   - Mathematical graph shock diffusion must be computed entirely by a deterministic, symbolic Python algorithm running in O(K * |E|) time before prompting the language model. The LLM must receive exact pre-computed numbers and focus exclusively on qualitative narrative synthesis and options overlay structuring.
+   - Mathematical graph shock diffusion must be computed entirely by a deterministic, symbolic Python algorithm running in $\mathcal{O}(K \times |E|)$ time before prompting the language model. The LLM must receive exact pre-computed numbers and focus exclusively on qualitative narrative synthesis and options overlay structuring.
 3. **Inventory Buffer Horizons & Temporal Delays**:
-   - Downstream finished goods and component inventory buffers delay shock onset dates by exactly B calendar days and absorb disruption duration:
-     Unbuffered_Duration = max(0, Disruption_Duration - Buffer_Days).
+   - Downstream finished goods and component inventory buffers delay shock onset dates by exactly $B$ calendar days and absorb disruption duration:
+     $$D_{\text{unbuffered}} = \max(0,\, D_{\text{disruption}} - B)$$
 4. **Cycle Damping & Guaranteed Loop Termination**:
-   - Circular supply dependencies (e.g. A -> B -> C -> A) must be detected and dampened geometrically (gamma = 0.5 attenuation per cycle traversal) with a strict maximum iteration cap K, guaranteeing algorithm termination.
-5. **No LaTeX Formatting (`.agents/rules/style.md`)**:
-   - All mathematical formulas and variables must use plain text and Unicode characters (e.g., delta, gamma, arrows).
+   - Circular supply dependencies (e.g., $A \to B \to C \to A$) must be detected and dampened geometrically ($\gamma = 0.5$ attenuation per cycle traversal) with a strict maximum iteration cap $K = 5$, guaranteeing algorithm termination.
+5. **Formal Mathematical Specification**:
+   - Diffusion mechanics, temporal horizons, and loop damping must follow explicit, verifiable formulas rendered in LaTeX for unambiguous verification against code implementations.
 6. **Ultra-Low Latency Budget**:
-   - The cascade calculation must execute purely in-memory in < 10 milliseconds for subgraphs up to 100 nodes and 500 edges.
+   - The cascade calculation must execute purely in-memory in $< 10$ milliseconds for subgraphs up to 100 nodes and 500 edges.
 
 ---
 
@@ -67,20 +67,23 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 
 1. **Graph Data Structures**:
    - `CascadeNode`: Represents an entity with baseline revenue/capacity, active buffers, and accumulated shock state.
-   - `CascadeEdge`: Directed relationship carrying `exposure_pct`, `buffer_days`, and `materiality_tier`.
+   - `CascadeEdge`: Directed relationship carrying capacity exposure $\omega \in [0.0, 100.0]$, inventory buffer days $B \ge 0$, and materiality tier.
    - `CascadeGraph`: Directed graph representation supporting fast in-degree indexing and cycle detection.
 2. **Deterministic Additive Flux Algorithm**:
-   - For each target node v, incoming flux from upstream parents u is calculated as:
-     Absorption_Ratio = max(0.0, 1.0 - (Buffer_Days(u -> v) / Duration(u)))
-     Flux(u -> v) = Shock(u) * (Exposure_Pct(u -> v) / 100.0) * Absorption_Ratio
-     Total_Accumulated_Shock(v) = min(100.0, sum(Flux(u -> v) for u in In(v)))
+   - For each target node $v$, incoming flux from upstream parent $u$ is calculated as:
+     $$\text{AbsorptionRatio}(u \to v) = \max\left(0.0,\, 1.0 - \frac{B(u \to v)}{D(u)}\right)$$
+     $$\text{Flux}(u \to v) = S(u) \times \left(\frac{\omega(u \to v)}{100.0}\right) \times \text{AbsorptionRatio}(u \to v)$$
+     $$S(v) = \min\left(100.0,\, \sum_{u \in \text{In}(v)} \text{Flux}(u \to v)\right)$$
 3. **Temporal Shock Propagation**:
-   - Effective Onset Date at node v is delayed by the buffer:
-     Effective_Onset(v) = Onset(u) + Buffer_Days(u -> v)
+   - Effective Onset Date at node $v$ is delayed by the buffer:
+     $$T_{\text{onset}}(v) = T_{\text{onset}}(u) + B(u \to v)$$
    - Unbuffered Duration:
-     Unbuffered_Duration(v) = max(0, Duration(u) - Buffer_Days(u -> v))
+     $$D(v) = \max\left(0,\, D(u) - B(u \to v)\right)$$
 4. **Cycle Damping Protocol**:
-   - Traversal tracks path history. When an already-visited node is re-encountered in a cycle, its transmitted shock is attenuated by damping factor gamma = 0.5. Iterations terminate when delta_shock < 0.01 or iteration count reaches K = 5.
+   - Traversal tracks path history. When an already-visited node is re-encountered in a cycle, its transmitted shock is attenuated by damping factor $\gamma = 0.5$:
+     $$\text{Flux}_{\text{cycle}}(u \to v) = \gamma \times \text{Flux}(u \to v)$$
+   - Iterations terminate when $\Delta S < 0.01$ or iteration count reaches $K = 5$. Because $\gamma = 0.5 < 1.0$, the geometric cycle series is strictly bounded:
+     $$\sum_{k=0}^{K} \gamma^k < \frac{1}{1 - \gamma} = 2.0$$
 5. **LLM Handshake Interface**:
    - Outputs a structured `ConvergentShockSummary` object injected into the prompt verbalizer in `retrieval/pipeline.py` for Tasks D and E.
 
@@ -89,18 +92,18 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 ## 5. Invariants & Guardrails
 
 1. **Additive Diamond Convergence Invariant**:
-   - For two parallel suppliers A and B converging on C with zero buffer:
-     Shock(C) == min(100.0, Flux(A -> C) + Flux(B -> C)).
-     Parallel losses must compound additively with zero branch omission.
+   - For two parallel suppliers $A$ and $B$ converging on $C$ with zero buffer:
+     $$S(C) = \min\left(100.0,\, \text{Flux}(A \to C) + \text{Flux}(B \to C)\right)$$
+   - Parallel losses must compound additively with zero branch omission.
 2. **Buffer Delay & Absorption Invariant**:
-   - An active inventory buffer of B days strictly shifts downstream shock onset by B calendar days:
-     Effective_Onset(v) == Event_Date + B days.
-   - If Buffer_Days >= Disruption_Duration, unbuffered duration must equal 0, and effective shock collapses to the baseline residual friction (0.05).
+   - An active inventory buffer of $B$ days strictly shifts downstream shock onset by $B$ calendar days:
+     $$T_{\text{onset}}(v) = T_{\text{event}} + B$$
+   - If $B \ge D_{\text{disruption}}$, unbuffered duration must equal $0$, and effective shock collapses to baseline residual friction ($S_{\text{friction}} = 0.05$).
 3. **Cycle Termination Invariant**:
-   - In graphs containing directed cycles, the cascade engine must terminate in at most K = 5 iterations with total flux strictly bounded and non-divergent.
+   - In graphs containing directed cycles, the cascade engine must terminate in at most $K = 5$ iterations with total flux strictly bounded and non-divergent.
 4. **Monotonic Path Attenuation Invariant**:
    - Along any single linear (non-convergent) path, propagated shock intensity must strictly decrease:
-     Shock(Hop N+1) < Shock(Hop N).
+     $$S(\text{Hop}_{N+1}) < S(\text{Hop}_N)$$
 5. **Zero External Network Dependency**:
    - The engine must execute 100% offline using pure Python and NumPy with zero live network or database calls.
 
@@ -114,3 +117,4 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
   - Delivers mathematically auditable shock metrics directly into portfolio hedging directives.
 - **Negative / Trade-offs**:
   - Requires downstream customers to maintain capacity exposure percentages and inventory buffer day attributes on graph edges.
+
