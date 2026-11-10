@@ -35,18 +35,18 @@ Language models exhibit persistent mode-bleed, hallucinations, and attention dif
 ## 2. Decision Drivers & Constraints
 
 1. **Deterministic Additive Diamond Compounding**:
-   - When multiple upstream suppliers fail simultaneously and converge on a single downstream customer, incoming capacity losses must sum additively rather than being evaluated in isolation.
+   - When multiple upstream suppliers fail simultaneously and converge on a single downstream customer, incoming capacity losses must sum additively rather than being evaluated in isolation, following multi-supplier Leontief input-deficit aggregation [7].
 2. **Strict Symbolic Division of Labor**:
    - Mathematical graph shock diffusion must be computed entirely by a deterministic, symbolic Python algorithm running in $\mathcal{O}(K \times |E|)$ time before prompting the language model. The LLM must receive exact pre-computed numbers and focus exclusively on qualitative narrative synthesis and options overlay structuring.
 3. **Inventory Buffer Horizons & Temporal Delays**:
-   - Downstream finished goods and component inventory buffers delay shock onset dates by exactly $B$ calendar days and absorb disruption duration:
+   - Downstream finished goods and component inventory buffers delay shock onset dates by exactly $B$ calendar days and absorb disruption duration under the Time-to-Survive (TTS) framework [6]:
      $$D_{\text{unbuffered}} = \max(0,\, D_{\text{disruption}} - B)$$
 4. **Cycle Damping & Guaranteed Loop Termination**:
    - Circular supply dependencies (e.g., $A \to B \to C \to A$) must be detected and dampened geometrically ($\gamma = 0.5$ attenuation per cycle traversal) with a strict maximum iteration cap $K = 5$, guaranteeing algorithm termination.
    - Grounded in empirical production network input-output calibrations where the average intermediate input pass-through share is $\mu \approx 0.50$ [1].
    - Aligns with systemic financial network stability criteria (e.g., DebtRank) where damping factor $\beta \le 0.5$ guarantees that total secondary feedback cannot exceed the initiating primary shock ($\sum_{k=1}^\infty \beta^k = \frac{\beta}{1-\beta} \le 1.0$) [2, 3].
    - Consistent with empirical disaster propagation studies showing approximately 50% disruption attenuation beyond immediate Tier-1 links [4, 5].
-   - Numerically, $\gamma = 0.5 = 2^{-1}$ provides exact IEEE-754 dyadic floating-point precision, while ensuring the residual shock at $K = 5$ ($\gamma^5 = 3.125\%$) decays strictly below the institutional materiality threshold ($\epsilon = 0.05$).
+   - Numerically, $\gamma = 0.5 = 2^{-1}$ provides exact IEEE-754 dyadic floating-point precision, while ensuring the residual shock at $K = 5$ ($\gamma^5 = 3.125\%$) decays strictly below the institutional materiality threshold ($\epsilon = 0.05$) established under SEC SAB 99 [8].
 5. **Formal Mathematical Specification**:
    - Diffusion mechanics, temporal horizons, and loop damping must follow explicit, verifiable formulas rendered in LaTeX for unambiguous verification against code implementations.
 6. **Ultra-Low Latency Budget**:
@@ -74,19 +74,20 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
    - `CascadeEdge`: Directed relationship carrying capacity exposure $\omega \in [0.0, 100.0]$, inventory buffer days $B \ge 0$, and materiality tier.
    - `CascadeGraph`: Directed graph representation supporting fast in-degree indexing and cycle detection.
 2. **Deterministic Additive Flux Algorithm**:
-   - For each target node $v$, incoming flux from upstream parent $u$ is calculated as:
+   - For each target node $v$, incoming flux from upstream parent $u$ is calculated by integrating the Time-to-Survive (TTS) inventory absorption ratio [6] with intermediate input exposure [1, 4]:
      $$\text{AbsorptionRatio}(u \to v) = \max\left(0.0,\, 1.0 - \frac{B(u \to v)}{D(u)}\right)$$
      $$\text{Flux}(u \to v) = S(u) \times \left(\frac{\omega(u \to v)}{100.0}\right) \times \text{AbsorptionRatio}(u \to v)$$
+   - Parallel incoming shocks compound additively under Leontief fixed-coefficient intermediate inputs [7]:
      $$S(v) = \min\left(100.0,\, \sum_{u \in \text{In}(v)} \text{Flux}(u \to v)\right)$$
 3. **Temporal Shock Propagation**:
-   - Effective Onset Date at node $v$ is delayed by the buffer:
+   - Effective Onset Date at node $v$ is delayed by the active inventory buffer duration (TTS) [6]:
      $$T_{\text{onset}}(v) = T_{\text{onset}}(u) + B(u \to v)$$
-   - Unbuffered Duration:
+   - Unbuffered Duration represents net exposure exceeding the inventory horizon [6]:
      $$D(v) = \max\left(0,\, D(u) - B(u \to v)\right)$$
 4. **Cycle Damping Protocol**:
    - Traversal tracks path history. When an already-visited node is re-encountered in a cycle, its transmitted shock is attenuated by damping factor $\gamma = 0.5$:
      $$\text{Flux}_{\text{cycle}}(u \to v) = \gamma \times \text{Flux}(u \to v)$$
-   - Iterations terminate when $\Delta S < 0.01$ or iteration count reaches $K = 5$. Because $\gamma = 0.5 < 1.0$, the geometric cycle series is strictly bounded [2]:
+   - Iterations terminate when $\Delta S < 0.01$ or iteration count reaches $K = 5$. Because $\gamma = 0.5 < 1.0$, the geometric cycle series is strictly bounded [2, 3]:
      $$\sum_{k=0}^{K} \gamma^k < \frac{1}{1 - \gamma} = 2.0, \quad \text{Feedback Ratio} = \sum_{k=1}^{\infty} \gamma^k = \frac{\gamma}{1 - \gamma} = 1.0$$
 5. **LLM Handshake Interface**:
    - Outputs a structured `ConvergentShockSummary` object injected into the prompt verbalizer in `retrieval/pipeline.py` for Tasks D and E.
@@ -98,13 +99,13 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 1. **Additive Diamond Convergence Invariant**:
    - For two parallel suppliers $A$ and $B$ converging on $C$ with zero buffer:
      $$S(C) = \min\left(100.0,\, \text{Flux}(A \to C) + \text{Flux}(B \to C)\right)$$
-   - Parallel losses must compound additively with zero branch omission.
+   - Parallel losses must compound additively with zero branch omission [7].
 2. **Buffer Delay & Absorption Invariant**:
-   - An active inventory buffer of $B$ days strictly shifts downstream shock onset by $B$ calendar days:
+   - An active inventory buffer of $B$ days strictly shifts downstream shock onset by $B$ calendar days [6]:
      $$T_{\text{onset}}(v) = T_{\text{event}} + B$$
-   - If $B \ge D_{\text{disruption}}$, unbuffered duration must equal $0$, and effective shock collapses to baseline residual friction ($S_{\text{friction}} = 0.05$).
+   - If $B \ge D_{\text{disruption}}$, unbuffered duration must equal $0$, and effective shock collapses to baseline residual friction ($S_{\text{friction}} = 0.05$), grounded in the SEC 5% materiality floor [8].
 3. **Cycle Termination Invariant**:
-   - In graphs containing directed cycles, the cascade engine must terminate in at most $K = 5$ iterations with total flux strictly bounded and non-divergent.
+   - In graphs containing directed cycles, the cascade engine must terminate in at most $K = 5$ iterations with total flux strictly bounded and non-divergent [2, 3].
 4. **Monotonic Path Attenuation Invariant**:
    - Along any single linear (non-convergent) path, propagated shock intensity must strictly decrease:
      $$S(\text{Hop}_{N+1}) < S(\text{Hop}_N)$$
@@ -131,4 +132,7 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 3. Bardoscia, M., Battiston, S., Caccioli, F., & Caldarelli, G. (2017). Pathways towards instability in financial networks. *Nature Communications*, 8, 14416. https://doi.org/10.1038/ncomms14416
 4. Barrot, J.-N., & Sauvagnat, J. (2016). Input Specificity and the Propagation of Idiosyncratic Shocks in Production Networks. *The Quarterly Journal of Economics*, 131(3), 1543–1592. https://doi.org/10.1093/qje/qjw018
 5. Carvalho, V. M., Nirei, M., Saito, Y. U., & Tahbaz-Salehi, A. (2021). Supply Chain Disruptions: Evidence from the Great East Japan Earthquake. *The Quarterly Journal of Economics*, 136(2), 1255–1321. https://doi.org/10.1093/qje/qjaa044
+6. Simchi-Levi, D., Schmidt, W., & Wei, Y. (2014). From Superstorms to Factory Fires: Managing Unpredictable Supply-Chain Disruptions. *Harvard Business Review*, 92(1-2), 96–101. https://hbr.org/2014/01/from-superstorms-to-factory-fires
+7. Inoue, H., & Todo, Y. (2019). Firm-level propagation of shocks through supply-chain networks. *Nature Sustainability*, 2(9), 841–847. https://doi.org/10.1038/s41893-019-0351-x
+8. U.S. Securities and Exchange Commission. (1999). Staff Accounting Bulletin No. 99: Materiality. *SEC Docket*, 70(16), 1490–1499. Codified at 17 C.F.R. Part 211. https://www.sec.gov/interps/account/sab99.htm
 
