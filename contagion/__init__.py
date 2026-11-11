@@ -9,6 +9,7 @@ from contagion.cascade import (
     CascadeGraph,
     CascadeNode,
     ConvergentShockSummary,
+    SparseNetworkCascadeEngine,
 )
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "CascadeEdge",
     "CascadeGraph",
     "ConvergentShockSummary",
+    "SparseNetworkCascadeEngine",
 ]
 
