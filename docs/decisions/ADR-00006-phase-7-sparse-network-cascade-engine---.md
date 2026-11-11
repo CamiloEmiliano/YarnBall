@@ -28,24 +28,26 @@ During the Phase 5 Adversarial Torture Test (`TT-02A`), the 7B language model (`
 
 The language model failed decisively, achieving a consensus pass rate of only **1/9 (11%)**. The LLM evaluated each branch in isolated cognitive silos (*"Supplier A has a 40% disruption which is manageable; Supplier B has a 45% disruption which is manageable"*), completely failing to compute the additive arithmetic sum.
 
-Language models exhibit persistent mode-bleed, hallucinations, and attention diffusion when required to calculate multi-hop graph arithmetic. Relying on an LLM to calculate multi-branch network flux produces dangerously uncalibrated risk assessments and flawed portfolio hedging directives.
+Language models exhibit persistent mode-bleed, hallucinations, and attention diffusion when required to calculate multi-hop graph arithmetic. Relying on an LLM to calculate multi-branch network shock produces dangerously uncalibrated risk assessments and flawed portfolio hedging directives.
 
 ---
 
 ## 2. Decision Drivers & Constraints
 
-1. **Deterministic Additive Diamond Compounding**:
-   - When multiple upstream suppliers fail simultaneously and converge on a single downstream customer, incoming capacity losses must sum additively rather than being evaluated in isolation, following multi-supplier Leontief input-deficit aggregation [7].
+1. **Grouped-Leontief Input Deficit Aggregation**:
+   - When multiple upstream suppliers fail simultaneously and converge on a single downstream customer, incoming capacity shortfalls sum additively within interchangeable input groups and combine via Leontief fixed-proportions maximization across distinct input groups [7].
 2. **Strict Symbolic Division of Labor**:
    - Mathematical graph shock diffusion must be computed entirely by a deterministic, symbolic Python algorithm running in $\mathcal{O}(K \times |E|)$ time before prompting the language model. The LLM must receive exact pre-computed numbers and focus exclusively on qualitative narrative synthesis and options overlay structuring.
 3. **Inventory Buffer Horizons & Temporal Delays**:
-   - Downstream finished goods and component inventory buffers delay shock onset dates by exactly $B$ calendar days and absorb disruption duration under the Time-to-Survive (TTS) framework [6]:
-     $$D_{\text{unbuffered}} = \max(0,\, D_{\text{disruption}} - B)$$
+   - Downstream finished goods and component inventory buffers delay shock onset dates and absorb disruption duration. Edge inventory cover $B(u \to v)$ (in days) acts as a conservative proxy for Time-to-Survive (TTS) [6], absorbing lost input-days under material balance:
+     $$D(u \to v) = \max\left(0,\, D(u) - \frac{B(u \to v)}{h(u)}\right)$$
+     $$L(u \to v) = \max\left(0,\, h(u) D(u) - B(u \to v)\right)$$
 4. **Cycle Damping & Guaranteed Loop Termination**:
-   - Formulates systemic shock propagation under the DebtRank recursive distress framework [2], where node impairment $h_v(t) \in [0.0, 1.0]$ compounds incoming parent distress up to a non-linear capacity ceiling.
+   - Formulates systemic shock propagation under a grouped-Leontief fixed-point framework [7], where node impairment $h_v(t) \in [0.0, 1.0]$ compounds incoming parent distress up to a non-linear capacity ceiling.
    - Circular supply dependencies (e.g., $A \to B \to C \to A$) are dampened under Bardoscia et al.'s spectral radius contraction condition ($\lambda_{\max} < 1.0$) [3], applying geometric cycle attenuation $\gamma = 0.50$ grounded in Acemoglu's intermediate input pass-through share $\mu \approx 0.50$ [1].
    - Consistent with empirical disaster propagation studies showing approximately 50% disruption attenuation beyond immediate Tier-1 links [4, 5].
    - Numerically, $\gamma = 0.5 = 2^{-1}$ provides exact IEEE-754 dyadic floating-point precision, while ensuring the residual shock at $K = 5$ ($\gamma^5 = 3.125\%$) decays strictly below the institutional materiality threshold ($\epsilon = 0.05$) established under SEC SAB 99 [8].
+   - Nodes located beyond the $K = 5$ hop horizon are flagged as `OUT_OF_HORIZON` rather than silently assigned zero.
 5. **Formal Mathematical Specification**:
    - Diffusion mechanics, temporal horizons, and loop damping must follow explicit, verifiable formulas rendered in LaTeX for unambiguous verification against code implementations.
 6. **Ultra-Low Latency Budget**:
@@ -56,10 +58,10 @@ Language models exhibit persistent mode-bleed, hallucinations, and attention dif
 ## 3. Considered Alternatives & Rejection Rationale
 
 - **Alternative A: Qualitative LLM Prompting with Chain-of-Thought (CoT)**:
-  - *Rejected*: Torture testing TT-02A proved that even with <think> reasoning tokens, 7B models fail on parallel flux addition (11% pass rate). Prompt engineering cannot reliably overcome arithmetic limitations on multi-branch graphs.
+  - *Rejected*: Torture testing TT-02A proved that even with <think> reasoning tokens, 7B models fail on parallel shock addition (11% pass rate). Prompt engineering cannot reliably overcome arithmetic limitations on multi-branch graphs.
 - **Alternative B: End-to-End Deep Graph Neural Network (GNN: GIN/RGAT)**:
   - *Rejected*: Full deep GNNs introduce significant inference latency, require GPU compute, suffer from over-smoothing beyond 3-4 hops, and act as black boxes lacking the auditable mathematical transparency demanded by institutional compliance.
-- **Alternative C: Unattenuated All-Pairs Shortest Path (BFS)**:
+- **Alternative C: Unattenuated Reachability (BFS)**:
   - *Rejected*: Ignores real-world operational absorption where finished goods stockpiles buffer shocks.
 
 ---
@@ -69,28 +71,39 @@ Language models exhibit persistent mode-bleed, hallucinations, and attention dif
 We establish **Phase 7** by creating a dedicated package `contagion/` centered around the `SparseNetworkCascadeEngine` in `contagion/cascade.py` with the following architectural components:
 
 1. **Graph Data Structures**:
-   - `CascadeNode`: Represents an entity with baseline revenue/capacity, active buffers, and accumulated shock state.
-   - `CascadeEdge`: Directed relationship carrying capacity exposure $\omega \in [0.0, 100.0]$, inventory buffer days $B \ge 0$, and materiality tier.
-   - `CascadeGraph`: Directed graph representation supporting fast in-degree indexing and cycle detection.
-2. **Deterministic Additive Flux Algorithm (DebtRank Formulation)**:
+   - `CascadeNode`: Represents an entity with baseline revenue/capacity, active buffers, accumulated shock state $h_v$, onset $T_{\text{onset}}(v)$, downtime $D(v)$, and horizon status.
+   - `CascadeEdge`: Directed relationship $(u \to v)$ carrying input group identifier $k(u \to v)$, procurement share $a_{uv} = \omega(u \to v) / 100.0 \in [0.0, 1.0]$ subject to within-group normalization $\sum_{u \in \text{In}_k(v)} a_{uv} \le 1.0$, inventory buffer days $B(u \to v) \ge 0$, and non-computational metadata (`materiality_tier`).
+   - `CascadeGraph`: Directed graph representation supporting fast in-degree indexing, strongly connected component (SCC) decomposition (Tarjan's algorithm), and hop distance indexing from shock sources.
+2. **Deterministic Grouped-Leontief Propagation Algorithm**:
    - Node operational distress is parameterized as $h_v(t) \in [0.0, 1.0]$ (where percentage capacity shock is $S(v) = 100.0 \times h_v(t)$).
-   - The directed inter-firm impact matrix element $W_{uv}$ is governed directly by intermediate capacity exposure [1, 4]:
-     $$W_{uv} = \frac{\omega(u \to v)}{100.0}$$
-   - Following the recursive DebtRank dynamical equation [2], incoming parallel shocks compound additively across upstream suppliers up to a non-linear capacity ceiling [7]:
-     $$h_v(t) = \min\left(1.0,\, h_v(t-1) + \sum_{u \in \text{In}(v)} W_{uv} \cdot \Delta h_u(t-1)\right)$$
-     where $\Delta h_u(t-1) = h_u(t-1) - h_u(t-2)$ is the incremental new distress transmitted from round $t-1$ (with initial condition $\Delta h_{\text{shock}}(0) = h_{\text{shock}}(0) = S_0 / 100.0$).
-3. **Temporal Shock Propagation (Ford Downtime Formulation)**:
-   - Inventory buffers operate on time, delaying onset and absorbing downtime without artificial amplitude scaling, following the applied methodology deployed at Ford Motor Company [6]:
-   - Effective Onset Date at node $v$ is delayed by the active inventory buffer duration (Time-to-Survive, TTS):
-     $$T_{\text{onset}}(v) = T_{\text{onset}}(u) + B(u \to v)$$
-   - Unbuffered Duration represents net operational downtime exceeding the inventory survival horizon:
-     $$D(v) = \max\left(0,\, D(u) - B(u \to v)\right)$$
-   - Applying buffer absorption strictly to duration eliminates the double-counting anomaly of simultaneously discounting both shock amplitude and timeline.
-4. **Cycle Damping Protocol**:
-   - In accordance with Bardoscia et al.'s spectral stability criterion ($\rho(\mathbf{W}) = \lambda_{\max} < 1.0$) [3], cyclical multi-round reverberation must decay geometrically rather than amplifying into runaway contagion.
-   - When an edge completes a directed cycle (re-encountering an active ancestor in path history), its transmitted incremental distress is attenuated by geometric damping factor $\gamma = 0.50$:
-     $$\Delta h_v^{\text{cycle}}(t) = \gamma \sum_{u \in \text{In}(v) \cap \text{Cycle}} W_{uv} \cdot \Delta h_u(t-1)$$
-   - Across $k$ successive loop traversals, cyclical feedback decays as $\mathcal{O}(\gamma^k)$. Iterations terminate when network incremental distress $\sum_v \Delta h_v(t) < \delta = 0.01$ (1 basis point) or iteration count reaches $K = 5$.
+   - Edge transmission is gated by inventory exhaustion: edge $(u \to v)$ only transmits shock once disruption exceeds the inventory buffer cover:
+     $$e_{uv} = \mathbb{1}\left[h_u D_u > B(u \to v)\right]$$
+   - Effective transmission weight incorporates cycle damping on feedback edges (defined in Section 4.4):
+     $$\widetilde{a}_{uv} = \begin{cases} \gamma \cdot a_{uv} & \text{if } (u \to v) \in E_{\text{feedback}} \\ a_{uv} & \text{otherwise} \end{cases}$$
+   - In each round $t \in \{1, \dots, K\}$, incoming shortfalls sum additively within each input group $k$, and downstream node capacity impairment is governed by the Leontief bottleneck across all required input groups [7]:
+     $$g_{v,k}(t) = \min\left(1.0,\, \sum_{u \in \text{In}_k(v)} \widetilde{a}_{uv} \cdot e_{uv} \cdot h_u(t-1)\right)$$
+     $$h_v(t) = \max\left(h_v^0,\, \max_k g_{v,k}(t)\right)$$
+     initialized with exogenous shock vector $h^0 \in [0.0, 1.0]^N$ at $t = 0$.
+3. **Temporal Shock Propagation (Option A Formulation)**:
+   - Effective per-edge onset date, unbuffered downtime, and lost input-days:
+     $$T_{uv} = T_u + \frac{B(u \to v)}{h_u} \quad (h_u > 0)$$
+     $$D_{uv} = \max\left(0,\, D_u - \frac{B(u \to v)}{h_u}\right)$$
+     $$L_{uv} = \max\left(0,\, h_u D_u - B(u \to v)\right)$$
+   - Multi-parent convergent aggregation: For downstream node $v$ with active unbuffered incoming edges $\text{In}^*(v) = \{u \in \text{In}(v) \mid e_{uv} = 1\}$:
+     $$T_{\text{onset}}(v) = \min_{u \in \text{In}^*(v)} T_{uv}$$
+     $$T_{\text{end}}(v) = \max_{u \in \text{In}^*(v)} \left(T_{uv} + D_{uv}\right)$$
+     $$D(v) = \max\left(0,\, T_{\text{end}}(v) - T_{\text{onset}}(v)\right)$$
+   - If all incoming edges are fully buffered ($\text{In}^*(v) = \emptyset$), then $D(v) = 0$ and $T_{\text{onset}}(v) = \text{None}$.
+   - *Option A Temporal Assumption*: In scalar aggregation, asynchronous non-overlapping disruptions within the same input group are evaluated by peak additive capacity sum.
+4. **Cycle Damping & Iteration Control Protocol**:
+   - Edge feedback classification: An edge $(u \to v)$ is defined as a feedback edge ($(u \to v) \in E_{\text{feedback}}$) if:
+     1. $u$ and $v$ belong to the same non-trivial Strongly Connected Component ($\text{SCC}$), and
+     2. $\text{dist}(v) \le \text{dist}(u)$, where $\text{dist}(\cdot)$ is the shortest hop distance from the initial exogenous shock sources.
+   - On all feedback edges, transmission weight is attenuated by $\gamma = 0.50$: $\widetilde{a}_{uv} = \gamma \cdot a_{uv}$.
+   - Iteration stops when the maximum node distress update falls below numerical tolerance:
+     $$\max_v |h_v(t) - h_v(t-1)| < \text{tol} = 10^{-9}$$
+     or when iteration count reaches horizon limit $K = 5$.
+   - Any reachable node at topological distance $> 5$ hops is flagged with status `OUT_OF_HORIZON`.
    - At $K = 5$, the remaining loop reverberation $\gamma^5 = (0.5)^5 = 3.125\% < \epsilon = 0.05$ (the SEC SAB 99 materiality floor [8]), guaranteeing numerical extinction and execution in $< 10$ milliseconds.
 5. **LLM Handshake Interface**:
    - Outputs a structured `ConvergentShockSummary` object injected into the prompt verbalizer in `retrieval/pipeline.py` for Tasks D and E.
@@ -99,19 +112,25 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 
 ## 5. Invariants & Guardrails
 
-1. **Additive Diamond Convergence Invariant**:
-   - For two parallel suppliers $A$ and $B$ converging on $C$ with zero buffer:
-     $$h_C = \min\left(1.0,\, W_{AC} h_A + W_{BC} h_B\right) \iff S(C) = \min\left(100.0,\, W_{AC} S(A) + W_{BC} S(B)\right)$$
-   - Parallel losses must compound additively with zero branch omission [2, 7].
-2. **Buffer Delay & Absorption Invariant**:
-   - An active inventory buffer of $B$ days strictly shifts downstream shock onset by $B$ calendar days [6]:
-     $$T_{\text{onset}}(v) = T_{\text{event}} + B$$
-   - If $B \ge D_{\text{disruption}}$, unbuffered duration must equal $0$, and effective shock collapses to baseline residual friction ($S_{\text{friction}} = 0.05$), grounded in the SEC 5% materiality floor [8].
-3. **Cycle Termination Invariant**:
-   - In graphs containing directed cycles, the cascade engine must terminate in at most $K = 5$ iterations with total flux strictly bounded and non-divergent [2, 3].
+1. **Grouped-Leontief Diamond Convergence Invariant**:
+   - For two convergent suppliers $A$ and $B$ supplying Customer $C$ with zero buffer:
+     - If $A$ and $B$ supply the **same input group** $k$ (interchangeable inputs, e.g., TT-02A substrate procurement):
+       $$h_C = \min\left(1.0,\, a_{AC} h_A + a_{BC} h_B\right) \iff S(C) = \min\left(100.0,\, a_{AC} S(A) + a_{BC} S(B)\right)$$
+       Under the literal TT-02A two-tier graph topology (where upstream Tier-2 edges carry $a_{s1,m1} = 0.40$ and $a_{s2,m2} = 0.45$, feeding into $a_{m1,C} = 0.40$ and $a_{m2,C} = 0.45$), the transmitted impairment at Customer $C$ is $(0.40 \times 40.0\%) + (0.45 \times 45.0\%) = 16.0\% + 20.25\% = \mathbf{36.25\%}$ (surpassing the 25% threshold to trigger `DISRUPTIVE_SHOCK`). If intermediary suppliers $m1$ and $m2$ suffer complete 100% outages ($h_{m1} = h_{m2} = 1.0$), combined capacity loss reaches $\mathbf{85.0\%}$.
+     - If $A$ and $B$ supply **distinct input groups** $k_1 \neq k_2$ (strict Leontief complementarity):
+       $$h_C = \max\left(\min(1.0,\, a_{AC} h_A),\, \min(1.0,\, a_{BC} h_B)\right)$$
+       For complete outages ($h_A = h_B = 1.0$) with $a_{AC} = 0.40$ and $a_{BC} = 0.45$: $S(C) = \max(40.0\%,\, 45.0\%) = \mathbf{45.0\%}$.
+2. **Buffer Delay, Absorption, and Residual Friction Invariant**:
+   - Edge buffer delay: $T_{uv} = T_u + B(u \to v) / h_u$. For a linear chain of fully disrupted nodes ($h = 1.0$), shock onset accumulates additively: $T_{\text{onset}}(v_m) = T_0 + \sum_{i=1}^m B(v_{i-1} \to v_i)$.
+   - Residual Friction Floor: For any node $v$ that receives incoming shock ($g_v > 0$) but whose disruptions are 100% absorbed by inventory buffers ($D(v) = 0$):
+     $$h_{\text{friction}}(v) = 0.05 \iff S_{\text{friction}}(v) = 5.0\%$$
+     grounded in the SEC SAB 99 5% materiality floor [8]. This friction represents expedited freight, safety stock replenishment, and administrative overhead. Crucially, $h_{\text{friction}}$ is applied strictly as a **reported terminal floor** for node $v$ after convergence and does **not** propagate downstream to subsequent tiers.
+3. **Cycle Termination & Boundedness Invariant**:
+   - In graphs containing directed cycles, the engine terminates in at most $K = 5$ iterations with total shock strictly bounded and non-divergent: $\max_v h_v \le \max_s h_s^0 \le 1.0$ [2, 3].
 4. **Monotonic Path Attenuation Invariant**:
-   - Along any single linear (non-convergent) path, propagated shock intensity must strictly decrease:
-     $$S(\text{Hop}_{N+1}) < S(\text{Hop}_N)$$
+   - Along any single linear (non-convergent, acyclic) path with $e_{uv} = 1$:
+     $$S(\text{Hop}_{N+1}) \le S(\text{Hop}_N)$$
+     with strict inequality $S(\text{Hop}_{N+1}) < S(\text{Hop}_N)$ holding if and only if $a_{uv} < 1.0$.
 5. **Zero External Network Dependency**:
    - The engine must execute 100% offline using pure Python and NumPy with zero live network or database calls.
 
@@ -121,10 +140,12 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 
 - **Positive / Guarantees**:
   - Permanently eliminates the 1/9 parallel diamond compounding failure mode discovered in Phase 5 torture testing.
-  - Offloads arithmetic computation from the probabilistic LLM to a deterministic O(K * |E|) graph algorithm.
+  - Offloads arithmetic computation from the probabilistic LLM to a deterministic $\mathcal{O}(K \times |E|) + \mathcal{O}(V + E)$ graph algorithm.
+  - Correctly captures both interchangeable supplier sums (within-group additive) and multi-component assembly bottlenecks (across-group Leontief max).
   - Delivers mathematically auditable shock metrics directly into portfolio hedging directives.
 - **Negative / Trade-offs**:
-  - Requires downstream customers to maintain capacity exposure percentages and inventory buffer day attributes on graph edges.
+  - Requires edges to specify input group identifiers and procurement shares.
+  - Option A scalar aggregation does not model daily staggered disruption timelines within an input group.
 
 ---
 
@@ -138,4 +159,3 @@ We establish **Phase 7** by creating a dedicated package `contagion/` centered a
 6. Simchi-Levi, D., Schmidt, W., Wei, Y., Zhang, P. Y., Combs, K., Ge, Y., Gusikhin, O., Sanders, M., & Zhang, D. (2015). Identifying Risks and Mitigating Disruptions in the Automotive Supply Chain. *Interfaces*, 45(5), 375–390. https://doi.org/10.1287/inte.2015.0804
 7. Inoue, H., & Todo, Y. (2019). Firm-level propagation of shocks through supply-chain networks. *Nature Sustainability*, 2(9), 841–847. https://doi.org/10.1038/s41893-019-0351-x
 8. U.S. Securities and Exchange Commission. (1999). Staff Accounting Bulletin No. 99: Materiality. *SEC Docket*, 70(16), 1490–1499. Codified at 17 C.F.R. Part 211. https://www.sec.gov/interps/account/sab99.htm
-
