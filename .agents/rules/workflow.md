@@ -24,3 +24,8 @@ description: Paced, phase-gated execution rules preserving human-in-the-loop com
 ### 4. Interactive Co-Design on Ambiguity
 - If an unforeseen edge case, design trade-off, or parameter ambiguity arises within a phase, the agent must present the dilemma to the user for discussion rather than making unilateral assumptions.
 
+### 5. Architectural Governance: ADR-Exclusivity Protocol
+- **Deprecation of `notes/`**: The `notes/` directory is formally deprecated for active architectural thinking, design proposals, or execution plans. No new files may be created in `notes/`, and existing files are treated as unmaintained historical artifacts.
+- **ADR-First Thinking**: All architectural proposals, algorithm designs, mathematical formalisms, verification plans, and data pipeline contracts must be authored exclusively as Architecture Decision Records (ADRs) under `docs/decisions/` adhering strictly to the 53-character naming convention (`ADR-[5_DIGIT_ID]-[40_CHARACTER_SLUG].md`) and schema.
+- **Single Source of Architectural Truth**: If an architecture or design decision is not recorded in an accepted ADR in `docs/decisions/`, it does not exist as official project specification.
+
