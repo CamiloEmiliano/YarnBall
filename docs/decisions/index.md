@@ -38,6 +38,6 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00003](ADR-00003-sit-flow-4-streaming-event-graph-update-.md) | SIT Flow 4 Streaming Event Graph Update | 2026-11-10 00:44 | `ACCEPTED` | `streaming` / `knowledge_graph` | [`af5be21`](../../tests/integration/pipelines/test_streaming_event_loop_flow.py) |
 | [ADR-00004](ADR-00004-sit-flow-5-model-foundry-alignment-smoke.md) | SIT Flow 5 Model Foundry Alignment Smoke | 2026-11-10 01:05 | `ACCEPTED` | `sft_pipeline` / `evaluation` | [`ef47afa`](../../tests/integration/pipelines/test_model_foundry_smoke_flow.py) |
 | [ADR-00005](ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md) | SIT Flow 1 PiT SEC Filing to KG Ingest | 2026-11-10 03:12 | `ACCEPTED` | `universe` / `ontology` | [`4ae944b`](../../tests/integration/pipelines/test_filing_to_graph_flow.py), [`041e541`](../../universe/sp500.py) |
-| [ADR-00006](ADR-00006-phase-7-sparse-network-cascade-engine---.md) | Phase 7 Sparse Network Cascade Engine | 2026-11-10 03:32 | `ACCEPTED` | `contagion` / `retrieval` | *Pending implementation* |
+| [ADR-00006](ADR-00006-phase-7-sparse-network-cascade-engine---.md) | Phase 7 Sparse Network Cascade Engine | 2026-11-10 03:32 | `ACCEPTED` | `contagion` / `retrieval` | [`e0bc6cc`](../../contagion/cascade.py), [`4aecdc8`](../../contagion/cascade.py), [`ceaeac7`](../../retrieval/pipeline.py), [`953b832`](../../tests/contagion/test_phase5_tt02a_verification.py) |
 
 
