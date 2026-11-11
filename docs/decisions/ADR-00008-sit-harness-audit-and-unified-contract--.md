@@ -14,7 +14,7 @@ Filename: ADR-00008-sit-harness-audit-and-unified-contract--.md (53 chars)
 - **Date**: 2026-11-11 04:35 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `evaluation` / `integration`
-- **Linked Commits**: None (Design Proposed for Review)
+- **Linked Commits**: [`dd37ae3`](../../tests/integration/test_unified_sit_contract.py), [`dd37ae3`](../../tests/integration/pipelines/test_event_shock_propagation_flow.py), [`dd37ae3`](../../contagion/cascade.py)
 
 ---
 
