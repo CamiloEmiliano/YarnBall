@@ -27,6 +27,13 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from pydantic import BaseModel, Field
 
+from contagion import (
+    CascadeEdge,
+    CascadeGraph,
+    CascadeNode,
+    ConvergentShockSummary,
+    SparseNetworkCascadeEngine,
+)
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail, ValidationResult
 from retrieval.temporal import TemporalQueryFilter
 from sft_pipeline.rejection_queue import ErrorStage, RuntimeRejectionQueue
@@ -47,6 +54,9 @@ class AnalystQuery(BaseModel):
     shock_origin: Optional[str] = None
     shock_magnitude_pct: Optional[float] = None
     market_telemetry: Optional[Dict[str, Any]] = None
+    initial_shocks: Optional[Dict[str, float]] = None
+    initial_durations: Optional[Dict[str, float]] = None
+    initial_onsets: Optional[Dict[str, float]] = None
 
 
 class PipelineResult(BaseModel):
@@ -65,6 +75,8 @@ class PipelineResult(BaseModel):
     hedging_think_trace: Optional[str] = None
     latency_breakdown_ms: Dict[str, float] = Field(default_factory=dict)
     total_latency_ms: float
+    convergent_shock_summary: Optional[ConvergentShockSummary] = None
+    cascade_summaries: Dict[str, ConvergentShockSummary] = Field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert pipeline result to JSON-serializable dictionary."""
@@ -80,15 +92,47 @@ class HopOrderedSubgraphVerbalizer:
     - Sorting by topological hop distance ascending (k=1 -> k=2 -> k=3).
     - Top-E <= 25 edge ceiling to prevent TT-01 context clutter degradation.
     - Explicit directional path formatting: Source -> Rel [loss_ratio, status] -> Target.
+    - Deterministic pre-computed cascade shock metric formatting (ADR-00006).
     """
 
     def __init__(self, max_edges: int = MAX_SUBGRAPH_EDGES):
         self.max_edges = max_edges
 
-    def verbalize(self, edges: List[Dict[str, Any]]) -> str:
-        """Format a list of edge dicts into structured, hop-ordered markdown text."""
+    def verbalize(
+        self,
+        edges: List[Dict[str, Any]],
+        cascade_summary: Optional[ConvergentShockSummary] = None,
+        all_summaries: Optional[Dict[str, ConvergentShockSummary]] = None,
+    ) -> str:
+        """Format a list of edge dicts and optional cascade shock summary into structured markdown text."""
+        sections: List[str] = []
+
+        if cascade_summary:
+            onset_str = f"Day {cascade_summary.onset_day:.1f}" if cascade_summary.onset_day is not None else "Immediate"
+            casc_lines = [
+                "### Deterministic Cascade Shock Metrics (Sparse Network Cascade Engine):",
+                f"- Target Entity: {cascade_summary.target_entity}",
+                f"- Operational Impairment: {cascade_summary.impairment_score:.4f} ({cascade_summary.peak_shock_pct:.2f}% capacity loss)",
+                f"- Disruption Onset: {onset_str} (Inventory Buffer Delay)",
+                f"- Unbuffered Downtime: {cascade_summary.downtime_days:.1f} calendar days",
+                f"- Lost Output Capacity-Days: {cascade_summary.lost_capacity_days:.2f} days",
+                f"- Spectral Radius (Cycle Stability): {cascade_summary.spectral_radius}",
+                f"- Institutional Shock Verdict: {cascade_summary.verdict}",
+                f"- Residual Friction Floor Active: {cascade_summary.is_friction_floor}",
+                f"- Out of Horizon (>5 hops): {cascade_summary.is_out_of_horizon}",
+            ]
+            if cascade_summary.contributing_edges:
+                casc_lines.append("- Active Contributing Upstream Branches:")
+                for c in cascade_summary.contributing_edges:
+                    casc_lines.append(
+                        f"  * ({c['source']}) -> Group: '{c['input_group']}', "
+                        f"Share: {c['share_pct']}%, Source Shock: {c['source_shock_pct']}%"
+                    )
+            sections.append("\n".join(casc_lines))
+
         if not edges:
-            return "No matching supply-chain relationships discovered in active knowledge graph."
+            sections.append("No matching supply-chain relationships discovered in active knowledge graph.")
+            return "\n\n".join(sections)
 
         # 1. Sort edges: hop_distance ascending, then source ticker, target ticker
         sorted_edges = sorted(
@@ -136,7 +180,8 @@ class HopOrderedSubgraphVerbalizer:
                 f"\n(Note: {len(sorted_edges) - self.max_edges} additional distant edges pruned to maintain context fidelity)"
             )
 
-        return "\n".join(lines)
+        sections.append("\n".join(lines))
+        return "\n\n".join(sections)
 
 
 class GraphRAGPipelineOrchestrator:
@@ -154,6 +199,7 @@ class GraphRAGPipelineOrchestrator:
         rejection_queue: Optional[RuntimeRejectionQueue] = None,
         graph_driver: Optional[Any] = None,
         verbalizer: Optional[HopOrderedSubgraphVerbalizer] = None,
+        cascade_engine: Optional[SparseNetworkCascadeEngine] = None,
     ):
         self.model_client = model_client or YarnBallModelClient()
         self.schema_guardrail = schema_guardrail or CypherASTWhitelistGuardrail()
@@ -161,6 +207,7 @@ class GraphRAGPipelineOrchestrator:
         self.rejection_queue = rejection_queue or RuntimeRejectionQueue()
         self.verbalizer = verbalizer or HopOrderedSubgraphVerbalizer()
         self.graph_driver = graph_driver
+        self.cascade_engine = cascade_engine or SparseNetworkCascadeEngine()
 
     def execute_graph_query(
         self, cypher: str, params: Optional[Dict[str, Any]] = None
@@ -242,6 +289,46 @@ class GraphRAGPipelineOrchestrator:
                 edges.append(r)
 
         return edges
+
+    def _build_cascade_graph(self, normalized_edges: List[Dict[str, Any]]) -> CascadeGraph:
+        """Constructs a CascadeGraph from normalized database records."""
+        graph = CascadeGraph()
+        for r in normalized_edges:
+            source = str(r.get("source") or r.get("source_ticker") or "UNKNOWN")
+            target = str(r.get("target") or r.get("target_ticker") or "UNKNOWN")
+            input_group = str(r.get("input_group") or r.get("nature") or r.get("group") or "default")
+
+            # Extract procurement share a_uv
+            if "share" in r and r["share"] is not None:
+                share_val = float(r["share"])
+            elif "exposure_pct" in r and r["exposure_pct"] is not None:
+                share_val = float(r["exposure_pct"]) / 100.0
+            elif "revenue_share_pct" in r and r["revenue_share_pct"] is not None:
+                share_val = float(r["revenue_share_pct"]) / 100.0
+            elif "revenue_share" in r and r["revenue_share"] is not None:
+                val = float(r["revenue_share"])
+                share_val = val / 100.0 if val > 1.0 else val
+            elif "loss_ratio" in r and r["loss_ratio"] is not None:
+                val = float(r["loss_ratio"])
+                share_val = val / 100.0 if val > 1.0 else val
+            else:
+                share_val = 1.0
+
+            share_val = max(0.0, min(1.0, share_val))
+            buffer_days = float(r.get("buffer_days", 0.0) or 0.0)
+            materiality = str(r.get("materiality", r.get("materiality_tier", "NON_CRITICAL")))
+
+            graph.add_edge(
+                CascadeEdge(
+                    source=source,
+                    target=target,
+                    input_group=input_group,
+                    share=share_val,
+                    buffer_days=buffer_days,
+                    materiality_tier=materiality,
+                )
+            )
+        return graph
 
     def run(self, analyst_query: AnalystQuery) -> PipelineResult:
         """Run the full end-to-end GraphRAG operational pipeline."""
@@ -334,10 +421,54 @@ class GraphRAGPipelineOrchestrator:
         latencies["graph_execution_ms"] = (time.perf_counter() - t0) * 1000.0
 
         # -------------------------------------------------------------
-        # STEP 5: Hop-Ordered Subgraph Verbalization
+        # STEP 5: Hop-Ordered Subgraph Verbalization & Cascade Diffusion
         # -------------------------------------------------------------
         t0 = time.perf_counter()
-        verbalized_context = self.verbalizer.verbalize(normalized_edges)
+
+        # Build initial shock parameters
+        initial_shocks: Dict[str, float] = {}
+        if analyst_query.initial_shocks:
+            initial_shocks.update(analyst_query.initial_shocks)
+        elif analyst_query.shock_origin:
+            mag = analyst_query.shock_magnitude_pct if analyst_query.shock_magnitude_pct is not None else 100.0
+            for orig in analyst_query.shock_origin.split(","):
+                orig_clean = orig.strip()
+                if orig_clean:
+                    initial_shocks[orig_clean] = mag
+
+        cascade_summaries: Dict[str, ConvergentShockSummary] = {}
+        target_summary: Optional[ConvergentShockSummary] = None
+
+        if normalized_edges and initial_shocks:
+            t_casc = time.perf_counter()
+            cascade_graph = self._build_cascade_graph(normalized_edges)
+            try:
+                cascade_summaries = self.cascade_engine.propagate(
+                    graph=cascade_graph,
+                    initial_shocks=initial_shocks,
+                    initial_durations=analyst_query.initial_durations,
+                    initial_onsets=analyst_query.initial_onsets,
+                )
+                if analyst_query.target_ticker and analyst_query.target_ticker in cascade_summaries:
+                    target_summary = cascade_summaries[analyst_query.target_ticker]
+                elif cascade_summaries:
+                    # Select primary downstream target (max shock not in initial shock seeds)
+                    non_seeds = {
+                        nid: s for nid, s in cascade_summaries.items() if nid not in initial_shocks
+                    }
+                    if non_seeds:
+                        target_summary = max(non_seeds.values(), key=lambda s: s.peak_shock_pct)
+                    else:
+                        target_summary = max(cascade_summaries.values(), key=lambda s: s.peak_shock_pct)
+            except Exception as exc:
+                logger.warning("Cascade engine propagation warning: %s", exc)
+            latencies["cascade_engine_ms"] = (time.perf_counter() - t_casc) * 1000.0
+
+        verbalized_context = self.verbalizer.verbalize(
+            normalized_edges,
+            cascade_summary=target_summary,
+            all_summaries=cascade_summaries,
+        )
         latencies["verbalization_ms"] = (time.perf_counter() - t0) * 1000.0
 
         # -------------------------------------------------------------
@@ -348,7 +479,8 @@ class GraphRAGPipelineOrchestrator:
             f"Query: {analyst_query.query}\n\n"
             f"{verbalized_context}\n\n"
             f"Analyze potential supply-chain disruption propagation, inventory buffer mitigation, "
-            f"and operational risk transmission. Provide a rigorous assessment."
+            f"and operational risk transmission. Base your reasoning on the deterministic cascade "
+            f"shock metrics pre-computed above. Provide a rigorous assessment."
         )
         contagion_resp: ModelResponse = self.model_client.generate(
             prompt=contagion_prompt,
@@ -363,8 +495,16 @@ class GraphRAGPipelineOrchestrator:
         t0 = time.perf_counter()
         hedging_resp: Optional[ModelResponse] = None
         if analyst_query.portfolio_context or analyst_query.market_telemetry:
+            shock_summary_line = ""
+            if target_summary:
+                shock_summary_line = (
+                    f"Deterministic Cascade Verdict: {target_summary.verdict} "
+                    f"({target_summary.peak_shock_pct:.2f}% capacity loss, "
+                    f"{target_summary.downtime_days:.1f} days downtime).\n"
+                )
             hedging_prompt = (
                 f"Contagion Assessment:\n{contagion_resp.final_output}\n\n"
+                f"{shock_summary_line}"
                 f"Portfolio Context: {analyst_query.portfolio_context}\n"
                 f"Market Telemetry: {analyst_query.market_telemetry}\n\n"
                 f"Recommend specific portfolio rebalancing, option collars, or hedge ratios."
@@ -392,4 +532,6 @@ class GraphRAGPipelineOrchestrator:
             hedging_think_trace=hedging_resp.think_trace if hedging_resp else None,
             latency_breakdown_ms=latencies,
             total_latency_ms=total_ms,
+            convergent_shock_summary=target_summary,
+            cascade_summaries=cascade_summaries,
         )
