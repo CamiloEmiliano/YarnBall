@@ -40,6 +40,10 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00005](ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md) | SIT Flow 1 PiT SEC Filing to KG Ingest | 2026-11-10 03:12 | `ACCEPTED` | `universe` / `ontology` | [`4ae944b`](../../tests/integration/pipelines/test_filing_to_graph_flow.py), [`041e541`](../../universe/sp500.py) |
 | [ADR-00006](ADR-00006-phase-7-sparse-network-cascade-engine---.md) | Phase 7 Sparse Network Cascade Engine | 2026-11-10 03:32 | `ACCEPTED` | `contagion` / `retrieval` | [`e0bc6cc`](../../contagion/cascade.py), [`4aecdc8`](../../contagion/cascade.py), [`ceaeac7`](../../retrieval/pipeline.py), [`953b832`](../../tests/contagion/test_phase5_tt02a_verification.py) |
 | [ADR-00007](ADR-00007-cascade-engine-adversarial-verification-.md) | Cascade Engine Verification (10 Canonical + 8 Pathological) | 2026-11-10 23:05 | `ACCEPTED` | `contagion` | [`63f377d`](../../contagion/cascade.py), [`923352f`](../../tests/contagion/test_cascade_pathologies.py) |
+| [ADR-00008](ADR-00008-sit-harness-audit-and-unified-contract--.md) | SIT Harness Audit & Unified Contract | 2026-11-10 23:35 | `PROPOSED` | `evaluation` / `integration` | Under Review |
+| [ADR-00009](ADR-00009-sec-8k-to-directional-basket-dry-run----.md) | SEC 8-K to Directional Basket Dry Run | 2026-11-10 23:35 | `PROPOSED` | `retrieval` / `evaluation` | Under Review |
+| [ADR-00010](ADR-00010-directional-basket-peer-cluster-mapping-.md) | Directional Basket & Peer Cluster Mapping | 2026-11-10 23:35 | `PROPOSED` | `ontology` / `retrieval` | Under Review |
+
 
 
 
