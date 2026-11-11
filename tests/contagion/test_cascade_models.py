@@ -198,3 +198,4 @@ class TestConvergentShockSummary:
         assert summary.verdict == "DISRUPTIVE_SHOCK"
         assert not summary.is_out_of_horizon
         assert not summary.is_friction_floor
+

@@ -223,3 +223,4 @@ class ConvergentShockSummary(BaseModel):
     contributing_edges: List[Dict[str, Any]] = Field(default_factory=list)
     spectral_radius: Optional[float] = None
     iteration_count: int = 0
+
