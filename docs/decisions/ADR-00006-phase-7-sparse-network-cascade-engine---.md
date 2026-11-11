@@ -14,7 +14,7 @@ Filename: ADR-00006-phase-7-sparse-network-cascade-engine---.md (53 chars)
 - **Date**: 2026-11-10 03:32
 - **Status**: ACCEPTED
 - **Target Subsystem**: `contagion` / `retrieval`
-- **Linked Commits**: *Pending implementation*
+- **Linked Commits**: `e0bc6cc` (Step 7.1 data structures), `4aecdc8` (Step 7.2 cascade engine), `ceaeac7` (Step 7.3 pipeline handshake)
 
 ---
 

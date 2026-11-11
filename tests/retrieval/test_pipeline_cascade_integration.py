@@ -213,3 +213,4 @@ class TestPipelineCascadeIntegration:
         assert summary.is_friction_floor
         assert summary.peak_shock_pct == pytest.approx(5.0, abs=1e-3)
         assert summary.verdict == "TOLERATED_BUFFERED"
+
