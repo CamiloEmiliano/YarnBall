@@ -12,7 +12,7 @@ Filename: ADR-00008-sit-harness-audit-and-unified-contract--.md (53 chars)
 - **ADR ID**: ADR-00008
 - **Filename**: `ADR-00008-sit-harness-audit-and-unified-contract--.md`
 - **Date**: 2026-11-11 04:35 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `evaluation` / `integration`
 - **Linked Commits**: None (Design Proposed for Review)
 

@@ -334,7 +334,10 @@ class SparseNetworkCascadeEngine:
             iterations_executed = round_idx
             max_change = 0.0
 
-            for target_id, node in graph.nodes.items():
+            # Evaluate nodes in topological hop order from shock seeds
+            sorted_targets = sorted(graph.nodes.keys(), key=lambda n: distances.get(n, float("inf")))
+            for target_id in sorted_targets:
+                node = graph.nodes[target_id]
                 in_groups = graph.in_edges_by_group(target_id)
                 if not in_groups:
                     # Source or leaf node without incoming edges
@@ -376,7 +379,9 @@ class SparseNetworkCascadeEngine:
                 break
 
         # Temporal Shock Propagation (Option A Formulation)
-        for target_id, node in graph.nodes.items():
+        # Evaluate nodes in topological hop order so upstream durations resolve before downstream edges
+        for target_id in sorted_targets:
+            node = graph.nodes[target_id]
             in_groups = graph.in_edges_by_group(target_id)
             active_timings: List[Tuple[float, float, float, CascadeEdge]] = []
 

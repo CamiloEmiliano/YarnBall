@@ -27,6 +27,12 @@ import pytest
 import pyarrow.parquet as pq
 
 from ingestion.market.parser import MarketMetricsCalculator
+from contagion import (
+    CascadeEdge,
+    CascadeGraph,
+    ConvergentShockSummary,
+    SparseNetworkCascadeEngine,
+)
 from retrieval.shock_propagation import (
     PropagatedShock,
     ShockVector,
@@ -187,3 +193,45 @@ def test_flow_2_buffer_oversupply_residual_friction():
     # Residual friction factor is 0.05: 12.0 * 0.50 * 0.05 = 0.30%
     assert prop.attenuated_magnitude_pct == 0.30
     assert prop.effective_onset_date == "2023-12-16"
+
+
+@pytest.mark.integration
+def test_flow_2_sparse_network_cascade_engine_modernization():
+    """Verify SIT Flow 2 modernized under ADR-00008 using SparseNetworkCascadeEngine."""
+    graph = CascadeGraph()
+    # Primary supplier: AAPL -> FOXCONN (share 50%, buffer 45 days)
+    graph.add_edge(CascadeEdge(source="AAPL", target="FOXCONN", share=0.50, buffer_days=45.0, input_group="assembly"))
+    # Convergent secondary supplier: PEGA -> FOXCONN (share 30%, buffer 15 days)
+    graph.add_edge(CascadeEdge(source="PEGA", target="FOXCONN", share=0.30, buffer_days=15.0, input_group="assembly"))
+    # Downstream tier 2: FOXCONN -> RETAIL_PARTNER (share 30%, unbuffered)
+    graph.add_edge(CascadeEdge(source="FOXCONN", target="RETAIL_PARTNER", share=0.30, buffer_days=0.0, input_group="default"))
+
+    engine = SparseNetworkCascadeEngine(disruption_threshold_pct=25.0)
+
+    # Scenario: AAPL suffers 100% disruption for 90 days, PEGA suffers 50% disruption for 30 days
+    results = engine.propagate(
+        graph,
+        initial_shocks={"AAPL": 1.0, "PEGA": 0.50},
+        initial_durations={"AAPL": 90.0, "PEGA": 30.0},
+        initial_onsets={"AAPL": 0.0, "PEGA": 0.0},
+    )
+
+    # Check FOXCONN:
+    # PEGA (0.50 * 30d = 15d <= 15d buffer) is absorbed fully -> 0 capacity deficit transmitted
+    # AAPL (1.0 * 90d = 90d > 45d buffer) -> 50% capacity deficit transmitted
+    # FOXCONN peak shock = 50.0%, onset = 45.0d, downtime = 45.0d, lost = 22.5d
+    fox = results["FOXCONN"]
+    assert fox.peak_shock_pct == pytest.approx(50.0, abs=1e-3)
+    assert fox.onset_day == pytest.approx(45.0, abs=1e-3)
+    assert fox.downtime_days == pytest.approx(45.0, abs=1e-3)
+    assert fox.lost_capacity_days == pytest.approx(22.5, abs=1e-3)
+    assert fox.verdict == "DISRUPTIVE_SHOCK"
+
+    # Check RETAIL_PARTNER:
+    # Receives 0.50 * 0.30 = 15.0% capacity shock, onset = 45.0d, downtime = 45.0d
+    ret = results["RETAIL_PARTNER"]
+    assert ret.peak_shock_pct == pytest.approx(15.0, abs=1e-3)
+    assert ret.onset_day == pytest.approx(45.0, abs=1e-3)
+    assert ret.downtime_days == pytest.approx(45.0, abs=1e-3)
+    assert ret.verdict == "CONTAINED_MINIMAL_CONTAGION"
+
