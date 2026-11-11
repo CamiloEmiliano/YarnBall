@@ -424,7 +424,7 @@ class SparseNetworkCascadeEngine:
             is_friction = False
             is_out_of_horizon = distances.get(target_id, float("inf")) > self.max_iterations
 
-            # Check if target had incoming disruption absorbed by inventory buffer
+            # Check if target had incoming disruption absorbed by an active inventory buffer
             had_buffered_incoming = False
             for edge in graph.in_edges(target_id):
                 u_shock = h_curr.get(edge.source, 0.0)
@@ -434,11 +434,10 @@ class SparseNetworkCascadeEngine:
                         had_buffered_incoming = True
                         break
 
-            # Friction floor: buffered incoming shock with zero downtime
-            if d_final == 0.0 and target_id not in seed_nodes:
-                if had_buffered_incoming or final_h > 0.0:
-                    is_friction = True
-                    final_h = max(final_h, self.friction_floor)
+            # Friction floor: triggered ONLY when an active buffer absorbed the incoming shock
+            if had_buffered_incoming and d_final == 0.0 and target_id not in seed_nodes:
+                is_friction = True
+                final_h = max(final_h, self.friction_floor)
 
             lost_cap_days = round(final_h * d_final, 4)
             peak_pct = round(final_h * 100.0, 4)
@@ -446,7 +445,7 @@ class SparseNetworkCascadeEngine:
             # Determine institutional verdict
             if peak_pct >= self.disruption_threshold_pct:
                 verdict = "DISRUPTIVE_SHOCK"
-            elif is_friction or (peak_pct > 0.0 and d_final == 0.0):
+            elif is_friction:
                 verdict = "TOLERATED_BUFFERED"
             elif peak_pct > 0.0:
                 verdict = "CONTAINED_MINIMAL_CONTAGION"

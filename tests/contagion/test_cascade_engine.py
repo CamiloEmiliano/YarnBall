@@ -215,3 +215,39 @@ class TestSparseNetworkCascadeEngine:
 
         assert len(results) == num_nodes
         assert elapsed_ms < 10.0, f"Execution took {elapsed_ms:.2f}ms > 10ms budget"
+
+    def test_unbuffered_durationless_shock_is_not_demoted_to_friction(self) -> None:
+        """When an unbuffered edge (B=0) receives a shock with unspecified duration (D=0),
+
+        the downstream node must NOT be falsely classified as TOLERATED_BUFFERED with 5% friction.
+        """
+        graph = CascadeGraph()
+        # u -> v: 20% share, 0 days buffer (unbuffered)
+        graph.add_edge(CascadeEdge(source="u", target="v", share=0.20, buffer_days=0.0))
+
+        engine = SparseNetworkCascadeEngine(disruption_threshold_pct=25.0)
+        # 100% shock, duration omitted (defaults to 0.0)
+        results = engine.propagate(graph, initial_shocks={"u": 1.0})
+
+        summary_v = results["v"]
+        # Peak shock is strictly 20.0%
+        assert summary_v.peak_shock_pct == pytest.approx(20.0, abs=1e-3)
+        # Must NOT be friction floor or tolerated buffered
+        assert not summary_v.is_friction_floor
+        assert summary_v.verdict == "CONTAINED_MINIMAL_CONTAGION"
+
+    def test_unbuffered_severe_durationless_shock_is_disruptive(self) -> None:
+        """When an unbuffered edge (B=0) receives a 40% shock with unspecified duration (D=0),
+
+        the verdict must be DISRUPTIVE_SHOCK, not TOLERATED_BUFFERED.
+        """
+        graph = CascadeGraph()
+        graph.add_edge(CascadeEdge(source="u", target="v", share=0.40, buffer_days=0.0))
+
+        engine = SparseNetworkCascadeEngine(disruption_threshold_pct=25.0)
+        results = engine.propagate(graph, initial_shocks={"u": 1.0})
+
+        summary_v = results["v"]
+        assert summary_v.peak_shock_pct == pytest.approx(40.0, abs=1e-3)
+        assert not summary_v.is_friction_floor
+        assert summary_v.verdict == "DISRUPTIVE_SHOCK"
