@@ -289,3 +289,4 @@ class TestCascadeCanonicalTopologies:
         assert c.downtime_days == pytest.approx(45.0, abs=1e-3)
         assert c.lost_capacity_days == pytest.approx(13.5, abs=1e-3)
         assert c.verdict == "DISRUPTIVE_SHOCK"
+
