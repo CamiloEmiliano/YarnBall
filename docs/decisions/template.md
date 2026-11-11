@@ -11,7 +11,7 @@ Example: ADR-00001-record-architecture-decisions-in-repo--.md
 
 - **ADR ID**: ADR-[00000]
 - **Filename**: `ADR-[00000]-[exact-40-character-slug-padded-w-hyphen].md`
-- **Date**: YYYY-MM-DD HH:MM
+- **Date**: YYYY-MM-DD HH:MM UTC
 - **Status**: [PROPOSED | ACCEPTED | SUPERSEDED BY ADR-XXXXX | DEPRECATED]
 - **Target Subsystem**: [`universe` | `ontology` | `knowledge_graph` | `retrieval` | `sft_pipeline` | `contagion`]
 - **Linked Commits**: [`commit-hash`]

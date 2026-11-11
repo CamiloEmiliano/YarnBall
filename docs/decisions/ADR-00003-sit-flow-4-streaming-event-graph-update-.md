@@ -11,7 +11,7 @@ Filename: ADR-00003-sit-flow-4-streaming-event-graph-update-.md (53 chars)
 
 - **ADR ID**: ADR-00003
 - **Filename**: `ADR-00003-sit-flow-4-streaming-event-graph-update-.md`
-- **Date**: 2026-11-10 00:44
+- **Date**: 2026-11-10 05:44 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `streaming` / `curation` / `knowledge_graph`
 - **Linked Commits**: `af5be21` (Flow 4 implementation and SIT test harness)

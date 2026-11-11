@@ -11,7 +11,7 @@ Filename: ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md (53 chars)
 
 - **ADR ID**: ADR-00005
 - **Filename**: `ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md`
-- **Date**: 2026-11-10 03:12
+- **Date**: 2026-11-10 08:12 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `universe` / `ingestion` / `curation` / `ontology` / `knowledge_graph`
 - **Linked Commits**: `4ae944b` (Flow 1 pipeline integration test harness), `041e541` (universe constituent resolution and dictionary-ticker guardrails)

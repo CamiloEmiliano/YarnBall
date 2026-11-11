@@ -11,7 +11,7 @@ Filename: ADR-00009-sec-8k-to-directional-basket-dry-run----.md (53 chars)
 
 - **ADR ID**: ADR-00009
 - **Filename**: `ADR-00009-sec-8k-to-directional-basket-dry-run----.md`
-- **Date**: 2026-11-10 23:35
+- **Date**: 2026-11-11 04:35 UTC
 - **Status**: PROPOSED
 - **Target Subsystem**: `retrieval` / `contagion` / `evaluation`
 - **Linked Commits**: None (Design Proposed for Review)
@@ -125,3 +125,4 @@ flowchart LR
   - Establishes the exact JSON contract needed for downstream order routing.
 - **Negative / Trade-offs**:
   - Requires maintaining authentic SEC 8-K test fixtures.
+

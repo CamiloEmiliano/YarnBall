@@ -11,7 +11,7 @@ Filename: ADR-00010-directional-basket-peer-cluster-mapping-.md (53 chars)
 
 - **ADR ID**: ADR-00010
 - **Filename**: `ADR-00010-directional-basket-peer-cluster-mapping-.md`
-- **Date**: 2026-11-10 23:35
+- **Date**: 2026-11-11 04:35 UTC
 - **Status**: PROPOSED
 - **Target Subsystem**: `ontology` / `retrieval` / `contagion`
 - **Linked Commits**: None (Design Proposed for Review)
@@ -108,3 +108,4 @@ flowchart TD
   - Protects traders from broader market beta shocks during the 1-to-4 hour execution window.
 - **Negative / Trade-offs**:
   - Increases graph construction complexity by requiring horizontal peer relationships to be extracted and validated alongside supply chains.
+

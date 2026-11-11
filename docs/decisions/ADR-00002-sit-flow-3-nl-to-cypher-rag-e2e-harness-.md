@@ -11,7 +11,7 @@ Filename: ADR-00002-sit-flow-3-nl-to-cypher-rag-e2e-harness-.md (53 chars)
 
 - **ADR ID**: ADR-00002
 - **Filename**: `ADR-00002-sit-flow-3-nl-to-cypher-rag-e2e-harness-.md`
-- **Date**: 2026-11-09 22:58
+- **Date**: 2026-11-10 03:58 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `retrieval` / `sft_pipeline` / `interactive` / `synthesis`
 - **Linked Commits**: `4ae944b` (Flow 3 test harness implementation), `e9a3ef9` (typing and pydantic standardization)

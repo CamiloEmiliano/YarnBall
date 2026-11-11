@@ -11,7 +11,7 @@ Filename: ADR-00007-cascade-engine-adversarial-verification-.md (53 chars)
 
 - **ADR ID**: ADR-00007
 - **Filename**: `ADR-00007-cascade-engine-adversarial-verification-.md`
-- **Date**: 2026-11-10 23:05
+- **Date**: 2026-11-11 04:05 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `contagion`
 - **Linked Commits**: `63f377d` (fix durationless friction demotion), `923352f` (ADR-00007 initial authoring & attack suite), `4aecdc8` (cascade engine core)

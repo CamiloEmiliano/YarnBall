@@ -11,7 +11,7 @@ Filename: ADR-00008-sit-harness-audit-and-unified-contract--.md (53 chars)
 
 - **ADR ID**: ADR-00008
 - **Filename**: `ADR-00008-sit-harness-audit-and-unified-contract--.md`
-- **Date**: 2026-11-10 23:35
+- **Date**: 2026-11-11 04:35 UTC
 - **Status**: PROPOSED
 - **Target Subsystem**: `evaluation` / `integration`
 - **Linked Commits**: None (Design Proposed for Review)
@@ -114,3 +114,4 @@ flowchart TD
   - Upgrades Flow 2 to modern Phase 7 cascade standards.
 - **Negative / Trade-offs**:
   - Requires maintaining an end-to-end mock state that tracks filings through to model prompt generation.
+
