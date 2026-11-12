@@ -25,6 +25,21 @@ from .shock_propagation import (
     propagate_shock_across_edge,
     traverse_multi_hop_contagion,
 )
+from .reporting import (
+    ContagionSeverityVerdict,
+    DependencyDomain,
+    ExecutionTelemetry,
+    NetworkNodeImpact,
+    OperationalContagionReport,
+    OperationalDisruptionCategory,
+    OperationalScope,
+    SECForm8KItem,
+    TopologicalEdgeDescriptor,
+    build_operational_contagion_report,
+    classify_contagion_verdict,
+    format_operational_contagion_report,
+    validate_verbatim_citations,
+)
 
 __all__ = [
     "HybridRetriever",
@@ -41,4 +56,17 @@ __all__ = [
     "build_shock_vector_from_metrics",
     "propagate_shock_across_edge",
     "traverse_multi_hop_contagion",
+    "ContagionSeverityVerdict",
+    "DependencyDomain",
+    "ExecutionTelemetry",
+    "NetworkNodeImpact",
+    "OperationalContagionReport",
+    "OperationalDisruptionCategory",
+    "OperationalScope",
+    "SECForm8KItem",
+    "TopologicalEdgeDescriptor",
+    "build_operational_contagion_report",
+    "classify_contagion_verdict",
+    "format_operational_contagion_report",
+    "validate_verbatim_citations",
 ]

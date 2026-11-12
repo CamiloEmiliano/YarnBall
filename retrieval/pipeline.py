@@ -84,6 +84,38 @@ class PipelineResult(BaseModel):
         d["edge_count"] = len(self.retrieved_subgraph)
         return d
 
+    def to_operational_report(
+        self,
+        event_id: str,
+        sec_item: str,
+        disrupted_entity_ticker: str,
+        filing_date: str,
+        disruption_category: str,
+        event_summary: str,
+        shock_duration_days: float,
+        shock_magnitude_pct: float,
+        disrupted_entity_name: Optional[str] = None,
+        disrupted_entity_cik: Optional[str] = None,
+        report_id: Optional[str] = None,
+    ) -> Any:
+        """Convert pipeline result and event metadata into a validated OperationalContagionReport (ADR-00011)."""
+        from .reporting import build_operational_contagion_report
+
+        return build_operational_contagion_report(
+            result=self,
+            event_id=event_id,
+            sec_item=sec_item,
+            disrupted_entity_ticker=disrupted_entity_ticker,
+            filing_date=filing_date,
+            disruption_category=disruption_category,
+            event_summary=event_summary,
+            shock_duration_days=shock_duration_days,
+            shock_magnitude_pct=shock_magnitude_pct,
+            disrupted_entity_name=disrupted_entity_name,
+            disrupted_entity_cik=disrupted_entity_cik,
+            report_id=report_id,
+        )
+
 
 class HopOrderedSubgraphVerbalizer:
     """Verbalizes raw graph query results into clean, hop-ordered textual context.

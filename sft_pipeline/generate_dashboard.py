@@ -6,11 +6,11 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-PROJECT_ROOT = Path("/home/caspe/practice/rag_samples/graphrag_finance")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_PATH = PROJECT_ROOT / "data" / "sft" / "remote_artifacts" / "trainer_state.json"
 DYNAMICS_PATH = PROJECT_ROOT / "data" / "sft" / "remote_artifacts" / "training_dynamics.jsonl"
-OUT_DIR = Path("/home/caspe/.gemini/antigravity-ide/brain/e461f87a-63c3-4226-8b4c-61de3eb9e162/plots")
-QWEN_OUT_DIR = Path("/home/caspe/practice/QwenSFT_YarnBall/outputs/yarnball-qwen-7b-lora/report/plots")
+OUT_DIR = PROJECT_ROOT / "reports" / "plots"
+QWEN_OUT_DIR = PROJECT_ROOT / "outputs" / "plots"
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 QWEN_OUT_DIR.mkdir(parents=True, exist_ok=True)

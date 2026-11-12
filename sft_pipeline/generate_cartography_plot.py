@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 # Output paths
-PROJECT_ROOT = Path("/home/caspe/practice/rag_samples/graphrag_finance")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 assets_dir = PROJECT_ROOT / "data" / "sft" / "assets"
 assets_dir.mkdir(parents=True, exist_ok=True)
 out_png = assets_dir / "dataset_cartography_map.png"
