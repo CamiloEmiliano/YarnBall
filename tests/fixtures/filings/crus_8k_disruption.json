@@ -1,0 +1,22 @@
+{
+  "cik": "0000772406",
+  "ticker": "CRUS",
+  "company_name": "Cirrus Logic Inc.",
+  "form_type": "8-K",
+  "filing_date": "2024-10-28",
+  "period_of_report": "2024-10-27",
+  "items": [
+    "Item 8.01 Other Events"
+  ],
+  "headline": "Operational Disruption at Primary Semiconductor Fabrication Facility",
+  "content": "On October 27, 2024, Cirrus Logic Inc. experienced an emergency operational halt at its primary fabrication line resulting from an industrial facility fire. The facility accounts for substantially all wafer fabrication for the company's audio codec IC product lines. Management currently estimates a disruption duration of 60 calendar days to restore cleanroom operations. While major customer partners maintain safety stocks, downstream production curtailment is anticipated for customers with lean inventory buffers. This report is filed pursuant to Item 8.01 of Form 8-K.",
+  "metadata": {
+    "affected_product": "audio_codecs",
+    "disruption_duration_days": 60,
+    "shock_magnitude_pct": 100.0,
+    "materiality_tier": "CRITICAL_TIER_1",
+    "event_date": "2024-10-27",
+    "primary_exchange": "NASDAQ"
+  }
+}
+
