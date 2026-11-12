@@ -12,13 +12,23 @@ Filename: ADR-00010-directional-basket-peer-cluster-mapping-.md (53 chars)
 - **ADR ID**: ADR-00010
 - **Filename**: `ADR-00010-directional-basket-peer-cluster-mapping-.md`
 - **Date**: 2026-11-11 04:35 UTC
-- **Status**: PROPOSED
+- **Status**: REJECTED
 - **Target Subsystem**: `ontology` / `retrieval` / `contagion`
-- **Linked Commits**: None (Design Proposed for Review)
+- **Linked Commits**: None (Proposal Rejected)
 
 ---
 
 ## 1. Context & Problem Statement
+
+> [!CAUTION]
+> **FORMAL REJECTION NOTICE (2026-11-12)**:
+> This ADR is formally **REJECTED**. It attempted to position YarnBall as an intraday pairs-trading generator and market-maker tool (introducing 1-to-4 hour directional trading baskets, long/short legs, and options overlays).
+>
+> Per the architectural domain boundary established in [ADR-00011](ADR-00011-operational-contagion-report-schema-----.md) and verified in [ADR-00009](ADR-00009-sec-8k-computational-reading-dry-run----.md):
+> 1. **Domain 1 (Operational & Physical Contagion - YarnBall Core)**: The platform's sole mandate is the computational reading of regulatory filings (SEC Form 8-K), graph traversal, and deterministic network cascade modeling ($h_v, B_v, D_v, L_v$).
+> 2. **Domain 2 (Market Strategy & Portfolio Decision - Downstream Consumer)**: Evaluating asset prices, liquidity, pairs trading, directional long/short baskets, and execution windows belongs strictly to external downstream consumers. YarnBall does not trade, make markets, or emit order recommendations.
+>
+> The historical proposal text below is retained for archival governance purposes only.
 
 To trade directional basket moves over a **1 to 4 hour** horizon following a disruption event, a trader cannot merely short the downstream victims (`SUPPLIES_TO`). A pure short position carries uncompensated market beta risk—if the broader S&P 500 rallies 2% during that 4-hour window, the short trade can be stopped out even if the underlying company analysis was completely correct.
 

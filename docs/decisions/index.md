@@ -42,7 +42,7 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00007](ADR-00007-cascade-engine-adversarial-verification-.md) | Cascade Engine Verification (10 Canonical + 8 Pathological) | 2026-11-11 04:05 UTC | `ACCEPTED` | `contagion` | [`63f377d`](../../contagion/cascade.py), [`923352f`](../../tests/contagion/test_cascade_pathologies.py) |
 | [ADR-00008](ADR-00008-sit-harness-audit-and-unified-contract--.md) | SIT Harness Audit & Unified Contract | 2026-11-11 04:35 UTC | `ACCEPTED` | `evaluation` / `integration` | [`dd37ae3`](../../tests/integration/test_unified_sit_contract.py), [`dd37ae3`](../../tests/integration/pipelines/test_event_shock_propagation_flow.py), [`dd37ae3`](../../contagion/cascade.py) |
 | [ADR-00009](ADR-00009-sec-8k-computational-reading-dry-run----.md) | SEC 8-K Computational Reading Dry Run | 2026-11-11 04:35 UTC | `ACCEPTED` | `retrieval` / `evaluation` | [`41b38db`](../../tools/dry_run_sec_8k_contagion.py) |
-| [ADR-00010](ADR-00010-directional-basket-peer-cluster-mapping-.md) | Directional Basket & Peer Cluster Mapping | 2026-11-11 04:35 UTC | `PROPOSED` | `ontology` / `retrieval` | Under Review |
+| [ADR-00010](ADR-00010-directional-basket-peer-cluster-mapping-.md) | Directional Basket & Peer Cluster Mapping | 2026-11-11 04:35 UTC | `REJECTED` | `ontology` / `retrieval` | Formally rejected: Out of domain scope (trading/market-making) |
 | [ADR-00011](ADR-00011-operational-contagion-report-schema-----.md) | Operational Contagion Report Schema & Language | 2026-11-11 23:30 UTC | `ACCEPTED` | `retrieval` / `contagion` | [`7e6aa39`](../../retrieval/reporting.py) |
 
 
