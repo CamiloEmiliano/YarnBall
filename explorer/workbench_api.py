@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from ingestion.sec.disruption_gating import (
@@ -28,6 +29,7 @@ from sft_pipeline.serving.model_client import YarnBallModelClient
 from tools.dry_run_sec_8k_contagion import run_sec_8k_dry_run
 
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 # ==============================================================================
@@ -533,6 +535,7 @@ def create_workbench_app(
     allowlisted_roots: Optional[Sequence[Union[str, Path]]] = None,
     snapshots_dir: Optional[Union[str, Path]] = None,
     filings_dir: Optional[Union[str, Path]] = None,
+    static_dir: Optional[Union[str, Path]] = None,
 ) -> FastAPI:
     """Creates a configured read-only FastAPI backend for local YarnBall exploration."""
     resolved_root = Path(project_root).resolve() if project_root else DEFAULT_PROJECT_ROOT
@@ -546,6 +549,7 @@ def create_workbench_app(
         if filings_dir
         else (resolved_root / "tests" / "fixtures" / "filings").resolve()
     )
+    resolved_static = Path(static_dir).resolve() if static_dir else DEFAULT_STATIC_DIR
 
     if allowlisted_roots is not None:
         allowed_roots = _dedupe_resolved_paths([Path(p) for p in allowlisted_roots])
@@ -561,16 +565,22 @@ def create_workbench_app(
         ),
     )
 
-    @fastapi_app.get("/", response_class=HTMLResponse)
-    def workbench_readiness() -> HTMLResponse:
+    if resolved_static.is_dir():
+        fastapi_app.mount("/static", StaticFiles(directory=str(resolved_static)), name="static")
+
+    @fastapi_app.get("/", response_model=None)
+    def workbench_readiness():
+        index_html = resolved_static / "index.html"
+        if index_html.is_file():
+            return FileResponse(index_html, media_type="text/html")
+
         html = (
             "<!doctype html>"
             "<html lang='en'>"
             "<head><meta charset='utf-8'><title>YarnBall Local Workbench API</title></head>"
             "<body>"
             "<h1>YarnBall Local Workbench API</h1>"
-            "<p>Status: <strong>ready</strong> (ADR-00017 backend-only readiness shell; "
-            "interactive UI views follow in ADR-00018).</p>"
+            "<p>Status: <strong>ready</strong> (static workbench shell not present).</p>"
             "<ul>"
             "<li><a href='/docs'>OpenAPI Interactive Docs (/docs)</a></li>"
             "<li><a href='/api/catalog'>Workspace Catalog (/api/catalog)</a></li>"
@@ -739,3 +749,4 @@ def create_workbench_app(
 
 
 app = create_workbench_app()
+

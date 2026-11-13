@@ -338,3 +338,57 @@ def test_path_traversal_outside_allowlist_rejected_with_403(tmp_path):
     # 4. Traversal via `cohort_path`
     resp_cohort = bundle.client.post("/api/cohort", json={"cohort_path": "../outside_secret.json"})
     assert resp_cohort.status_code == 403
+
+
+def test_static_workbench_shell_and_zero_cdn_offline_invariant(tmp_path):
+    """Verifies ADR-00018 static assets, zero external CDNs, and XSS-safe DOM rendering."""
+    _, _, bundle = _build_fixture_workspace(tmp_path)
+
+    root_resp = bundle.client.get("/")
+    assert root_resp.status_code == 200
+    assert "Event Audit (8-K" in root_resp.text
+    assert "PiT KG Explorer" in root_resp.text
+    assert "Cohort Browser" in root_resp.text
+    assert "/static/styles.css" in root_resp.text
+    assert "/static/app.js" in root_resp.text
+
+    css_resp = bundle.client.get("/static/styles.css")
+    assert css_resp.status_code == 200
+    assert "--bg:" in css_resp.text
+
+    js_resp = bundle.client.get("/static/app.js")
+    assert js_resp.status_code == 200
+    assert "/api/evaluate-8k" in js_resp.text
+    assert ".innerHTML" not in js_resp.text
+
+    for asset_text in (root_resp.text, css_resp.text, js_resp.text):
+        scrubbed = asset_text.replace("http://www.w3.org/2000/svg", "")
+        assert "http://" not in scrubbed.lower()
+        assert "https://" not in scrubbed.lower()
+
+
+def test_ui_catalog_to_event_audit_flow(tmp_path, monkeypatch):
+    """Simulates initial Event Audit UI flow: /api/catalog -> POST /api/evaluate-8k."""
+    _, _, bundle = _build_fixture_workspace(tmp_path)
+    monkeypatch.setattr(
+        "explorer.workbench_api.YarnBallModelClient.check_health",
+        lambda self, timeout_sec=1.0: (False, "offline test mock"),
+    )
+
+    cat_resp = bundle.client.get("/api/catalog")
+    assert cat_resp.status_code == 200
+    filings = cat_resp.json()["filings"]
+    assert len(filings) == 1
+
+    eval_resp = bundle.client.post(
+        "/api/evaluate-8k",
+        json={"filing_path": filings[0]["path"], "use_mock": True},
+    )
+    assert eval_resp.status_code == 200
+    payload = eval_resp.json()
+    assert payload["assessment"]["gating_reason"] == "SANITIZED_LEXICAL_DISRUPTION_MATCH"
+    assert payload["citation_violations"] == []
+    assert any(n["entity_ticker"] == "AAPL" and n["verdict"] == "UNBUFFERED_DISRUPTION" for n in payload["report"]["network_impacts"])
+    assert len(payload["timeseries_rows"]) == len(payload["report"]["network_impacts"])
+
+

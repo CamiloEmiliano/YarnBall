@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YarnBall Local Workbench API</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="/static/app.js" defer></script>
+</head>
+<body data-density="comfortable">
+  <div class="shell-root">
+    <!-- Top Application Bar -->
+    <header class="card shell-header">
+      <div class="header-top">
+        <div class="brand-group">
+          <div class="brand-mark" aria-hidden="true">YB</div>
+          <div>
+            <div class="title-row">
+              <h1>YarnBall Local Workbench API</h1>
+              <span class="pill pill-mono">127.0.0.1 · READ-ONLY</span>
+              <a class="doc-link" href="/docs">OpenAPI /docs</a>
+            </div>
+            <p class="subtitle">
+              Audit-First Financial GraphRAG · Form 8-K Gating, Point-in-Time Supply Cascade &amp; Verbatim Telemetry
+            </p>
+          </div>
+        </div>
+
+        <div class="header-controls">
+          <div id="ollamaBadge" class="pill pill-status" title="Local Ollama daemon check via /api/catalog">
+            <span id="ollamaDot" class="status-dot"></span>
+            <span id="ollamaText">Checking Ollama...</span>
+          </div>
+
+          <label class="control-inline">
+            <span>Mode</span>
+            <select id="modeSelect" class="select-input mono">
+              <option value="MOCK_DETERMINISTIC">MOCK_DETERMINISTIC</option>
+              <option value="LIVE_LLM">LIVE_LLM</option>
+            </select>
+          </label>
+
+          <label class="control-inline">
+            <span>Theme</span>
+            <select id="themeSelect" class="select-input">
+              <option value="auto">Auto</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </label>
+
+          <label class="control-inline">
+            <span>Density</span>
+            <select id="densitySelect" class="select-input">
+              <option value="comfortable">Comfortable</option>
+              <option value="compact">Compact</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="tab-bar" aria-label="Workbench Views">
+        <button type="button" data-tab="audit" class="tab-btn active">
+          Event Audit (8-K → Contagion)
+        </button>
+        <button type="button" data-tab="kg" class="tab-btn">
+          <span>PiT KG Explorer</span>
+          <span class="tab-badge">ADR-00019</span>
+        </button>
+        <button type="button" data-tab="cohort" class="tab-btn">
+          <span>Cohort Browser</span>
+          <span class="tab-badge">ADR-00019</span>
+        </button>
+      </nav>
+    </header>
+
+    <!-- TAB 1: Event Audit (8-K -> Contagion) -->
+    <main id="panel-audit" class="audit-grid">
+      <!-- Left Rail: Input & Topology Selection -->
+      <section class="card rail-panel">
+        <div class="panel-head">
+          <h2>SEC Form 8-K Input</h2>
+          <div class="segmented" role="group" aria-label="8-K input mode">
+            <button type="button" id="srcFixtureBtn" class="seg-btn active">Fixture</button>
+            <button type="button" id="srcInlineBtn" class="seg-btn">Inline</button>
+          </div>
+        </div>
+
+        <div id="fixtureControls" class="stack-sm">
+          <label class="field">
+            <span class="field-label">Allowlisted 8-K Fixture</span>
+            <select id="fixtureSelect" class="text-input mono"></select>
+          </label>
+          <div id="fixtureMetaCard" class="subcard kv-list"></div>
+        </div>
+
+        <div id="inlineControls" class="stack-sm hidden">
+          <div class="field-row-2">
+            <label class="field">
+              <span class="field-label">Ticker</span>
+              <input id="inTicker" type="text" value="CRUS" class="text-input mono" />
+            </label>
+            <label class="field">
+              <span class="field-label">Filing Date</span>
+              <input id="inDate" type="text" value="2024-10-28" class="text-input mono" />
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">Company Name</span>
+            <input id="inCompany" type="text" value="Cirrus Logic Inc." class="text-input" />
+          </label>
+          <label class="field">
+            <span class="field-label">SEC Form 8-K Item(s) (comma-separated)</span>
+            <input id="inItems" type="text" value="Item 8.01 Other Events" class="text-input mono" />
+          </label>
+          <label class="field">
+            <span class="field-label">Headline</span>
+            <input id="inHeadline" type="text" class="text-input" />
+          </label>
+          <label class="field">
+            <span class="field-label">Content Narrative</span>
+            <textarea id="inContent" rows="6" class="text-input mono"></textarea>
+          </label>
+          <label class="field">
+            <span class="field-label">Optional Metadata JSON</span>
+            <textarea id="inMetadata" rows="2" class="text-input mono" placeholder='{"disruption_duration_days": 60}'></textarea>
+          </label>
+          <p class="helper-text">
+            Ephemeral inline submissions evaluate inside an isolated temporary folder and never modify workspace fixtures.
+          </p>
+        </div>
+
+        <div class="divider-top stack-sm">
+          <label class="field">
+            <span class="field-label">Supply Network Topology</span>
+            <select id="topologySelect" class="text-input mono">
+              <option value="canonical">Built-in Canonical Supply Net (CLI parity)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Target Focus Ticker (optional)</span>
+            <input id="targetTickerInput" type="text" placeholder="Auto (e.g. AAPL)" class="text-input mono" />
+          </label>
+          <button type="button" id="evaluateBtn" class="primary-btn">Run Event Audit</button>
+          <div id="evalErrorBox" class="error-box hidden" role="alert"></div>
+        </div>
+      </section>
+
+      <!-- Right Column: Audit Results -->
+      <section class="stack-md">
+        <!-- CARD 1: Boilerplate Sanitization & Disruption Gating -->
+        <article class="card stack-sm">
+          <div class="panel-head">
+            <div>
+              <h2>1. Boilerplate Sanitization &amp; Disruption Gating</h2>
+              <p class="subtitle">
+                Linear-time EDGAR cover, Safe Harbor, Signature &amp; Item 9.01 stripping prior to cascade
+              </p>
+            </div>
+            <button type="button" id="toggleDiffBtn" class="secondary-btn">Show Raw vs. Stripped</button>
+          </div>
+
+          <div id="gatingBanner" class="banner-box"></div>
+          <div id="gatingKpis" class="kpi-grid"></div>
+
+          <div class="stack-sm">
+            <div class="subcard stack-xs">
+              <div class="panel-head-tight">
+                <strong>Sanitized Narrative Passed to Cascade &amp; LLM</strong>
+                <span id="strippedCountPill" class="mono muted-text"></span>
+              </div>
+              <p id="sanitizedHeadlineOut" class="headline-out"></p>
+              <p id="sanitizedContentOut" class="narrative-out"></p>
+            </div>
+
+            <div id="rawPanel" class="subcard stack-xs hidden">
+              <div class="panel-head-tight">
+                <strong>Raw Input Prior to Sanitization</strong>
+                <span class="mono badge-warn-text">Boilerplate Neutralized Below Threshold</span>
+              </div>
+              <p id="rawContentOut" class="narrative-out mono"></p>
+            </div>
+          </div>
+        </article>
+
+        <!-- CARD 2: Downstream Cascade & Gantt Timeline -->
+        <article class="card stack-sm">
+          <div class="panel-head">
+            <div>
+              <h2>2. Downstream Supply Contagion &amp; Buffer vs. Outage Timeline</h2>
+              <p id="cascadeSubtitle" class="subtitle"></p>
+            </div>
+            <div id="dagHealthBadges" class="badge-row mono"></div>
+          </div>
+
+          <div class="subcard stack-xs">
+            <div class="panel-head-tight">
+              <strong>Buffer Absorption vs. Unbuffered Downtime Window (Days)</strong>
+              <div class="legend-row">
+                <span class="legend-item">
+                  <span class="swatch swatch-buffer"></span>Inventory Buffer Grace
+                </span>
+                <span class="legend-item">
+                  <span class="swatch swatch-outage"></span>Unbuffered Downtime
+                </span>
+              </div>
+            </div>
+            <div id="ganttSvgMount" class="gantt-mount"></div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table mono">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Hop</th>
+                  <th>Input Group</th>
+                  <th class="num">Share</th>
+                  <th class="num">Buffer</th>
+                  <th class="num">Onset</th>
+                  <th class="num">Downtime</th>
+                  <th class="num">Peak Loss</th>
+                  <th>Verdict</th>
+                </tr>
+              </thead>
+              <tbody id="impactsTbody"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <!-- CARD 3: Verbatim Citation Audit, Synthesis & 1NF Event Rows -->
+        <article class="card stack-sm">
+          <div class="panel-head">
+            <div>
+              <h2>3. Verbatim Citation Audit, Synthesis &amp; 1NF Event Rows</h2>
+              <p class="subtitle">
+                Automated metric-to-prose check (<span class="mono">validate_verbatim_citations</span>) &amp; ADR-00013 join rows
+              </p>
+            </div>
+            <span id="citationPill" class="pill mono">Pending evaluation</span>
+          </div>
+
+          <div id="citationViolationsBox" class="error-box hidden"></div>
+
+          <div class="subcard stack-xs">
+            <div class="panel-head-tight">
+              <strong>Operational Synthesis</strong>
+              <span id="reportIdTag" class="mono muted-text"></span>
+            </div>
+            <p id="synthesisOut" class="synthesis-text"></p>
+            <details class="details-block">
+              <summary>Inspect Contagion Think Trace &amp; Stage Latencies</summary>
+              <div class="stack-xs details-body">
+                <p id="thinkTraceOut" class="narrative-out mono"></p>
+                <div id="telemetryPills" class="badge-row mono"></div>
+              </div>
+            </details>
+          </div>
+
+          <details id="oneNfDrawer" class="subcard details-block">
+            <summary class="panel-head-tight">
+              <span id="oneNfSummaryTitle">1NF Time-Series Records (ContagionTimeSeriesEventRecord)</span>
+              <span class="link-text">Expand rows</span>
+            </summary>
+            <div class="stack-xs details-body">
+              <div class="action-row">
+                <button type="button" id="copyJsonlBtn" class="secondary-btn">Copy JSONL</button>
+                <button type="button" id="downloadJsonlBtn" class="secondary-btn">Download JSONL</button>
+                <span id="jsonlStatusText" class="mono muted-text"></span>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table mono">
+                  <thead>
+                    <tr>
+                      <th>event_id</th>
+                      <th>disrupted</th>
+                      <th>target</th>
+                      <th>sec_item</th>
+                      <th>onset_date</th>
+                      <th>recovery_date</th>
+                      <th>verdict</th>
+                      <th>model_mode</th>
+                    </tr>
+                  </thead>
+                  <tbody id="oneNfTbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+        </article>
+      </section>
+    </main>
+
+    <!-- TAB 2: PiT KG Explorer Placeholder (Deferred to ADR-00019) -->
+    <section id="panel-kg" class="card stack-md hidden">
+      <div class="panel-head">
+        <div>
+          <h2>Point-in-Time Supply-Chain KG Explorer</h2>
+          <p class="subtitle">
+            Backed by ADR-00017 <span class="mono">GET /api/subgraph</span> · Interactive node-link graph &amp; provenance drawer follow in <span class="mono">ADR-00019</span>
+          </p>
+        </div>
+        <span class="pill mono">Placeholder until ADR-00019</span>
+      </div>
+      <div class="placeholder-grid">
+        <div class="placeholder-box">
+          <h3>Temporal Controls</h3>
+          <p>Snapshot selector, focal ticker picker, <span class="mono">as_of_date</span> scrubbing, and upstream/downstream hop depth (<span class="mono">1–5</span>).</p>
+        </div>
+        <div class="placeholder-box">
+          <h3>Layered SVG Subgraph</h3>
+          <p>Visualizes <span class="mono">UPSTREAM → ROOT → DOWNSTREAM</span> supply hops with procurement share and inventory buffer annotations.</p>
+        </div>
+        <div class="placeholder-box">
+          <h3>Edge Contract Provenance</h3>
+          <p>Inspect edge <span class="mono">valid_from</span>, <span class="mono">valid_to</span>, <span class="mono">status</span>, and <span class="mono">source_hash</span> for zero-lookahead audits.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: Cohort Browser Placeholder (Deferred to ADR-00019) -->
+    <section id="panel-cohort" class="card stack-md hidden">
+      <div class="panel-head">
+        <div>
+          <h2>1NF Cohort Browser</h2>
+          <p class="subtitle">
+            Backed by ADR-00017 <span class="mono">POST /api/cohort</span> · Faceted filters, verdict summaries &amp; pagination follow in <span class="mono">ADR-00019</span>
+          </p>
+        </div>
+        <span class="pill mono">Placeholder until ADR-00019</span>
+      </div>
+      <div class="placeholder-box">
+        <p>
+          Will load allowlisted <span class="mono">.jsonl</span> exports discovered by <span class="mono">/api/catalog</span>, filter by <span class="mono">verdict</span>, <span class="mono">disruption_category</span>, <span class="mono">sec_item</span>, and <span class="mono">ticker</span>, and display paginated 1NF join rows.
+        </p>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
