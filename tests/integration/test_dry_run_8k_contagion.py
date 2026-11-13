@@ -9,6 +9,7 @@ import pytest
 
 from retrieval.reporting import (
     ContagionSeverityVerdict,
+    ModelExecutionMode,
     OperationalContagionReport,
     OperationalDisruptionCategory,
     SECForm8KItem,
@@ -16,7 +17,11 @@ from retrieval.reporting import (
     validate_verbatim_citations,
 )
 from sft_pipeline.serving.model_client import ModelResponse, YarnBallModelClient
-from tools.dry_run_sec_8k_contagion import run_sec_8k_dry_run
+from tools.dry_run_sec_8k_contagion import (
+    export_report_to_jsonl,
+    main as dry_run_cli_main,
+    run_sec_8k_dry_run,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "filings"
 
@@ -199,4 +204,46 @@ def test_domain_boundary_isolation_invariant(offline_guardrail):
         if isinstance(val, str):
             for term in ["short leg", "long leg", "directional basket", "option collar"]:
                 assert term not in val.lower(), f"Forbidden trading phrase '{term}' in report field '{key}'"
+
+
+@pytest.mark.integration
+def test_sec_8k_dry_run_cli_mock_and_jsonl_export(offline_guardrail, tmp_path, monkeypatch, capsys):
+    """Verify ADR-00013 `--mock` execution and `--export-jsonl` 1NF time-series join export."""
+    filing_path = FIXTURES_DIR / "crus_8k_disruption.json"
+    jsonl_out = tmp_path / "exports" / "contagion_events.jsonl"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "dry_run_sec_8k_contagion.py",
+            "--filing",
+            str(filing_path),
+            "--mock",
+            "--export-jsonl",
+            str(jsonl_out),
+            "--validate-citations",
+        ],
+    )
+
+    dry_run_cli_main()
+    captured = capsys.readouterr()
+    assert "YARNBALL OPERATIONAL CONTAGION REPORT" in captured.out
+    assert "UNBUFFERED_DISRUPTION" in captured.out
+
+    assert jsonl_out.is_file()
+    lines = [line for line in jsonl_out.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 3  # AAPL, HPQ, FOXCONN
+
+    rows = [json.loads(line) for line in lines]
+    by_target = {r["target_entity_ticker"]: r for r in rows}
+
+    assert by_target["AAPL"]["model_mode"] == ModelExecutionMode.MOCK_DETERMINISTIC.value
+    assert by_target["AAPL"]["calendar_onset_date"] == "2024-12-12"
+    assert by_target["AAPL"]["calendar_recovery_date"] == "2024-12-27"
+    assert by_target["AAPL"]["verdict"] == "UNBUFFERED_DISRUPTION"
+
+    assert by_target["HPQ"]["calendar_onset_date"] is None
+    assert by_target["HPQ"]["calendar_recovery_date"] is None
+    assert by_target["HPQ"]["verdict"] == "BUFFER_ABSORBED"
+    assert by_target["FOXCONN"]["verdict"] == "BUFFER_ABSORBED"
 

@@ -81,15 +81,32 @@ class YarnBallModelClient:
         timeout_sec: float = 120.0,
         transport_fn: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
     ):
-        base_url = ollama_url or os.getenv("OLLAMA_API_BASE") or "http://127.0.0.1:11434"
-        if not base_url.endswith("/api/generate"):
-            self.ollama_url = f"{base_url.rstrip('/')}/api/generate"
+        raw_base = (ollama_url or os.getenv("OLLAMA_API_BASE") or "http://127.0.0.1:11434").rstrip("/")
+        if raw_base.endswith("/api/generate"):
+            self.base_url = raw_base[: -len("/api/generate")].rstrip("/")
+            self.ollama_url = raw_base
         else:
-            self.ollama_url = base_url
+            self.base_url = raw_base
+            self.ollama_url = f"{raw_base}/api/generate"
 
         self.model_tag = model_tag or os.getenv("YARNBALL_MODEL_TAG", "yarnball-qwen:7b")
         self.timeout_sec = timeout_sec
         self._transport_fn = transport_fn  # Optional mock transport for testing
+
+    def check_health(self, timeout_sec: float = 2.0) -> Tuple[bool, str]:
+        """Probe Ollama /api/tags endpoint to verify server availability before pipeline execution."""
+        if self._transport_fn is not None:
+            return True, "mock_transport"
+
+        tags_url = f"{self.base_url}/api/tags"
+        req = urllib.request.Request(tags_url, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                if getattr(resp, "status", 200) < 400:
+                    return True, f"healthy ({tags_url})"
+                return False, f"HTTP {getattr(resp, 'status', 'unknown')} from {tags_url}"
+        except Exception as exc:
+            return False, f"Unreachable at {tags_url}: {exc}"
 
     def generate(
         self,
@@ -151,6 +168,13 @@ class YarnBallModelClient:
                 body = self._post_http(payload)
             wall_elapsed = time.time() - t0
         except Exception as exc:
+            logger.warning(
+                "Model inference unreachable at '%s' (task=%s): %s. "
+                "Start `ollama serve` or enable deterministic --mock mode.",
+                self.ollama_url,
+                norm_task,
+                exc,
+            )
             return ModelResponse(
                 raw_text="",
                 think_trace=None,

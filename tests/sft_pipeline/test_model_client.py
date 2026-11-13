@@ -95,15 +95,35 @@ def test_task_token_caps_assigned():
     assert TASK_MAX_NEW_TOKENS["EXTRACT_SEC_GRAPH"] == 512
 
 
-def test_http_error_handling_graceful():
+def test_http_error_handling_graceful(caplog):
     def failing_transport(payload):
         raise ConnectionRefusedError("Ollama endpoint unreachable at 127.0.0.1:11434")
 
     client = YarnBallModelClient(transport_fn=failing_transport)
-    response = client.generate("Test prompt", task="CONTAGION_REASONING")
+    with caplog.at_level("WARNING", logger="model_client"):
+        response = client.generate("Test prompt", task="CONTAGION_REASONING")
 
     assert response.error is not None
     assert "unreachable" in response.error.lower()
     assert response.final_output == "(none)"
     assert response.latency_sec >= 0.0
+    assert any("Model inference unreachable" in rec.message for rec in caplog.records)
+
+
+def test_pre_flight_health_diagnostics(monkeypatch):
+    # 1. Mock transport bypasses network probe cleanly
+    mock_client = YarnBallModelClient(transport_fn=lambda payload: {"response": "ok"})
+    healthy, msg = mock_client.check_health()
+    assert healthy is True
+    assert msg == "mock_transport"
+
+    # 2. Unreachable HTTP server reports False + descriptive diagnostic
+    def fail_urlopen(req, timeout=2.0):
+        raise ConnectionRefusedError("Connection refused")
+
+    monkeypatch.setattr("urllib.request.urlopen", fail_urlopen)
+    live_client = YarnBallModelClient(ollama_url="http://127.0.0.1:11434")
+    healthy, msg = live_client.check_health(timeout_sec=0.5)
+    assert healthy is False
+    assert "http://127.0.0.1:11434/api/tags" in msg
 

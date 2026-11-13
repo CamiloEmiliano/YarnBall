@@ -45,6 +45,7 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00010](ADR-00010-directional-basket-peer-cluster-mapping-.md) | Directional Basket & Peer Cluster Mapping | 2026-11-11 04:35 UTC | `REJECTED` | `ontology` / `retrieval` | Formally rejected: Out of domain scope (trading/market-making) |
 | [ADR-00011](ADR-00011-operational-contagion-report-schema-----.md) | Operational Contagion Report Schema & Language | 2026-11-11 23:30 UTC | `ACCEPTED` | `retrieval` / `contagion` | [`7e6aa39`](../../retrieval/reporting.py) |
 | [ADR-00012](ADR-00012-qwen-model-upgrade-and-fine-tuning-plan-.md) | Upgraded Qwen Model Fine-Tuning & Serving Plan | 2026-11-12 05:50 UTC | `PROPOSED` | `sft_pipeline` / `retrieval` | [`a26bc0c`](../../sft_pipeline/serving/model_client.py) |
+| [ADR-00013](ADR-00013-contagion-event-time-series-join-schema-.md) | Contagion Event Telemetry & Time-Series Join Contract | 2026-11-13 06:30 UTC | `ACCEPTED` | `retrieval` / `tools` | [`retrieval/reporting.py`](../../retrieval/reporting.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py) |
 
 
 

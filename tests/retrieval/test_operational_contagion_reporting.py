@@ -13,13 +13,16 @@ from retrieval.reporting import (
     DependencyDomain,
     OperationalScope,
     ContagionSeverityVerdict,
+    ModelExecutionMode,
     NetworkNodeImpact,
     TopologicalEdgeDescriptor,
     ExecutionTelemetry,
     OperationalContagionReport,
+    ContagionTimeSeriesEventRecord,
     classify_contagion_verdict,
     format_operational_contagion_report,
     build_operational_contagion_report,
+    flatten_report_to_timeseries_records,
     validate_verbatim_citations,
 )
 
@@ -535,8 +538,105 @@ class TestDomainIsolationInvariant:
         }
         report_field_names = list(OperationalContagionReport.model_fields.keys())
         impact_field_names = list(NetworkNodeImpact.model_fields.keys())
+        ts_field_names = list(ContagionTimeSeriesEventRecord.model_fields.keys())
 
-        for field in report_field_names + impact_field_names:
+        for field in report_field_names + impact_field_names + ts_field_names:
             field_tokens = set(field.lower().split("_"))
             overlap = field_tokens.intersection(disallowed_tokens)
             assert not overlap, f"Forbidden trading term(s) {overlap} in field '{field}'"
+
+
+class TestTimeSeriesJoinFlattener:
+    """Verifies ADR-00013 1NF time-series join schema, calendar projections, and provenance."""
+
+    def test_flatten_multihop_report_calendar_projections(self):
+        report = OperationalContagionReport(
+            report_id="REP-20241028-CRUS-001",
+            event_id="SEC_8K_20241028_CRUS",
+            sec_item="Item 8.01",
+            disrupted_entity_ticker="CRUS",
+            disrupted_entity_cik="0000772406",
+            filing_date="2024-10-28",
+            filing_timestamp="2024-10-28T16:15:22Z",
+            disruption_category="FACILITY_FIRE_OR_EXPLOSION",
+            event_summary="Fab halt",
+            shock_duration_days=60.0,
+            shock_magnitude_pct=100.0,
+            model_mode=ModelExecutionMode.MOCK_DETERMINISTIC,
+            network_impacts=[
+                NetworkNodeImpact(
+                    entity_ticker="AAPL",
+                    hop_distance=1,
+                    input_group="audio_codecs",
+                    procurement_share_pct=20.0,
+                    inventory_buffer_days=45.0,
+                    shock_onset_day=45.0,
+                    unbuffered_downtime_days=15.0,
+                    capacity_contraction_pct=20.0,
+                    lost_capacity_days=3.0,
+                    verdict=ContagionSeverityVerdict.UNBUFFERED_DISRUPTION,
+                ),
+                NetworkNodeImpact(
+                    entity_ticker="HPQ",
+                    hop_distance=1,
+                    input_group="audio_codecs",
+                    procurement_share_pct=10.0,
+                    inventory_buffer_days=90.0,
+                    shock_onset_day=None,
+                    unbuffered_downtime_days=0.0,
+                    capacity_contraction_pct=0.0,
+                    lost_capacity_days=0.0,
+                    verdict=ContagionSeverityVerdict.BUFFER_ABSORBED,
+                ),
+            ],
+            operational_synthesis="AAPL suffers 20.0% contraction for 15.0 days.",
+        )
+
+        rows = flatten_report_to_timeseries_records(
+            report,
+            target_cik_map={"AAPL": "0000320193"},
+        )
+        assert len(rows) == 2
+
+        aapl = rows[0]
+        assert aapl.target_entity_ticker == "AAPL"
+        assert aapl.target_entity_cik == "0000320193"
+        assert aapl.filing_timestamp == "2024-10-28T16:15:22Z"
+        assert aapl.calendar_onset_date == "2024-12-12"  # 2024-10-28 + 45d
+        assert aapl.calendar_recovery_date == "2024-12-27"  # 2024-12-12 + 15d
+        assert aapl.model_mode == "MOCK_DETERMINISTIC"
+
+        hpq = rows[1]
+        assert hpq.target_entity_ticker == "HPQ"
+        assert hpq.target_entity_cik is None
+        assert hpq.calendar_onset_date is None
+        assert hpq.calendar_recovery_date is None
+        assert hpq.verdict == "BUFFER_ABSORBED"
+
+    def test_empty_network_impacts_emits_unaffected_sentinel_row(self):
+        report = OperationalContagionReport(
+            report_id="REP-20241028-MSFT-001",
+            event_id="SEC_8K_20241028_MSFT",
+            sec_item="Item 8.01",
+            disrupted_entity_ticker="MSFT",
+            disrupted_entity_cik="0000789019",
+            filing_date="2024-10-28",
+            disruption_category="OTHER_UNCLASSIFIED_MATERIAL_HALT",
+            event_summary="Isolated incident",
+            shock_duration_days=5.0,
+            shock_magnitude_pct=10.0,
+            network_impacts=[],
+            operational_synthesis="No downstream supply shock.",
+        )
+
+        rows = flatten_report_to_timeseries_records(report, model_mode=ModelExecutionMode.LIVE_LLM)
+        assert len(rows) == 1
+        sentinel = rows[0]
+        assert sentinel.target_entity_ticker == "MSFT"
+        assert sentinel.target_entity_cik == "0000789019"
+        assert sentinel.hop_distance == 0
+        assert sentinel.input_group == "root"
+        assert sentinel.verdict == "UNAFFECTED"
+        assert sentinel.calendar_onset_date is None
+        assert sentinel.calendar_recovery_date is None
+        assert sentinel.model_mode == "LIVE_LLM"

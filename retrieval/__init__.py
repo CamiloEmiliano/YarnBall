@@ -27,8 +27,10 @@ from .shock_propagation import (
 )
 from .reporting import (
     ContagionSeverityVerdict,
+    ContagionTimeSeriesEventRecord,
     DependencyDomain,
     ExecutionTelemetry,
+    ModelExecutionMode,
     NetworkNodeImpact,
     OperationalContagionReport,
     OperationalDisruptionCategory,
@@ -37,6 +39,7 @@ from .reporting import (
     TopologicalEdgeDescriptor,
     build_operational_contagion_report,
     classify_contagion_verdict,
+    flatten_report_to_timeseries_records,
     format_operational_contagion_report,
     validate_verbatim_citations,
 )
@@ -57,8 +60,10 @@ __all__ = [
     "propagate_shock_across_edge",
     "traverse_multi_hop_contagion",
     "ContagionSeverityVerdict",
+    "ContagionTimeSeriesEventRecord",
     "DependencyDomain",
     "ExecutionTelemetry",
+    "ModelExecutionMode",
     "NetworkNodeImpact",
     "OperationalContagionReport",
     "OperationalDisruptionCategory",
@@ -67,6 +72,7 @@ __all__ = [
     "TopologicalEdgeDescriptor",
     "build_operational_contagion_report",
     "classify_contagion_verdict",
+    "flatten_report_to_timeseries_records",
     "format_operational_contagion_report",
     "validate_verbatim_citations",
 ]

@@ -97,6 +97,8 @@ class PipelineResult(BaseModel):
         disrupted_entity_name: Optional[str] = None,
         disrupted_entity_cik: Optional[str] = None,
         report_id: Optional[str] = None,
+        filing_timestamp: Optional[str] = None,
+        model_mode: str = "LIVE_LLM",
     ) -> Any:
         """Convert pipeline result and event metadata into a validated OperationalContagionReport (ADR-00011)."""
         from .reporting import build_operational_contagion_report
@@ -114,6 +116,8 @@ class PipelineResult(BaseModel):
             disrupted_entity_name=disrupted_entity_name,
             disrupted_entity_cik=disrupted_entity_cik,
             report_id=report_id,
+            filing_timestamp=filing_timestamp,
+            model_mode=model_mode,
         )
 
 

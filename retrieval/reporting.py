@@ -6,8 +6,10 @@ engine for downstream consumption of YarnBall's computational reading pipeline.
 """
 
 from collections import deque
+from datetime import date, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Union
+import math
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -151,6 +153,14 @@ class ContagionSeverityVerdict(str, Enum):
     UNAFFECTED = "UNAFFECTED"
 
 
+class ModelExecutionMode(str, Enum):
+    """Execution provenance of neural inference during report generation (ADR-00013)."""
+
+    LIVE_LLM = "LIVE_LLM"
+    MOCK_DETERMINISTIC = "MOCK_DETERMINISTIC"
+    DEGRADED_UNREACHABLE = "DEGRADED_UNREACHABLE"
+
+
 def classify_contagion_verdict(
     unbuffered_downtime_days: float,
     upstream_shock_pct: float = 0.0,
@@ -235,6 +245,7 @@ class OperationalContagionReport(BaseModel):
     disrupted_entity_cik: Optional[str] = None
     disrupted_entity_name: Optional[str] = None
     filing_date: str
+    filing_timestamp: Optional[str] = None
     disruption_category: str
     event_summary: str
     shock_duration_days: float = Field(ge=0.0)
@@ -246,6 +257,38 @@ class OperationalContagionReport(BaseModel):
     contagion_think_trace: Optional[str] = None
     operational_synthesis: str
     telemetry: ExecutionTelemetry = Field(default_factory=ExecutionTelemetry)
+    model_mode: ModelExecutionMode = ModelExecutionMode.LIVE_LLM
+
+
+class ContagionTimeSeriesEventRecord(BaseModel):
+    """Flattened 1NF operational contagion event row for time-series relational joins (ADR-00013)."""
+
+    report_id: str
+    event_id: str
+    filing_date: str
+    filing_timestamp: Optional[str] = None
+    sec_item: str
+    disruption_category: str
+    disrupted_entity_ticker: str
+    disrupted_entity_cik: Optional[str] = None
+    target_entity_ticker: str
+    target_entity_cik: Optional[str] = None
+    hop_distance: int = Field(default=0, ge=0)
+    input_group: str = Field(default="default")
+    dependency_domain: str = DependencyDomain.PHYSICAL_COMPONENT.value
+    operational_scope: str = OperationalScope.CORE_OPERATIONAL_DELIVERY.value
+    procurement_share_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    inventory_buffer_days: float = Field(default=0.0, ge=0.0)
+    shock_onset_day: Optional[float] = None
+    unbuffered_downtime_days: float = Field(default=0.0, ge=0.0)
+    capacity_contraction_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    lost_capacity_days: float = Field(default=0.0, ge=0.0)
+    calendar_onset_date: Optional[str] = None
+    calendar_recovery_date: Optional[str] = None
+    verdict: str
+    is_acyclic_dag: bool = True
+    spectral_radius: float = Field(default=0.0, ge=0.0)
+    model_mode: str = ModelExecutionMode.LIVE_LLM.value
 
 
 # ==============================================================================
@@ -408,6 +451,8 @@ def build_operational_contagion_report(
     disrupted_entity_name: Optional[str] = None,
     disrupted_entity_cik: Optional[str] = None,
     report_id: Optional[str] = None,
+    filing_timestamp: Optional[str] = None,
+    model_mode: Union[ModelExecutionMode, str] = ModelExecutionMode.LIVE_LLM,
 ) -> OperationalContagionReport:
     """Builds a validated OperationalContagionReport from a PipelineResult and event metadata."""
     ticker_clean = disrupted_entity_ticker.strip().upper()
@@ -572,6 +617,11 @@ def build_operational_contagion_report(
     # 6. Model synthesis and think trace
     think_trace = getattr(result, "contagion_think_trace", None)
     operational_synthesis = getattr(result, "contagion_verdict", "") or "No operational synthesis generated."
+    mode_enum = (
+        model_mode
+        if isinstance(model_mode, ModelExecutionMode)
+        else ModelExecutionMode(str(model_mode))
+    )
 
     return OperationalContagionReport(
         report_id=report_id,
@@ -582,6 +632,7 @@ def build_operational_contagion_report(
         disrupted_entity_cik=disrupted_entity_cik,
         disrupted_entity_name=disrupted_entity_name,
         filing_date=filing_date,
+        filing_timestamp=filing_timestamp,
         disruption_category=disrupt_cat_val,
         event_summary=event_summary,
         shock_duration_days=shock_duration_days,
@@ -593,6 +644,7 @@ def build_operational_contagion_report(
         contagion_think_trace=think_trace,
         operational_synthesis=operational_synthesis,
         telemetry=telemetry,
+        model_mode=mode_enum,
     )
 
 
@@ -625,3 +677,95 @@ def validate_verbatim_citations(report: OperationalContagionReport) -> List[str]
                 )
 
     return violations
+
+
+# ==============================================================================
+# 6. 1NF TIME-SERIES JOIN FLATTENER (ADR-00013)
+# ==============================================================================
+
+def _project_calendar_dates(
+    filing_date: str,
+    shock_onset_day: Optional[float],
+    unbuffered_downtime_days: float,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Projects ISO-8601 calendar onset and recovery dates from filing_date and cascade offsets."""
+    if shock_onset_day is None:
+        return None, None
+    base_date = date.fromisoformat(filing_date.strip()[:10])
+    onset_dt = base_date + timedelta(days=int(math.floor(shock_onset_day)))
+    onset_str = onset_dt.isoformat()
+    if unbuffered_downtime_days > 0.0:
+        recovery_dt = onset_dt + timedelta(days=int(math.ceil(unbuffered_downtime_days)))
+        return onset_str, recovery_dt.isoformat()
+    return onset_str, None
+
+
+def flatten_report_to_timeseries_records(
+    report: OperationalContagionReport,
+    model_mode: Optional[Union[ModelExecutionMode, str]] = None,
+    target_cik_map: Optional[Dict[str, Optional[str]]] = None,
+) -> List[ContagionTimeSeriesEventRecord]:
+    """Flattens OperationalContagionReport into 1NF rows for time-series joins (ADR-00013)."""
+    if model_mode is None:
+        mode_val = report.model_mode.value
+    elif isinstance(model_mode, ModelExecutionMode):
+        mode_val = model_mode.value
+    else:
+        mode_val = ModelExecutionMode(str(model_mode)).value
+
+    cik_lookup = {k.strip().upper(): v for k, v in (target_cik_map or {}).items()}
+    base_kwargs: Dict[str, Any] = {
+        "report_id": report.report_id,
+        "event_id": report.event_id,
+        "filing_date": report.filing_date,
+        "filing_timestamp": report.filing_timestamp,
+        "sec_item": report.sec_item,
+        "disruption_category": report.disruption_category,
+        "disrupted_entity_ticker": report.disrupted_entity_ticker,
+        "disrupted_entity_cik": report.disrupted_entity_cik,
+        "is_acyclic_dag": report.is_acyclic_dag,
+        "spectral_radius": report.spectral_radius,
+        "model_mode": mode_val,
+    }
+
+    if not report.network_impacts:
+        return [
+            ContagionTimeSeriesEventRecord(
+                **base_kwargs,
+                target_entity_ticker=report.disrupted_entity_ticker,
+                target_entity_cik=report.disrupted_entity_cik,
+                hop_distance=0,
+                input_group="root",
+                verdict=ContagionSeverityVerdict.UNAFFECTED.value,
+            )
+        ]
+
+    records: List[ContagionTimeSeriesEventRecord] = []
+    for impact in report.network_impacts:
+        onset_str, recovery_str = _project_calendar_dates(
+            report.filing_date,
+            impact.shock_onset_day,
+            impact.unbuffered_downtime_days,
+        )
+        tgt_ticker = impact.entity_ticker.strip().upper()
+        records.append(
+            ContagionTimeSeriesEventRecord(
+                **base_kwargs,
+                target_entity_ticker=tgt_ticker,
+                target_entity_cik=cik_lookup.get(tgt_ticker),
+                hop_distance=impact.hop_distance,
+                input_group=impact.input_group,
+                dependency_domain=impact.dependency_domain.value,
+                operational_scope=impact.operational_scope.value,
+                procurement_share_pct=impact.procurement_share_pct,
+                inventory_buffer_days=impact.inventory_buffer_days,
+                shock_onset_day=impact.shock_onset_day,
+                unbuffered_downtime_days=impact.unbuffered_downtime_days,
+                capacity_contraction_pct=impact.capacity_contraction_pct,
+                lost_capacity_days=impact.lost_capacity_days,
+                calendar_onset_date=onset_str,
+                calendar_recovery_date=recovery_str,
+                verdict=impact.verdict.value,
+            )
+        )
+    return records
