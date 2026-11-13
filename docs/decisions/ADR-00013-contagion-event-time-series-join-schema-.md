@@ -5,7 +5,7 @@
 - **Date**: 2026-11-13 06:30 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `retrieval` / `tools` / `sft_pipeline`
-- **Linked Commits**: Implemented in [`retrieval/reporting.py`](../../retrieval/reporting.py), [`sft_pipeline/serving/model_client.py`](../../sft_pipeline/serving/model_client.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py)
+- **Linked Commits**: [`71774f8`](../../retrieval/reporting.py), [`71774f8`](../../sft_pipeline/serving/model_client.py), [`71774f8`](../../tools/dry_run_sec_8k_contagion.py)
 
 ---
 

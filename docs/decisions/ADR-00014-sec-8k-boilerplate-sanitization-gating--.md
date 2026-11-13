@@ -5,7 +5,7 @@
 - **Date**: 2026-11-13 06:55 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `ingestion` / `retrieval` / `tools`
-- **Linked Commits**: [`ingestion/sec/disruption_gating.py`](../../ingestion/sec/disruption_gating.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py)
+- **Linked Commits**: [`2c00c8b`](../../ingestion/sec/disruption_gating.py), [`2c00c8b`](../../tools/dry_run_sec_8k_contagion.py)
 
 ---
 

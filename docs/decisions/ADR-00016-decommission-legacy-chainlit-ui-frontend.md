@@ -5,7 +5,7 @@
 - **Date**: 2026-11-13 08:47 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `interactive` / `requirements`
-- **Linked Commits**: [`requirements.txt`](../../requirements.txt), [`.gitignore`](../../.gitignore)
+- **Linked Commits**: [`b198a35`](../../requirements.txt), [`b198a35`](../../.gitignore)
 
 ---
 

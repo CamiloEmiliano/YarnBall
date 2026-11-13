@@ -5,7 +5,7 @@
 - **Date**: 2026-11-13 09:46 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `explorer` / `retrieval` / `tools`
-- **Linked Commits**: [`explorer/workbench_api.py`](../../explorer/workbench_api.py), [`tools/serve_explorer.py`](../../tools/serve_explorer.py)
+- **Linked Commits**: [`4db2cc8`](../../explorer/workbench_api.py), [`4db2cc8`](../../tools/serve_explorer.py)
 
 ---
 

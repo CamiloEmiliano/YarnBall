@@ -8,6 +8,7 @@ STRICT FILENAME & LINKING CONVENTIONS:
 - Padding Rule: If the natural slug is under 40 characters, pad with trailing hyphens ('-').
 - Zero Absolute Paths Invariant: All file, code, test, fixture, and commit references MUST be repository-relative (e.g. `../../<path>` or `<peer_adr>.md`).
   NEVER embed absolute filesystem paths or URI schemes (such as `file:///...`, `/home/...`, `/Users/...`, or drive letters) into ADR documents.
+- Linked Commits Format (`template.md` & `index.md`): Implemented entries MUST display the 7-character git commit hash as link text targeting repository-relative files ([`41f9e61`](../../path/to/file)), keeping `index.md` compact. Use `Pending acceptance` while `PROPOSED`, commit the accepted implementation, then backfill the resulting short commit hash rather than displaying file paths as link text.
 Example: ADR-00001-record-architecture-decisions-in-repo--.md
 -->
 

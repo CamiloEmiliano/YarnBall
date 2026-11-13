@@ -5,7 +5,7 @@
 - **Date**: 2026-11-13 19:51 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `explorer` / `tests`
-- **Linked Commits**: [`explorer/workbench_api.py`](../../explorer/workbench_api.py), [`explorer/static/index.html`](../../explorer/static/index.html), [`explorer/static/styles.css`](../../explorer/static/styles.css), [`explorer/static/app.js`](../../explorer/static/app.js)
+- **Linked Commits**: [`41f9e61`](../../explorer/workbench_api.py), [`41f9e61`](../../explorer/static/index.html), [`41f9e61`](../../explorer/static/styles.css), [`41f9e61`](../../explorer/static/app.js)
 
 ---
 

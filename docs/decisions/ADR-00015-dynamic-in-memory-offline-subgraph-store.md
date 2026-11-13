@@ -5,7 +5,7 @@
 - **Date**: 2026-11-13 07:15 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `retrieval` / `knowledge_graph` / `tools`
-- **Linked Commits**: [`retrieval/offline_store.py`](../../retrieval/offline_store.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py)
+- **Linked Commits**: [`8bdda14`](../../retrieval/offline_store.py), [`8bdda14`](../../tools/dry_run_sec_8k_contagion.py)
 
 ---
 
