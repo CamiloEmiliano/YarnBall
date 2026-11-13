@@ -233,6 +233,7 @@ class InMemorySubgraphStore:
         self.strict_query_scoping = strict_query_scoping
         self._edges_by_key: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
         self._adj: Dict[str, List[Dict[str, Any]]] = {}
+        self._rev_adj: Dict[str, List[Dict[str, Any]]] = {}
         if edges:
             for e in edges:
                 self.add_edge(e)
@@ -248,6 +249,141 @@ class InMemorySubgraphStore:
         key = (norm["source"], norm["rel_type"], norm["target"], input_group)
         self._edges_by_key[key] = norm
         self._adj.setdefault(norm["source"], []).append(norm)
+        self._rev_adj.setdefault(norm["target"], []).append(norm)
+
+    def list_tickers(self) -> List[str]:
+        """Returns sorted distinct node tickers present across all loaded edges."""
+        tickers: Set[str] = set()
+        for edge in self._edges_by_key.values():
+            tickers.add(edge["source"])
+            tickers.add(edge["target"])
+        return sorted(tickers)
+
+    def _bfs_traverse(
+        self,
+        adj_map: Mapping[str, List[Dict[str, Any]]],
+        neighbor_key: str,
+        root_ticker: str,
+        max_hops: int,
+        rel_types: Optional[Tuple[str, ...]],
+        required_status: Optional[str],
+        as_of_date: Optional[str],
+        direction_tag: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+        """Sorted cycle-safe BFS returning `(edges, min_hop_by_node)` from `root_ticker`."""
+        visited_nodes: Set[str] = {root_ticker}
+        node_hops: Dict[str, int] = {root_ticker: 0}
+        emitted_keys: Set[Tuple[str, str, str, str]] = set()
+        results: List[Dict[str, Any]] = []
+        queue: deque[Tuple[str, int]] = deque([(root_ticker, 0)])
+
+        while queue:
+            current_node, depth = queue.popleft()
+            if depth >= max_hops:
+                continue
+
+            neighbors = sorted(
+                adj_map.get(current_node, ()),
+                key=lambda e: (e["source"], e["target"], e["rel_type"], str(e.get("nature", ""))),
+            )
+            next_hop = depth + 1
+            for edge in neighbors:
+                if not _edge_matches_filters(edge, rel_types, required_status, as_of_date):
+                    continue
+                grp = str(edge.get("input_group") or edge.get("nature") or "default")
+                ekey = (edge["source"], edge["rel_type"], edge["target"], grp)
+                if ekey not in emitted_keys:
+                    emitted_keys.add(ekey)
+                    row = dict(edge)
+                    row["hop"] = next_hop
+                    if direction_tag is not None:
+                        row["traversal_direction"] = direction_tag
+                    results.append(row)
+                nxt = edge[neighbor_key]
+                if nxt not in node_hops:
+                    node_hops[nxt] = next_hop
+                if nxt not in visited_nodes and next_hop < max_hops:
+                    visited_nodes.add(nxt)
+                    queue.append((nxt, next_hop))
+
+        return results, node_hops
+
+    def query_ego_subgraph(
+        self,
+        ticker: Optional[str] = None,
+        max_hops: int = 2,
+        direction: str = "both",
+        as_of_date: Optional[str] = None,
+        rel_types: Optional[Sequence[str]] = None,
+        required_status: Optional[str] = "ACTIVE_CURRENT",
+    ) -> Dict[str, Any]:
+        """Returns Point-in-Time upstream/downstream ego network around `ticker` (ADR-00017)."""
+        capped_hops = max(1, min(int(max_hops), MAX_BFS_HOPS_CAP))
+        rel_tuple = tuple(r.strip().upper() for r in rel_types if r.strip()) if rel_types else None
+        norm_date = _normalize_date_str(as_of_date)
+        norm_dir = (direction or "both").strip().lower()
+        all_tickers = self.list_tickers()
+
+        if not ticker or not ticker.strip():
+            edges_out: List[Dict[str, Any]] = []
+            nodes_seen: Dict[str, Dict[str, Any]] = {}
+            for edge in self._edges_by_key.values():
+                if _edge_matches_filters(edge, rel_tuple, required_status, norm_date):
+                    row = dict(edge)
+                    row.setdefault("hop", 1)
+                    edges_out.append(row)
+                    nodes_seen.setdefault(edge["source"], {"id": edge["source"], "ticker": edge["source"], "hop": 0, "role": "CONNECTED"})
+                    nodes_seen.setdefault(edge["target"], {"id": edge["target"], "ticker": edge["target"], "hop": 1, "role": "CONNECTED"})
+            return {
+                "root_ticker": None,
+                "nodes": [nodes_seen[k] for k in sorted(nodes_seen)],
+                "edges": edges_out,
+                "available_tickers": all_tickers,
+            }
+
+        root = ticker.strip().upper()
+        combined_edges: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
+        node_meta: Dict[str, Dict[str, Any]] = {root: {"id": root, "ticker": root, "hop": 0, "role": "ROOT"}}
+
+        def _merge(edges: List[Dict[str, Any]], hops: Dict[str, int], role_label: str) -> None:
+            for e in edges:
+                grp = str(e.get("input_group") or e.get("nature") or "default")
+                ekey = (e["source"], e["rel_type"], e["target"], grp)
+                if ekey not in combined_edges or e["hop"] < combined_edges[ekey]["hop"]:
+                    combined_edges[ekey] = e
+            for node_id, h in hops.items():
+                if node_id == root:
+                    continue
+                prev = node_meta.get(node_id)
+                if prev is None:
+                    node_meta[node_id] = {"id": node_id, "ticker": node_id, "hop": h, "role": role_label}
+                else:
+                    prev["hop"] = min(prev["hop"], h)
+                    if prev["role"] != role_label:
+                        prev["role"] = "BOTH"
+
+        if norm_dir in ("downstream", "both"):
+            d_edges, d_hops = self._bfs_traverse(
+                self._adj, "target", root, capped_hops, rel_tuple, required_status, norm_date, "downstream"
+            )
+            _merge(d_edges, d_hops, "DOWNSTREAM")
+        if norm_dir in ("upstream", "both"):
+            u_edges, u_hops = self._bfs_traverse(
+                self._rev_adj, "source", root, capped_hops, rel_tuple, required_status, norm_date, "upstream"
+            )
+            _merge(u_edges, u_hops, "UPSTREAM")
+
+        ordered_nodes = sorted(node_meta.values(), key=lambda n: (n["hop"], n["ticker"]))
+        ordered_edges = sorted(
+            combined_edges.values(),
+            key=lambda e: (e["hop"], e["source"], e["target"], e["rel_type"]),
+        )
+        return {
+            "root_ticker": root,
+            "nodes": ordered_nodes,
+            "edges": ordered_edges,
+            "available_tickers": all_tickers,
+        }
 
     def query_edges(
         self,
@@ -277,37 +413,15 @@ class InMemorySubgraphStore:
                     results.append(row)
             return results
 
-        # Deterministic sorted multi-hop BFS downstream from root_ticker
-        visited_nodes: Set[str] = {parsed.root_ticker}
-        emitted_keys: Set[Tuple[str, str, str, str]] = set()
-        results = []
-        queue: deque[Tuple[str, int]] = deque([(parsed.root_ticker, 0)])
-
-        while queue:
-            current_node, depth = queue.popleft()
-            if depth >= parsed.max_hops:
-                continue
-
-            neighbors = sorted(
-                self._adj.get(current_node, ()),
-                key=lambda e: (e["target"], e["rel_type"], str(e.get("nature", ""))),
-            )
-            next_hop = depth + 1
-            for edge in neighbors:
-                if not _edge_matches_filters(edge, parsed.rel_types, parsed.required_status, parsed.as_of_date):
-                    continue
-                grp = str(edge.get("input_group") or edge.get("nature") or "default")
-                ekey = (edge["source"], edge["rel_type"], edge["target"], grp)
-                if ekey not in emitted_keys:
-                    emitted_keys.add(ekey)
-                    row = dict(edge)
-                    row["hop"] = next_hop
-                    results.append(row)
-                tgt = edge["target"]
-                if tgt not in visited_nodes and next_hop < parsed.max_hops:
-                    visited_nodes.add(tgt)
-                    queue.append((tgt, next_hop))
-
+        results, _ = self._bfs_traverse(
+            self._adj,
+            "target",
+            parsed.root_ticker,
+            parsed.max_hops,
+            parsed.rel_types,
+            parsed.required_status,
+            parsed.as_of_date,
+        )
         return results
 
     def session(self):

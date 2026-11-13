@@ -241,3 +241,79 @@ def test_from_edges_file_json_and_jsonl(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         InMemorySubgraphStore.from_edges_file(tmp_path / "missing.json")
+
+
+def test_query_ego_subgraph_bidirectional_and_pit(tmp_path):
+    """Verifies bidirectional ego traversal, PiT temporal filtering, and ticker inventory (ADR-00017)."""
+    nodes = [
+        {"id": "n_asml", "label": "Company", "ticker": "ASML", "source_hash": "h1", "properties_json": "{}"},
+        {"id": "n_tsm", "label": "Company", "ticker": "TSM", "source_hash": "h2", "properties_json": "{}"},
+        {"id": "n_aapl", "label": "Company", "ticker": "AAPL", "source_hash": "h3", "properties_json": "{}"},
+        {"id": "n_msft", "label": "Company", "ticker": "MSFT", "source_hash": "h4", "properties_json": "{}"},
+    ]
+    edges = [
+        {
+            "source_id": "n_asml",
+            "target_id": "n_tsm",
+            "rel_type": "SUPPLIES_TO",
+            "source_hash": "e1",
+            "properties_json": json.dumps({
+                "nature": "euv_lithography",
+                "share": 0.90,
+                "buffer_days": 30.0,
+                "status": "ACTIVE_CURRENT",
+                "valid_from": "2020-01-01",
+            }),
+        },
+        {
+            "source_id": "n_tsm",
+            "target_id": "n_aapl",
+            "rel_type": "SUPPLIES_TO",
+            "source_hash": "e2",
+            "properties_json": json.dumps({
+                "nature": "advanced_wafers",
+                "share": 0.85,
+                "buffer_days": 15.0,
+                "status": "ACTIVE_CURRENT",
+                "valid_from": "2020-01-01",
+            }),
+        },
+        {
+            "source_id": "n_aapl",
+            "target_id": "n_msft",
+            "rel_type": "COMPETES_WITH",
+            "source_hash": "e3",
+            "properties_json": json.dumps({
+                "nature": "ai_pc",
+                "status": "ACTIVE_CURRENT",
+                "valid_from": "2024-06-01",
+            }),
+        },
+    ]
+    snap_dir = _write_snapshot_parquet(tmp_path / "snap_ego", nodes, edges)
+    store = InMemorySubgraphStore.from_parquet_snapshot(snap_dir)
+
+    assert store.list_tickers() == ["AAPL", "ASML", "MSFT", "TSM"]
+
+    both = store.query_ego_subgraph(ticker="TSM", max_hops=1, direction="both", as_of_date="2024-10-01")
+    assert both["root_ticker"] == "TSM"
+    assert [(e["source"], e["target"], e.get("traversal_direction")) for e in both["edges"]] == [
+        ("ASML", "TSM", "upstream"),
+        ("TSM", "AAPL", "downstream"),
+    ]
+    roles = {n["ticker"]: n["role"] for n in both["nodes"]}
+    assert roles == {"TSM": "ROOT", "ASML": "UPSTREAM", "AAPL": "DOWNSTREAM"}
+
+    # Upstream only from AAPL at 2 hops covers TSM -> AAPL and ASML -> TSM
+    up = store.query_ego_subgraph(ticker="AAPL", max_hops=2, direction="upstream", as_of_date="2024-10-01")
+    assert [(e["source"], e["target"], e["hop"]) for e in up["edges"]] == [
+        ("TSM", "AAPL", 1),
+        ("ASML", "TSM", 2),
+    ]
+
+    # PiT cutoff before 2024-06-01 excludes AAPL -> MSFT edge
+    pit_early = store.query_ego_subgraph(ticker="AAPL", max_hops=1, direction="downstream", as_of_date="2024-01-15")
+    assert pit_early["edges"] == []
+    pit_late = store.query_ego_subgraph(ticker="AAPL", max_hops=1, direction="downstream", as_of_date="2024-07-01")
+    assert [(e["source"], e["target"]) for e in pit_late["edges"]] == [("AAPL", "MSFT")]
+

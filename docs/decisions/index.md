@@ -49,6 +49,7 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00014](ADR-00014-sec-8k-boilerplate-sanitization-gating--.md) | SEC 8-K Boilerplate Sanitization & Disruption Gating | 2026-11-13 06:55 UTC | `ACCEPTED` | `ingestion` / `retrieval` | [`ingestion/sec/disruption_gating.py`](../../ingestion/sec/disruption_gating.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py) |
 | [ADR-00015](ADR-00015-dynamic-in-memory-offline-subgraph-store.md) | Dynamic In-Memory Offline Subgraph Store | 2026-11-13 07:15 UTC | `ACCEPTED` | `retrieval` / `knowledge_graph` | [`retrieval/offline_store.py`](../../retrieval/offline_store.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py) |
 | [ADR-00016](ADR-00016-decommission-legacy-chainlit-ui-frontend.md) | Decommission Legacy Chainlit UI Frontend | 2026-11-13 08:47 UTC | `ACCEPTED` | `interactive` / `requirements` | [`requirements.txt`](../../requirements.txt), [`.gitignore`](../../.gitignore) |
+| [ADR-00017](ADR-00017-local-fastapi-kg-contagion-workbench-app.md) | Local FastAPI Workbench Backend & API Contracts | 2026-11-13 09:46 UTC | `ACCEPTED` | `explorer` / `retrieval` | [`explorer/workbench_api.py`](../../explorer/workbench_api.py), [`tools/serve_explorer.py`](../../tools/serve_explorer.py) |
 
 
 
