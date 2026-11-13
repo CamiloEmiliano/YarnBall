@@ -18,9 +18,6 @@ data/*
 # Graphify codebase analysis artifacts
 graphify-out/
 
-# Chainlit auto-generated UI translations
-.chainlit/translations/
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
