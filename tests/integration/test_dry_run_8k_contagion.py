@@ -247,3 +247,51 @@ def test_sec_8k_dry_run_cli_mock_and_jsonl_export(offline_guardrail, tmp_path, m
     assert by_target["HPQ"]["verdict"] == "BUFFER_ABSORBED"
     assert by_target["FOXCONN"]["verdict"] == "BUFFER_ABSORBED"
 
+
+@pytest.mark.integration
+def test_sec_8k_dry_run_safe_harbor_negative_control_unaffected(offline_guardrail, tmp_path):
+    """Verify routine Item 2.02 with PSLRA risk boilerplate gates cleanly to 0.0% / UNAFFECTED (ADR-00014)."""
+    routine_filing = {
+        "cik": "0000772406",
+        "ticker": "CRUS",
+        "company_name": "Cirrus Logic Inc.",
+        "form_type": "8-K",
+        "filing_date": "2025-02-04",
+        "items": ["Item 9.01 Financial Statements and Exhibits", "Item 2.02 Results of Operations"],
+        "headline": "Cirrus Logic Reports Third Quarter Fiscal 2025 Financial Results",
+        "content": (
+            "Item 2.02 Results of Operations and Financial Condition.\n"
+            "Cirrus Logic announced revenue of $555 million and operating margin expansion.\n\n"
+            "Forward-Looking Statements: Within the meaning of the Private Securities Litigation Reform Act "
+            "of 1995, actual results may differ materially due to risks including fires, explosions, floods, "
+            "cyberattacks, ransomware, power outages, or port congestion.\n\n"
+            "Pursuant to the requirements of the Securities Exchange Act of 1934, the registrant has signed."
+        ),
+        "metadata": {"primary_exchange": "NASDAQ"},
+    }
+    filing_path = tmp_path / "routine_2_02.json"
+    filing_path.write_text(json.dumps(routine_filing), encoding="utf-8")
+
+    report, _ = run_sec_8k_dry_run(
+        filing_path=filing_path,
+        target_ticker="AAPL",
+        use_mock=True,
+    )
+
+    assert report.sec_item == SECForm8KItem.ITEM_2_02.value
+    assert report.shock_magnitude_pct == 0.0
+    assert report.shock_duration_days == 0.0
+    assert report.model_mode == ModelExecutionMode.MOCK_DETERMINISTIC
+    assert all(impact.verdict == ContagionSeverityVerdict.UNAFFECTED for impact in report.network_impacts)
+    assert all(impact.capacity_contraction_pct == 0.0 for impact in report.network_impacts)
+    assert all(impact.unbuffered_downtime_days == 0.0 for impact in report.network_impacts)
+    assert validate_verbatim_citations(report) == []
+
+    jsonl_out = tmp_path / "negative_control.jsonl"
+    row_count = export_report_to_jsonl(report, jsonl_out)
+    assert row_count == 3
+    exported = [json.loads(line) for line in jsonl_out.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert all(r["verdict"] == "UNAFFECTED" for r in exported)
+    assert all(r["calendar_recovery_date"] is None for r in exported)
+
+

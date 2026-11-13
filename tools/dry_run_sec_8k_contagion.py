@@ -27,6 +27,10 @@ from contagion import (
     ConvergentShockSummary,
     SparseNetworkCascadeEngine,
 )
+from ingestion.sec.disruption_gating import (
+    assess_sec_8k_disruption,
+    select_primary_sec_8k_item,
+)
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail
 from retrieval.pipeline import (
     AnalystQuery,
@@ -102,35 +106,17 @@ class OfflineGraphStore:
 
 
 def _infer_disruption_category(headline: str, content: str) -> OperationalDisruptionCategory:
-    """Classifies regulatory text into an OperationalDisruptionCategory."""
-    text = (headline + " " + content).lower()
-    if "fire" in text or "explosion" in text:
-        return OperationalDisruptionCategory.FACILITY_FIRE_OR_EXPLOSION
-    elif "flood" in text or "earthquake" in text or "force majeure" in text:
-        return OperationalDisruptionCategory.NATURAL_DISASTER_FORCE_MAJEURE
-    elif "power" in text or "grid" in text or "utility" in text:
-        return OperationalDisruptionCategory.UTILITY_POWER_GRID_FAILURE
-    elif "equipment" in text or "breakdown" in text or "shutdown" in text or "halt" in text:
-        return OperationalDisruptionCategory.EQUIPMENT_BREAKDOWN_FAB_HALT
-    elif "terminate" in text or "severance" in text:
-        return OperationalDisruptionCategory.PRIMARY_SUPPLY_CONTRACT_TERMINATED
-    elif "cyber" in text or "ransomware" in text:
-        return OperationalDisruptionCategory.RANSOMWARE_CYBER_INFRASTRUCTURE_HALT
-    elif "port" in text or "canal" in text or "logistics" in text:
-        return OperationalDisruptionCategory.MARITIME_CANAL_PORT_LOGISTICS_CHOKEPOINT
-    elif "recall" in text or "safety hold" in text:
-        return OperationalDisruptionCategory.REGULATORY_SAFETY_RECALL_OR_FDA_HOLD
-    else:
-        return OperationalDisruptionCategory.OTHER_UNCLASSIFIED_MATERIAL_HALT
+    """Classifies regulatory text into an OperationalDisruptionCategory via ADR-00014 gating."""
+    return assess_sec_8k_disruption(
+        items=["Item 8.01 Other Events"],
+        headline=headline,
+        content=content,
+    ).disruption_category
 
 
 def _extract_sec_item(items: List[str]) -> str:
-    """Extracts the primary statutory SEC item string (e.g. Item 8.01)."""
-    for it in items:
-        for enum_item in SECForm8KItem:
-            if enum_item.value.lower() in it.lower():
-                return enum_item.value
-    return "Item 8.01"
+    """Extracts the primary statutory SEC item string via ADR-00014 tier precedence."""
+    return select_primary_sec_8k_item(items)
 
 
 class DeterministicMockModelClient(YarnBallModelClient):
@@ -165,12 +151,20 @@ class DeterministicMockModelClient(YarnBallModelClient):
         pct = float(loss_m.group(1)) if loss_m else 0.0
         downtime = float(down_m.group(1)) if down_m else 0.0
         onset = onset_m.group(1).strip() if onset_m else "Day 0"
+        verdict_m = re.search(r"-\s*Institutional Shock Verdict:\s*([A-Z_]+)", prompt)
+        verbalizer_verdict = verdict_m.group(1) if verdict_m else ""
 
         if downtime > 0.0:
             verdict_str = "UNBUFFERED_DISRUPTION"
             final_output = (
                 f"{tgt} experiences {verdict_str} resulting from a {pct:.1f}% peak capacity "
                 f"contraction with {downtime:.1f} days of unbuffered downtime (onset: {onset})."
+            )
+        elif verbalizer_verdict == "UNAFFECTED" or pct == 0.0:
+            verdict_str = "UNAFFECTED"
+            final_output = (
+                f"{tgt} is classified as {verdict_str} with {pct:.1f}% capacity contraction and "
+                f"{downtime:.1f} days of unbuffered downtime (no material operational disruption)."
             )
         else:
             verdict_str = "BUFFER_ABSORBED"
@@ -235,11 +229,17 @@ def run_sec_8k_dry_run(
     metadata = filing_data.get("metadata", {})
     filing_timestamp = filing_data.get("filing_timestamp") or metadata.get("filing_timestamp")
     items = filing_data.get("items", ["Item 8.01 Other Events"])
-    sec_item = _extract_sec_item(items)
     headline = str(filing_data.get("headline", ""))
     content = str(filing_data.get("content", ""))
 
-    duration_days = float(metadata.get("disruption_duration_days", 60.0))
+    assessment = assess_sec_8k_disruption(
+        items=items,
+        headline=headline,
+        content=content,
+        metadata=metadata,
+    )
+    sec_item = assessment.primary_sec_item
+    duration_days = assessment.shock_duration_days
     buffer_days = float(metadata.get("inventory_buffer_days", 45.0))
     affected_product = str(metadata.get("affected_product", "audio_codecs"))
     supplier_name = metadata.get("supplier_name")
@@ -248,7 +248,7 @@ def run_sec_8k_dry_run(
     # Determine shock origin ticker
     # If the filing is from a customer reporting a supplier outage (e.g. AAPL reporting FabCo)
     # the shock origin is the supplier. If filing is from the supplier (e.g. CRUS), origin is CRUS.
-    if supplier_name and "supplier" in headline.lower():
+    if supplier_name and "supplier" in (assessment.sanitized_headline or headline).lower():
         shock_origin = str(metadata.get("supplier_ticker", "SUPPLIER_ORIGIN")).upper()
         if shock_origin == "SUPPLIER_ORIGIN" and "fabco" in supplier_name.lower():
             shock_origin = "FABCO"
@@ -263,8 +263,8 @@ def run_sec_8k_dry_run(
         disrupted_cik = cik
         primary_target = target_ticker or "AAPL"
 
-    shock_magnitude_pct = float(metadata.get("shock_magnitude_pct", 100.0))
-    disruption_category = _infer_disruption_category(headline, content)
+    shock_magnitude_pct = assessment.shock_magnitude_pct
+    disruption_category = assessment.disruption_category
 
     # 2. Build or Configure Graph Driver
     if graph_driver is None:
@@ -399,7 +399,12 @@ def run_sec_8k_dry_run(
     # 7. Generate Validated OperationalContagionReport (ADR-00011 / ADR-00013)
     report_id = f"REP-{filing_date.replace('-', '')}-{disrupted_ticker}-001"
     event_id = f"SEC_8K_{filing_date.replace('-', '')}_{disrupted_ticker}"
-    event_summary = headline if headline else (content[:200] + "...")
+    summary_source = assessment.sanitized_headline or assessment.sanitized_content or headline or content
+    event_summary = (
+        assessment.sanitized_headline
+        if assessment.sanitized_headline
+        else (summary_source[:200] + ("..." if len(summary_source) > 200 else ""))
+    )
 
     operational_report = pipeline_result.to_operational_report(
         event_id=event_id,

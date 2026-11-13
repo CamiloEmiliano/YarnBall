@@ -27,6 +27,13 @@ from .harvester import (
     HistoricalSECHarvester,
     run_sec_ingestion,
 )
+from .disruption_gating import (
+    SanitizedDisruptionAssessment,
+    assess_sec_8k_disruption,
+    get_sec_8k_item_tier,
+    sanitize_sec_8k_text,
+    select_primary_sec_8k_item,
+)
 
 __all__ = [
     # Client
@@ -46,4 +53,10 @@ __all__ = [
     "HistoricalSECHarvester",
     "EdgarWorker",
     "run_sec_ingestion",
+    # Disruption Gating (ADR-00014)
+    "SanitizedDisruptionAssessment",
+    "assess_sec_8k_disruption",
+    "get_sec_8k_item_tier",
+    "sanitize_sec_8k_text",
+    "select_primary_sec_8k_item",
 ]
