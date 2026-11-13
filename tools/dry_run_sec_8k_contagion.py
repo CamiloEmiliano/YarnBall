@@ -32,6 +32,7 @@ from ingestion.sec.disruption_gating import (
     select_primary_sec_8k_item,
 )
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail
+from retrieval.offline_store import InMemorySubgraphStore
 from retrieval.pipeline import (
     AnalystQuery,
     GraphRAGPipelineOrchestrator,
@@ -62,47 +63,8 @@ logging.basicConfig(
 logger = logging.getLogger("dry_run_sec_8k")
 
 
-class OfflineGraphStore:
-    """In-memory property graph store providing Cypher MATCH/MERGE semantics for offline dry runs."""
-
-    def __init__(self, edges: Optional[List[Dict[str, Any]]] = None):
-        self.edges: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
-        if edges:
-            for e in edges:
-                src = str(e.get("source", "UNKNOWN")).upper()
-                tgt = str(e.get("target", "UNKNOWN")).upper()
-                rel = str(e.get("rel_type", "SUPPLIES_TO"))
-                self.edges[(src, rel, tgt)] = e
-
-    def session(self):
-        store = self
-
-        class _Session:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-            def run(self, query: str, **kwargs):
-                if "MATCH" in query:
-                    records: List[Dict[str, Any]] = []
-                    for (src, rel, tgt), props in store.edges.items():
-                        records.append({
-                            "source": src,
-                            "target": tgt,
-                            "rel_type": rel,
-                            "status": props.get("status", "ACTIVE_CURRENT"),
-                            "share": props.get("share", 0.20),
-                            "exposure_pct": props.get("exposure_pct", 20.0),
-                            "buffer_days": props.get("buffer_days", 45.0),
-                            "nature": props.get("nature", "default"),
-                            "hop": props.get("hop", 1),
-                        })
-                    return records
-                return []
-
-        return _Session()
+class OfflineGraphStore(InMemorySubgraphStore):
+    """Backward-compatible alias for `InMemorySubgraphStore` (ADR-00015)."""
 
 
 def _infer_disruption_category(headline: str, content: str) -> OperationalDisruptionCategory:
@@ -199,6 +161,8 @@ def run_sec_8k_dry_run(
     target_ticker: Optional[str] = None,
     offline_isolation: bool = True,
     use_mock: bool = False,
+    snapshot_dir: Optional[Union[str, Path]] = None,
+    edges_path: Optional[Union[str, Path]] = None,
 ) -> Tuple[OperationalContagionReport, PipelineResult]:
     """Executes end-to-end computational reading and contagion propagation on an SEC Form 8-K payload.
 
@@ -266,82 +230,87 @@ def run_sec_8k_dry_run(
     shock_magnitude_pct = assessment.shock_magnitude_pct
     disruption_category = assessment.disruption_category
 
-    # 2. Build or Configure Graph Driver
+    # 2. Build or Configure Graph Driver (ADR-00015 precedence)
     if graph_driver is None:
         if custom_network_edges:
-            edges = custom_network_edges
-        elif shock_origin == "CRUS":
-            # Canonical Cirrus Logic supply network topology
-            edges = [
-                {
-                    "source": "CRUS",
-                    "target": "AAPL",
-                    "rel_type": "SUPPLIES_TO",
-                    "nature": "audio_codecs",
-                    "share": 0.20,
-                    "exposure_pct": 20.0,
-                    "buffer_days": 45.0,
-                    "hop": 1,
-                },
-                {
-                    "source": "CRUS",
-                    "target": "HPQ",
-                    "rel_type": "SUPPLIES_TO",
-                    "nature": "audio_codecs",
-                    "share": 0.10,
-                    "exposure_pct": 10.0,
-                    "buffer_days": 90.0,
-                    "hop": 1,
-                },
-                {
-                    "source": "AAPL",
-                    "target": "FOXCONN",
-                    "rel_type": "SUPPLIES_TO",
-                    "nature": "assembly",
-                    "share": 0.50,
-                    "exposure_pct": 50.0,
-                    "buffer_days": 90.0,
-                    "hop": 2,
-                },
-            ]
-        elif shock_origin == "FABCO":
-            # Canonical FabCo -> AAPL -> Foxconn network topology
-            edges = [
-                {
-                    "source": "FABCO",
-                    "target": "AAPL",
-                    "rel_type": "SUPPLIES_TO",
-                    "nature": "optical_transceivers",
-                    "share": 0.35,
-                    "exposure_pct": 35.0,
-                    "buffer_days": buffer_days,
-                    "hop": 1,
-                },
-                {
-                    "source": "AAPL",
-                    "target": "FOXCONN",
-                    "rel_type": "SUPPLIES_TO",
-                    "nature": "assembly",
-                    "share": 0.50,
-                    "exposure_pct": 50.0,
-                    "buffer_days": 90.0,
-                    "hop": 2,
-                },
-            ]
+            graph_driver = InMemorySubgraphStore(edges=custom_network_edges)
+        elif snapshot_dir is not None:
+            graph_driver = InMemorySubgraphStore.from_parquet_snapshot(snapshot_dir)
+        elif edges_path is not None:
+            graph_driver = InMemorySubgraphStore.from_edges_file(edges_path)
         else:
-            edges = [
-                {
-                    "source": shock_origin,
-                    "target": primary_target,
-                    "rel_type": "SUPPLIES_TO",
-                    "nature": affected_product,
-                    "share": 0.25,
-                    "exposure_pct": 25.0,
-                    "buffer_days": buffer_days,
-                    "hop": 1,
-                }
-            ]
-        graph_driver = OfflineGraphStore(edges=edges)
+            if shock_origin == "CRUS":
+                # Canonical Cirrus Logic supply network topology
+                edges = [
+                    {
+                        "source": "CRUS",
+                        "target": "AAPL",
+                        "rel_type": "SUPPLIES_TO",
+                        "nature": "audio_codecs",
+                        "share": 0.20,
+                        "exposure_pct": 20.0,
+                        "buffer_days": 45.0,
+                        "hop": 1,
+                    },
+                    {
+                        "source": "CRUS",
+                        "target": "HPQ",
+                        "rel_type": "SUPPLIES_TO",
+                        "nature": "audio_codecs",
+                        "share": 0.10,
+                        "exposure_pct": 10.0,
+                        "buffer_days": 90.0,
+                        "hop": 1,
+                    },
+                    {
+                        "source": "AAPL",
+                        "target": "FOXCONN",
+                        "rel_type": "SUPPLIES_TO",
+                        "nature": "assembly",
+                        "share": 0.50,
+                        "exposure_pct": 50.0,
+                        "buffer_days": 90.0,
+                        "hop": 2,
+                    },
+                ]
+            elif shock_origin == "FABCO":
+                # Canonical FabCo -> AAPL -> Foxconn network topology
+                edges = [
+                    {
+                        "source": "FABCO",
+                        "target": "AAPL",
+                        "rel_type": "SUPPLIES_TO",
+                        "nature": "optical_transceivers",
+                        "share": 0.35,
+                        "exposure_pct": 35.0,
+                        "buffer_days": buffer_days,
+                        "hop": 1,
+                    },
+                    {
+                        "source": "AAPL",
+                        "target": "FOXCONN",
+                        "rel_type": "SUPPLIES_TO",
+                        "nature": "assembly",
+                        "share": 0.50,
+                        "exposure_pct": 50.0,
+                        "buffer_days": 90.0,
+                        "hop": 2,
+                    },
+                ]
+            else:
+                edges = [
+                    {
+                        "source": shock_origin,
+                        "target": primary_target,
+                        "rel_type": "SUPPLIES_TO",
+                        "nature": affected_product,
+                        "share": 0.25,
+                        "exposure_pct": 25.0,
+                        "buffer_days": buffer_days,
+                        "hop": 1,
+                    }
+                ]
+            graph_driver = OfflineGraphStore(edges=edges, strict_query_scoping=False)
 
     # 3. Resolve Model Client & Execution Provenance (ADR-00013)
     if model_client is not None:
@@ -477,6 +446,18 @@ def main() -> None:
         action="store_true",
         help="Validate that model synthesis cites continuous metrics verbatim",
     )
+    parser.add_argument(
+        "--snapshot-dir",
+        type=str,
+        default=None,
+        help="Load offline supply graph from SnapshotManager Parquet directory (ADR-00015)",
+    )
+    parser.add_argument(
+        "--edges-file",
+        type=str,
+        default=None,
+        help="Load offline supply graph from JSON or JSONL edges manifest (ADR-00015)",
+    )
 
     args = parser.parse_args()
 
@@ -485,6 +466,8 @@ def main() -> None:
         filing_path=args.filing,
         target_ticker=args.target,
         use_mock=args.mock,
+        snapshot_dir=args.snapshot_dir,
+        edges_path=args.edges_file,
     )
     elapsed_sec = time.perf_counter() - t0
 

@@ -295,3 +295,106 @@ def test_sec_8k_dry_run_safe_harbor_negative_control_unaffected(offline_guardrai
     assert all(r["calendar_recovery_date"] is None for r in exported)
 
 
+@pytest.mark.integration
+def test_sec_8k_dry_run_cli_with_snapshot_and_edges_manifest(offline_guardrail, tmp_path, monkeypatch):
+    """Verify `--snapshot-dir` and `--edges-file` load dynamic PiT subgraphs without synthetic stubs (ADR-00015)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    filing = {
+        "cik": "0001045810",
+        "ticker": "NVDA",
+        "company_name": "NVIDIA Corporation",
+        "form_type": "8-K",
+        "filing_date": "2024-09-12",
+        "items": ["Item 1.05 Material Cybersecurity Incidents", "Item 9.01 Exhibits"],
+        "headline": "Material Cybersecurity Incident at Testing Facility",
+        "content": "Unauthorized access disrupted packaging validation lines for 40 days.",
+        "metadata": {"disruption_duration_days": 40.0, "shock_magnitude_pct": 100.0},
+    }
+    filing_path = tmp_path / "nvda_cyber.json"
+    filing_path.write_text(json.dumps(filing), encoding="utf-8")
+
+    # 1. Parquet snapshot via --snapshot-dir (includes expired edge that must be PiT filtered out!)
+    snap_dir = tmp_path / "pit_snapshot"
+    snap_dir.mkdir()
+    pq.write_table(
+        pa.Table.from_pylist([
+            {"id": "NVDA", "label": "Company", "ticker": "NVDA", "source_hash": None, "properties_json": "{}"},
+            {"id": "MSFT", "label": "Company", "ticker": "MSFT", "source_hash": None, "properties_json": "{}"},
+            {"id": "OLD_OEM", "label": "Company", "ticker": "OLD_OEM", "source_hash": None, "properties_json": "{}"},
+        ]),
+        snap_dir / "nodes.parquet",
+    )
+    pq.write_table(
+        pa.Table.from_pylist([
+            {
+                "source_id": "NVDA",
+                "target_id": "MSFT",
+                "rel_type": "SUPPLIES_TO",
+                "source_hash": None,
+                "properties_json": json.dumps({"nature": "hgx_clusters", "share": 0.30, "buffer_days": 15.0}),
+            },
+            {
+                "source_id": "NVDA",
+                "target_id": "OLD_OEM",
+                "rel_type": "SUPPLIES_TO",
+                "source_hash": None,
+                "properties_json": json.dumps({
+                    "nature": "legacy_chips",
+                    "share": 0.20,
+                    "buffer_days": 10.0,
+                    "valid_to": "2023-12-31",
+                }),
+            },
+        ]),
+        snap_dir / "edges.parquet",
+    )
+
+    report_snap, _ = run_sec_8k_dry_run(
+        filing_path=filing_path,
+        target_ticker="MSFT",
+        use_mock=True,
+        snapshot_dir=snap_dir,
+    )
+    snap_targets = {imp.entity_ticker: imp for imp in report_snap.network_impacts}
+    assert "MSFT" in snap_targets
+    assert "OLD_OEM" not in snap_targets
+    assert snap_targets["MSFT"].unbuffered_downtime_days == 25.0
+    assert snap_targets["MSFT"].verdict == ContagionSeverityVerdict.UNBUFFERED_DISRUPTION
+
+    # 2. CLI invocation with --edges-file manifest + --export-jsonl
+    edges_file = tmp_path / "nvda_edges.jsonl"
+    edges_file.write_text(
+        json.dumps({"source": "NVDA", "target": "META", "rel_type": "SUPPLIES_TO", "nature": "ai_gpus", "share": 0.25, "buffer_days": 10.0})
+        + "\n",
+        encoding="utf-8",
+    )
+    jsonl_out = tmp_path / "out_nvda.jsonl"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "dry_run_sec_8k_contagion.py",
+            "--filing",
+            str(filing_path),
+            "--target",
+            "META",
+            "--mock",
+            "--edges-file",
+            str(edges_file),
+            "--export-jsonl",
+            str(jsonl_out),
+            "--validate-citations",
+        ],
+    )
+    dry_run_cli_main()
+
+    exported = [json.loads(line) for line in jsonl_out.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(exported) == 1
+    assert exported[0]["target_entity_ticker"] == "META"
+    assert exported[0]["unbuffered_downtime_days"] == 30.0
+    assert exported[0]["calendar_onset_date"] == "2024-09-22"
+    assert exported[0]["calendar_recovery_date"] == "2024-10-22"
+
+
+

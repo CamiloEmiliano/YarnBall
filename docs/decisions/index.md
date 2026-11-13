@@ -47,6 +47,7 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00012](ADR-00012-qwen-model-upgrade-and-fine-tuning-plan-.md) | Upgraded Qwen Model Fine-Tuning & Serving Plan | 2026-11-12 05:50 UTC | `PROPOSED` | `sft_pipeline` / `retrieval` | [`a26bc0c`](../../sft_pipeline/serving/model_client.py) |
 | [ADR-00013](ADR-00013-contagion-event-time-series-join-schema-.md) | Contagion Event Telemetry & Time-Series Join Contract | 2026-11-13 06:30 UTC | `ACCEPTED` | `retrieval` / `tools` | [`retrieval/reporting.py`](../../retrieval/reporting.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py) |
 | [ADR-00014](ADR-00014-sec-8k-boilerplate-sanitization-gating--.md) | SEC 8-K Boilerplate Sanitization & Disruption Gating | 2026-11-13 06:55 UTC | `ACCEPTED` | `ingestion` / `retrieval` | [`ingestion/sec/disruption_gating.py`](../../ingestion/sec/disruption_gating.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py) |
+| [ADR-00015](ADR-00015-dynamic-in-memory-offline-subgraph-store.md) | Dynamic In-Memory Offline Subgraph Store | 2026-11-13 07:15 UTC | `ACCEPTED` | `retrieval` / `knowledge_graph` | [`retrieval/offline_store.py`](../../retrieval/offline_store.py), [`tools/dry_run_sec_8k_contagion.py`](../../tools/dry_run_sec_8k_contagion.py) |
 
 
 

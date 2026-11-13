@@ -12,6 +12,11 @@ from .hybrid import HybridRetriever
 from .text_to_cql import TextToCQL
 from .enricher import enrich_node, enrich_nodes
 from .temporal import TemporalQueryFilter
+from .offline_store import (
+    CypherSubgraphQuery,
+    InMemorySubgraphStore,
+    parse_cypher_subgraph_query,
+)
 from .pipeline import (
     AnalystQuery,
     GraphRAGPipelineOrchestrator,
@@ -50,6 +55,9 @@ __all__ = [
     "enrich_node",
     "enrich_nodes",
     "TemporalQueryFilter",
+    "CypherSubgraphQuery",
+    "InMemorySubgraphStore",
+    "parse_cypher_subgraph_query",
     "AnalystQuery",
     "GraphRAGPipelineOrchestrator",
     "HopOrderedSubgraphVerbalizer",
