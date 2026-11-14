@@ -5,7 +5,7 @@
 - **Date**: 2026-11-13 22:26 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `explorer` / `tests`
-- **Linked Commits**: Pending acceptance ([`explorer/workbench_api.py`](../../explorer/workbench_api.py), [`explorer/static/index.html`](../../explorer/static/index.html))
+- **Linked Commits**: [`49c7814`](../../explorer/static/index.html), [`49c7814`](../../explorer/static/styles.css), [`49c7814`](../../explorer/static/app.js), [`49c7814`](../../tests/explorer/test_workbench_api.py)
 
 ---
 
