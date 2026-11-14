@@ -5,7 +5,7 @@
 - **Date**: 2026-11-14 19:25 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `knowledge_graph` / `streaming` / `ingestion` / `sft_pipeline`
-- **Linked Commits**: Pending commit backfill
+- **Linked Commits**: `e5d1028`
 
 ---
 
