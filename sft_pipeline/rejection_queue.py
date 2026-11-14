@@ -36,6 +36,8 @@ class ErrorStage:
     RUNAWAY_LOOP = "RUNAWAY_LOOP"                  # Infinite token generation / n-gram repetition loops
     EPISTEMIC_HEDGING = "EPISTEMIC_HEDGING"        # Uncommitted / contradictory reasoning synthesis
     CONTEXT_OVERFLOW = "CONTEXT_OVERFLOW"          # Input prompts exceeding token ceiling before chunking
+    EXTRACTION_PARSE_ERROR = "EXTRACTION_PARSE_ERROR"  # Unparseable or schema-invalid JSON/OpenCypher extraction
+    LLM_UNAVAILABLE = "LLM_UNAVAILABLE"            # Ollama connection, timeout, or transport failure
     UNKNOWN = "UNKNOWN"
 
 

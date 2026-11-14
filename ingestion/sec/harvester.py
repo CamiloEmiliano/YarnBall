@@ -380,26 +380,35 @@ class EdgarWorker:
             extracted_nodes.extend(sub_nodes)
             extracted_edges.extend(sub_edges)
 
-        # 2. Extract relationships from Item 1 Business
-        item1_text = sections.get("item_1_business", "")
-        if item1_text:
-            graph_data = extract_sec_relationships(item1_text)
-            n, e = self._persist_sec_graph_data(
-                primary_name=primary_name,
-                primary_ticker=ticker,
-                graph_data=graph_data,
-                accession_number=acc_num,
-                filing_date=filing_date_str,
-                form_type="10-K",
-                section="Item 1 Business",
-            )
-            extracted_nodes.extend(n)
-            extracted_edges.extend(e)
+        # 2. Extract relationships from Item 1 Business & Item 1A Risk Factors
+        from knowledge_graph.graph_store import GraphExtractionError
 
-        # 3. Extract risks from Item 1A Risk Factors
-        item1a_text = sections.get("item_1a_risk_factors", "")
-        if item1a_text:
-            graph_data = extract_sec_relationships(item1a_text)
+        section_specs = (
+            ("item_1_business", "Item 1 Business"),
+            ("item_1a_risk_factors", "Item 1A Risk Factors"),
+        )
+        for section_key, section_label in section_specs:
+            section_text = sections.get(section_key, "")
+            if not section_text:
+                continue
+            try:
+                graph_data = extract_sec_relationships(
+                    section_text,
+                    source_id=f"{acc_num}:{section_key}",
+                )
+            except TypeError:
+                # Backward compatibility for mocked callables accepting positional text only
+                graph_data = extract_sec_relationships(section_text)
+            except GraphExtractionError as exc:
+                logger.warning(
+                    "Quarantined SEC %s extraction for %s (%s): %s",
+                    section_label,
+                    ticker_or_cik,
+                    acc_num,
+                    exc,
+                )
+                continue
+
             n, e = self._persist_sec_graph_data(
                 primary_name=primary_name,
                 primary_ticker=ticker,
@@ -407,7 +416,7 @@ class EdgarWorker:
                 accession_number=acc_num,
                 filing_date=filing_date_str,
                 form_type="10-K",
-                section="Item 1A Risk Factors",
+                section=section_label,
             )
             extracted_nodes.extend(n)
             extracted_edges.extend(e)

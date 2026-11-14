@@ -412,23 +412,22 @@ def extract_sec_relationships(
     text: str,
     max_chars: int = 2500,
     model_client: Optional[Any] = None,
+    rejection_queue: Optional[Any] = None,
+    source_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Extract entities and relationships from SEC text chunk using YarnBallModelClient."""
     if not text or not text.strip():
         return {"nodes": [], "edges": []}
 
-    from knowledge_graph.graph_store import _clean_json_response
-    from sft_pipeline.serving.model_client import YarnBallModelClient
+    from knowledge_graph.graph_store import run_structured_extraction
 
     chunk = select_salient_sec_context(text, max_chars=max_chars)
-    client = model_client or YarnBallModelClient(timeout_sec=90.0)
-    resp = client.generate(
+    return run_structured_extraction(
         prompt=f"SEC Text Section:\n{chunk}\n\nJSON:",
         task="EXTRACT_SEC_GRAPH",
         system_prompt=SEC_EXTRACTION_PROMPT,
-        temperature=0.0,
+        model_client=model_client,
+        rejection_queue=rejection_queue,
+        source_id=source_id,
+        timeout_sec=90.0,
     )
-    if resp.error:
-        logger.error(f"Failed SEC LLM extraction call: {resp.error}")
-        return {"nodes": [], "edges": []}
-    return _clean_json_response(resp.final_output)
