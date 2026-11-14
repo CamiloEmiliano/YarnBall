@@ -52,6 +52,16 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00017](ADR-00017-local-fastapi-kg-contagion-workbench-app.md) | Local FastAPI Workbench Backend & API Contracts | 2026-11-13 09:46 UTC | `ACCEPTED` | `explorer` / `retrieval` | [`4db2cc8`](../../explorer/workbench_api.py), [`4db2cc8`](../../tools/serve_explorer.py) |
 | [ADR-00018](ADR-00018-workbench-ui-shell-and-8k-audit-view----.md) | Workbench UI Shell & Form 8-K Event Audit View | 2026-11-13 19:51 UTC | `ACCEPTED` | `explorer` / `tests` | [`41f9e61`](../../explorer/workbench_api.py), [`41f9e61`](../../explorer/static/index.html), [`41f9e61`](../../explorer/static/styles.css), [`41f9e61`](../../explorer/static/app.js) |
 | [ADR-00019](ADR-00019-pit-kg-explorer-and-cohort-browser-views.md) | PiT KG Explorer & Cohort Browser Views | 2026-11-13 22:26 UTC | `ACCEPTED` | `explorer` / `tests` | [`49c7814`](../../explorer/static/index.html), [`49c7814`](../../explorer/static/styles.css), [`49c7814`](../../explorer/static/app.js) |
+| [ADR-00020](ADR-00020-fail-fast-embedder-and-zero-vector-guard.md) | Fail-Fast Embedder Initialization & Zero-Vector Prohibition | 2026-11-14 19:25 UTC | `PROPOSED` | `embedding` / `retrieval` | Pending acceptance |
+| [ADR-00021](ADR-00021-contextual-node-embeddings-and-pgvector-.md) | Contextualized Node Embeddings & Composite `pgvector` Keying | 2026-11-14 19:25 UTC | `PROPOSED` | `knowledge_graph` / `retrieval` | Pending acceptance |
+| [ADR-00022](ADR-00022-unified-sec-news-dense-vector-coverage--.md) | Unified SEC & News Dense Vector Coverage & Dimensions | 2026-11-14 19:25 UTC | `PROPOSED` | `retrieval` / `ingestion` | Pending acceptance |
+| [ADR-00023](ADR-00023-unified-live-ontology-gate-and-schema---.md) | Unified Live Ontology Gate & Schema Convergence | 2026-11-14 19:25 UTC | `PROPOSED` | `ontology` / `knowledge_graph` | Pending acceptance |
+| [ADR-00024](ADR-00024-clause-scoped-negation-and-hedge-filter-.md) | Clause-Scoped Negation, Hedging & Structural Filtering | 2026-11-14 19:25 UTC | `PROPOSED` | `ontology` | Pending acceptance |
+| [ADR-00025](ADR-00025-entity-stoplist-and-dynamic-cik-rollup--.md) | Financial Entity Placeholder Stoplist & Dynamic CIK Rollup | 2026-11-14 19:25 UTC | `PROPOSED` | `ontology` / `knowledge_graph` | Pending acceptance |
+| [ADR-00026](ADR-00026-cascade-parameter-extraction-provenance-.md) | Supply-Chain Cascade Parameter Extraction & Empirical Bounds | 2026-11-14 19:25 UTC | `PROPOSED` | `contagion` / `retrieval` | Pending acceptance |
+| [ADR-00027](ADR-00027-canonical-staged-8k-envelope-and-catalog.md) | Canonical Staged Form 8-K Envelope & Workbench Discovery | 2026-11-14 19:25 UTC | `PROPOSED` | `ingestion` / `explorer` | Pending acceptance |
+| [ADR-00028](ADR-00028-cross-source-entity-linking-and-kg-sync-.md) | Cross-Source Entity Linking & Live-to-Snapshot Graph Sync | 2026-11-14 19:25 UTC | `PROPOSED` | `knowledge_graph` / `explorer` | Pending acceptance |
+| [ADR-00029](ADR-00029-structured-llm-extraction-and-quarantine.md) | Structured LLM Extraction Outputs & Failure Quarantine Queue | 2026-11-14 19:25 UTC | `PROPOSED` | `knowledge_graph` / `streaming` | Pending acceptance |
 
 
 
