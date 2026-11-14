@@ -273,7 +273,7 @@ h3 {
 
 @media (max-width: 980px) {
   .audit-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -281,6 +281,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 .stack-sm {
@@ -771,4 +772,42 @@ body[data-density="compact"] .data-table th {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.kg-header-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.kg-zoom-group .secondary-btn {
+  padding: 3px 8px;
+  font-size: 12px;
+  min-width: 28px;
+}
+
+.kg-viewport {
+  width: 100%;
+  height: 420px;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.kg-viewport.is-panning {
+  cursor: grabbing;
+}
+
+.kg-viewport svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.kg-empty-msg {
+  padding: 16px;
 }

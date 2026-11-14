@@ -378,21 +378,29 @@
           <div class="panel-head">
             <div>
               <h2 id="kgCanvasTitle">Layered Directional Ego Subgraph</h2>
-              <p class="subtitle">
-                Click a node to re-center · Click any arrow to inspect contract provenance
-              </p>
+              <p id="kgCanvasSubtitle" class="subtitle"></p>
             </div>
-            <div class="legend-row">
-              <span class="legend-item">
-                <span class="swatch swatch-buffer"></span> SUPPLIES_TO (solid)
-              </span>
-              <span class="legend-item">
-                <span class="swatch swatch-outage"></span> COMPETES_WITH / Other (dashed)
-              </span>
+            <div class="kg-header-tools">
+              <div class="legend-row">
+                <span class="legend-item">
+                  <span class="swatch swatch-buffer"></span> SUPPLIES_TO (solid)
+                </span>
+                <span class="legend-item">
+                  <span class="swatch swatch-outage"></span> COMPETES_WITH / Other (dashed)
+                </span>
+              </div>
+              <div class="btn-inline-group kg-zoom-group" role="group" aria-label="Graph zoom controls">
+                <button type="button" id="kgZoomOutBtn" class="secondary-btn" title="Zoom out">−</button>
+                <button type="button" id="kgZoomResetBtn" class="secondary-btn mono" title="Reset zoom and center">100%</button>
+                <button type="button" id="kgZoomInBtn" class="secondary-btn" title="Zoom in">+</button>
+              </div>
             </div>
           </div>
 
-          <div id="kgSvgMount" class="gantt-mount subcard"></div>
+          <div id="kgSvgMount" class="kg-viewport subcard"></div>
+          <p class="helper-text">
+            Drag to pan · Ctrl+Wheel to zoom · Click a node to re-center · Click any arrow to inspect contract provenance
+          </p>
         </article>
 
         <article class="card stack-sm">

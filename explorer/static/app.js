@@ -10,6 +10,8 @@
     lastEvaluation: null,
     rawInputText: "",
     kgDirection: "both",
+    kgCam: { k: 1, tx: 0, ty: 0 },
+    kgGraphBounds: { width: 0, height: 0 },
     lastSubgraph: null,
     selectedEdgeKey: null,
     lastCohort: null,
@@ -73,6 +75,10 @@
     kgErrorBox: document.getElementById("kgErrorBox"),
     kgProvenancePanel: document.getElementById("kgProvenancePanel"),
     kgCanvasTitle: document.getElementById("kgCanvasTitle"),
+    kgCanvasSubtitle: document.getElementById("kgCanvasSubtitle"),
+    kgZoomOutBtn: document.getElementById("kgZoomOutBtn"),
+    kgZoomResetBtn: document.getElementById("kgZoomResetBtn"),
+    kgZoomInBtn: document.getElementById("kgZoomInBtn"),
     kgSvgMount: document.getElementById("kgSvgMount"),
     kgEdgeCountSpan: document.getElementById("kgEdgeCountSpan"),
     kgSourceMetaSpan: document.getElementById("kgSourceMetaSpan"),
@@ -724,7 +730,62 @@
     return laneById;
   }
 
-  function renderKgSubgraph(data) {
+  function applyKgCamera() {
+    const camGroup = document.getElementById("kgCameraGroup");
+    if (camGroup) {
+      camGroup.setAttribute(
+        "transform",
+        "translate(" + state.kgCam.tx.toFixed(2) + " " + state.kgCam.ty.toFixed(2) + ") scale(" + state.kgCam.k.toFixed(4) + ")"
+      );
+    }
+    if (els.kgZoomResetBtn) {
+      els.kgZoomResetBtn.textContent = Math.round((state.kgCam.k || 1) * 100) + "%";
+    }
+  }
+
+  function resetKgCamera() {
+    const vp = els.kgSvgMount;
+    const gw = state.kgGraphBounds.width;
+    const gh = state.kgGraphBounds.height;
+    if (!vp || !gw || !gh) {
+      state.kgCam = { k: 1, tx: 0, ty: 0 };
+      applyKgCamera();
+      return;
+    }
+    const vpW = vp.clientWidth || 760;
+    const vpH = vp.clientHeight || 420;
+    const fitK = Math.max(0.2, Math.min(1.0, (vpW - 32) / gw, (vpH - 32) / gh));
+    const k = Math.round(fitK * 100) / 100;
+    state.kgCam = {
+      k,
+      tx: (vpW - gw * k) / 2,
+      ty: (vpH - gh * k) / 2,
+    };
+    applyKgCamera();
+  }
+
+  function zoomKgCamera(nextK, focusClientX, focusClientY) {
+    const clamped = Math.max(0.2, Math.min(4.0, Math.round(nextK * 100) / 100));
+    const vp = els.kgSvgMount;
+    if (!vp) return;
+    const prevK = state.kgCam.k || 1;
+    const rect = vp.getBoundingClientRect();
+    const anchorX =
+      focusClientX !== undefined ? focusClientX - rect.left : (vp.clientWidth || 760) / 2;
+    const anchorY =
+      focusClientY !== undefined ? focusClientY - rect.top : (vp.clientHeight || 420) / 2;
+
+    const gx = (anchorX - state.kgCam.tx) / prevK;
+    const gy = (anchorY - state.kgCam.ty) / prevK;
+    state.kgCam = {
+      k: clamped,
+      tx: anchorX - gx * clamped,
+      ty: anchorY - gy * clamped,
+    };
+    applyKgCamera();
+  }
+
+  function renderKgSubgraph(data, preserveCamera) {
     state.lastSubgraph = data;
     const nodes = data.nodes || [];
     const edges = data.edges || [];
@@ -740,15 +801,11 @@
 
     const dateSuffix = data.as_of_date ? " @ " + data.as_of_date : " @ latest";
     els.kgCanvasTitle.textContent = data.root_ticker
-      ? data.root_ticker +
-        " Ego Network (" +
-        data.direction +
-        ", ≤" +
-        data.max_hops +
-        " hops" +
-        dateSuffix +
-        ")"
-      : "Full Snapshot Topology (" + (data.source_path || "snapshot") + dateSuffix + ")";
+      ? data.root_ticker + " Ego Network"
+      : "Full Snapshot Topology";
+    els.kgCanvasSubtitle.textContent = data.root_ticker
+      ? data.direction + ", ≤" + data.max_hops + " hops" + dateSuffix
+      : (data.source_path || "snapshot") + dateSuffix;
 
     els.kgEdgeCountSpan.textContent = String(edges.length);
     els.kgSourceMetaSpan.textContent =
@@ -757,9 +814,11 @@
     // Render SVG
     clearNode(els.kgSvgMount);
     if (!nodes.length) {
+      state.kgGraphBounds = { width: 0, height: 0 };
       els.kgSvgMount.appendChild(
-        makeEl("p", "muted-text", "No nodes or active edges matched the current Point-in-Time filters.")
+        makeEl("p", "muted-text kg-empty-msg", "No nodes or active edges matched the current Point-in-Time filters.")
       );
+      resetKgCamera();
     } else {
       const laneById = computeNodeLanes(nodes, edges, data.root_ticker);
       const lanes = [...new Set(laneById.values())].sort((a, b) => a - b);
@@ -768,7 +827,7 @@
         ...lanes.map((lane) => nodes.filter((n) => laneById.get(n.id) === lane).length)
       );
       const width = Math.max(660, lanes.length * 190 + 90);
-      const height = Math.max(250, maxPerLane * 88 + 64);
+      const height = Math.max(280, maxPerLane * 100 + 84);
 
       const pos = new Map();
       lanes.forEach((lane, li) => {
@@ -780,16 +839,17 @@
             ? width / 2
             : 95 + (li / (lanes.length - 1)) * (width - 190);
         group.forEach((n, ni) => {
-          const y = 34 + ((height - 44) / (group.length + 1)) * (ni + 1);
+          const y = 42 + ((height - 64) / (group.length + 1)) * (ni + 1);
           pos.set(n.id, { x, y, node: n });
         });
       });
 
+      state.kgGraphBounds = { width, height };
+
       const svgNs = "http://www.w3.org/2000/svg";
       const svg = document.createElementNS(svgNs, "svg");
-      svg.setAttribute("viewBox", "0 0 " + width + " " + height);
       svg.style.width = "100%";
-      svg.style.height = "auto";
+      svg.style.height = "100%";
       svg.style.display = "block";
 
       const defs = document.createElementNS(svgNs, "defs");
@@ -814,6 +874,9 @@
       });
       svg.appendChild(defs);
 
+      const cameraG = document.createElementNS(svgNs, "g");
+      cameraG.setAttribute("id", "kgCameraGroup");
+
       lanes.forEach((lane, li) => {
         const x =
           lanes.length === 1
@@ -832,34 +895,170 @@
             : lane === 0
               ? "Root Issuer"
               : "Downstream H" + lane;
-        svg.appendChild(hdr);
+        cameraG.appendChild(hdr);
+      });
+
+      // Group edges by unordered endpoint pair so parallel & reverse edges curve cleanly apart
+      const edgesByPair = new Map();
+      edges.forEach((e) => {
+        if (!pos.has(e.source) || !pos.has(e.target)) return;
+        const pairKey =
+          e.source <= e.target ? e.source + "\0" + e.target : e.target + "\0" + e.source;
+        if (!edgesByPair.has(pairKey)) edgesByPair.set(pairKey, []);
+        edgesByPair.get(pairKey).push(e);
+      });
+
+      const edgeGeomByKey = new Map();
+      edgesByPair.forEach((group) => {
+        group.sort((a, b) => {
+          const dirCmp = String(a.source).localeCompare(String(b.source));
+          if (dirCmp !== 0) return dirCmp;
+          return makeEdgeKey(a).localeCompare(makeEdgeKey(b));
+        });
+
+        const total = group.length;
+        group.forEach((e, idx) => {
+          const srcPos = pos.get(e.source);
+          const dstPos = pos.get(e.target);
+          const key = makeEdgeKey(e);
+
+          // Self-loop edge
+          if (e.source === e.target) {
+            const lift = 58 + idx * 22;
+            const x1 = srcPos.x + 16;
+            const y1 = srcPos.y - 19;
+            const x2 = srcPos.x - 16;
+            const y2 = srcPos.y - 23;
+            const pathD =
+              "M " + x1 + " " + y1 +
+              " C " + (srcPos.x + 42) + " " + (srcPos.y - lift) +
+              ", " + (srcPos.x - 42) + " " + (srcPos.y - lift) +
+              ", " + x2 + " " + y2;
+            edgeGeomByKey.set(key, {
+              pathD,
+              labelX: srcPos.x,
+              labelY: srcPos.y - lift + 10,
+            });
+            return;
+          }
+
+          // Canonical orientation from lower-(x, y) node to higher-(x, y) node
+          const srcIsCanonStart =
+            srcPos.x < dstPos.x - 0.5 ||
+            (Math.abs(srcPos.x - dstPos.x) < 0.5 && srcPos.y <= dstPos.y);
+          const pA = srcIsCanonStart ? srcPos : dstPos;
+          const pB = srcIsCanonStart ? dstPos : srcPos;
+          const cdx = pB.x - pA.x;
+          const cdy = pB.y - pA.y;
+          const clen = Math.hypot(cdx, cdy) || 1;
+          // Unit normal perpendicular to canonical pair segment
+          const cnx = -cdy / clen;
+          const cny = cdx / clen;
+
+          const sameCol = Math.abs(srcPos.x - dstPos.x) < 1;
+          const CURVE_STEP = 64;
+          let bend = 0;
+
+          if (total > 1) {
+            bend = (idx - (total - 1) / 2) * CURVE_STEP;
+          } else if (sameCol && (dstPos.y < srcPos.y || Math.abs(dstPos.y - srcPos.y) > 110)) {
+            // Single reverse vertical or multi-slot same-column edge curves outward cleanly
+            bend = -56;
+          } else if (!sameCol) {
+            // Single cross-lane edge that would pass over an intermediate node box curves around it
+            const minX = Math.min(srcPos.x, dstPos.x) + 48;
+            const maxX = Math.max(srcPos.x, dstPos.x) - 48;
+            const hitsNode = nodes.some((other) => {
+              if (other.id === e.source || other.id === e.target) return false;
+              const op = pos.get(other.id);
+              if (!op || op.x <= minX || op.x >= maxX) return false;
+              const t = (op.x - srcPos.x) / (dstPos.x - srcPos.x);
+              const lineY = srcPos.y + t * (dstPos.y - srcPos.y);
+              return Math.abs(op.y - lineY) < 28;
+            });
+            if (hitsNode) bend = -54;
+          }
+
+          const ox = cnx * bend;
+          const oy = cny * bend;
+          let x1, y1, x2, y2;
+
+          if (sameCol) {
+            const dxPort = Math.max(-18, Math.min(18, ox * 0.32));
+            x1 = srcPos.x + dxPort;
+            x2 = dstPos.x + dxPort;
+            if (dstPos.y >= srcPos.y) {
+              y1 = srcPos.y + 19;
+              y2 = dstPos.y - 23;
+            } else {
+              y1 = srcPos.y - 19;
+              y2 = dstPos.y + 23;
+            }
+          } else {
+            const dyPort = Math.max(-11, Math.min(11, oy * 0.22));
+            if (dstPos.x > srcPos.x) {
+              // Forward (left -> right): exit right edge of source, enter left edge of target
+              x1 = srcPos.x + 42;
+              x2 = dstPos.x - 46;
+            } else {
+              // Reverse (right -> left): exit left edge of source, enter right edge of target
+              x1 = srcPos.x - 42;
+              x2 = dstPos.x + 46;
+            }
+            y1 = srcPos.y + dyPort;
+            y2 = dstPos.y + dyPort;
+          }
+
+          const cx = (x1 + x2) / 2 + ox;
+          const cy = (y1 + y2) / 2 + oy;
+          const pathD = "M " + x1 + " " + y1 + " Q " + cx + " " + cy + ", " + x2 + " " + y2;
+
+          // Exact quadratic Bezier midpoint t = 0.5, nudged outward along bend normal
+          const mx = 0.25 * x1 + 0.5 * cx + 0.25 * x2;
+          const my = 0.25 * y1 + 0.5 * cy + 0.25 * y2;
+          const bendSign = bend === 0 ? 0 : Math.sign(bend);
+          let labelAnchor = "middle";
+          let labelX = bendSign === 0 ? mx : mx + cnx * bendSign * 9;
+          let labelY =
+            bendSign === 0
+              ? my - 7
+              : my + cny * bendSign * 10 + (cny * bendSign > 0 ? 5 : -2);
+
+          if (sameCol) {
+            if (ox > 5) {
+              labelX = mx + 8;
+              labelY = my + 4;
+              labelAnchor = "start";
+            } else if (ox < -5) {
+              labelX = mx - 8;
+              labelY = my + 4;
+              labelAnchor = "end";
+            } else {
+              labelX = mx + 8;
+              labelY = my + 4;
+              labelAnchor = "start";
+            }
+          }
+
+          edgeGeomByKey.set(key, { pathD, labelX, labelY, labelAnchor });
+        });
       });
 
       edges.forEach((e) => {
-        const srcPos = pos.get(e.source);
-        const dstPos = pos.get(e.target);
-        if (!srcPos || !dstPos) return;
+        const geom = edgeGeomByKey.get(makeEdgeKey(e));
+        if (!geom) return;
 
         const key = makeEdgeKey(e);
         const isSel = key === state.selectedEdgeKey;
         const isSupply = e.rel_type === "SUPPLIES_TO";
-        const sameCol = Math.abs(srcPos.x - dstPos.x) < 1;
-        const x1 = sameCol ? srcPos.x : srcPos.x + 42;
-        const y1 = sameCol ? srcPos.y + 20 : srcPos.y;
-        const x2 = sameCol ? dstPos.x : dstPos.x - 46;
-        const y2 = sameCol ? dstPos.y - 24 : dstPos.y;
-        const mx = (x1 + x2) / 2;
+        const { pathD, labelX, labelY, labelAnchor } = geom;
 
         const g = document.createElementNS(svgNs, "g");
         g.style.cursor = "pointer";
         g.addEventListener("click", () => {
           state.selectedEdgeKey = key;
-          renderKgSubgraph(data);
+          renderKgSubgraph(data, true);
         });
-
-        const pathD = sameCol
-          ? "M " + x1 + " " + y1 + " C " + (x1 + 50) + " " + y1 + ", " + (x2 + 50) + " " + y2 + ", " + x2 + " " + y2
-          : "M " + x1 + " " + y1 + " C " + mx + " " + y1 + ", " + mx + " " + y2 + ", " + x2 + " " + y2;
 
         const hitPath = document.createElementNS(svgNs, "path");
         hitPath.setAttribute("d", pathD);
@@ -884,9 +1083,9 @@
         g.appendChild(visPath);
 
         const lbl = document.createElementNS(svgNs, "text");
-        lbl.setAttribute("x", String(sameCol ? x1 + 48 : mx));
-        lbl.setAttribute("y", String((y1 + y2) / 2 - 6));
-        lbl.setAttribute("text-anchor", "middle");
+        lbl.setAttribute("x", String(labelX));
+        lbl.setAttribute("y", String(labelY));
+        lbl.setAttribute("text-anchor", labelAnchor || "middle");
         lbl.setAttribute("font-size", "11");
         lbl.setAttribute("fill", isSel ? "var(--primary)" : "var(--muted)");
         const shareStr =
@@ -900,7 +1099,7 @@
         lbl.textContent = shareStr + bufStr;
         g.appendChild(lbl);
 
-        svg.appendChild(g);
+        cameraG.appendChild(g);
       });
 
       nodes.forEach((n) => {
@@ -935,10 +1134,16 @@
         txt.textContent = n.ticker;
         g.appendChild(txt);
 
-        svg.appendChild(g);
+        cameraG.appendChild(g);
       });
 
+      svg.appendChild(cameraG);
       els.kgSvgMount.appendChild(svg);
+      if (preserveCamera) {
+        applyKgCamera();
+      } else {
+        resetKgCamera();
+      }
     }
 
     // Render Edge Table
@@ -951,7 +1156,7 @@
       );
       tr.addEventListener("click", () => {
         state.selectedEdgeKey = key;
-        renderKgSubgraph(data);
+        renderKgSubgraph(data, true);
       });
       const vals = [
         { v: (e.source || "?") + " → " + (e.target || "?"), num: false },
@@ -1227,6 +1432,87 @@
     [els.kgTickerSelect, els.kgHopsSelect, els.kgDateInput, els.kgRelSelect, els.kgStatusSelect].forEach(
       (ctrl) => ctrl.addEventListener("change", querySubgraph)
     );
+
+    if (els.kgZoomOutBtn) {
+      els.kgZoomOutBtn.addEventListener("click", () => zoomKgCamera((state.kgCam.k || 1) / 1.2));
+    }
+    if (els.kgZoomInBtn) {
+      els.kgZoomInBtn.addEventListener("click", () => zoomKgCamera((state.kgCam.k || 1) * 1.2));
+    }
+    if (els.kgZoomResetBtn) {
+      els.kgZoomResetBtn.addEventListener("click", resetKgCamera);
+    }
+
+    if (els.kgSvgMount) {
+      let panState = null;
+      let suppressNextClick = false;
+
+      els.kgSvgMount.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        suppressNextClick = false;
+        panState = {
+          x: e.clientX,
+          y: e.clientY,
+          tx: state.kgCam.tx,
+          ty: state.kgCam.ty,
+          dragged: false,
+        };
+      });
+
+      window.addEventListener("pointermove", (e) => {
+        if (!panState) return;
+        const dx = e.clientX - panState.x;
+        const dy = e.clientY - panState.y;
+        if (!panState.dragged && Math.hypot(dx, dy) > 4) {
+          panState.dragged = true;
+          els.kgSvgMount.classList.add("is-panning");
+        }
+        if (panState.dragged) {
+          state.kgCam.tx = panState.tx + dx;
+          state.kgCam.ty = panState.ty + dy;
+          applyKgCamera();
+        }
+      });
+
+      const endPan = () => {
+        if (!panState) return;
+        const wasDragged = panState.dragged;
+        panState = null;
+        els.kgSvgMount.classList.remove("is-panning");
+        if (wasDragged) {
+          suppressNextClick = true;
+          setTimeout(() => {
+            suppressNextClick = false;
+          }, 0);
+        }
+      };
+      window.addEventListener("pointerup", endPan);
+      window.addEventListener("pointercancel", endPan);
+
+      els.kgSvgMount.addEventListener(
+        "click",
+        (e) => {
+          if (suppressNextClick) {
+            suppressNextClick = false;
+            e.stopPropagation();
+            e.preventDefault();
+          }
+        },
+        true
+      );
+
+      els.kgSvgMount.addEventListener(
+        "wheel",
+        (e) => {
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+            zoomKgCamera((state.kgCam.k || 1) * factor, e.clientX, e.clientY);
+          }
+        },
+        { passive: false }
+      );
+    }
 
     els.cohortQueryBtn.addEventListener("click", () => queryCohort(0));
     els.cohortPrevBtn.addEventListener("click", () => {
