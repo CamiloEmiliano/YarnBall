@@ -71,6 +71,37 @@ class ModelResponse(BaseModel):
     error: Optional[str] = None
 
 
+DEFAULT_MODEL_TAG = "yarnball-qwen:7b"
+
+
+def resolve_ollama_urls(ollama_url: Optional[str] = None) -> Tuple[str, str]:
+    """Resolve Docker-aware Ollama base and `/api/generate` endpoint URLs."""
+    raw = (
+        ollama_url
+        or os.getenv("OLLAMA_API_BASE")
+        or (
+            "http://host.docker.internal:11434"
+            if os.path.exists("/.dockerenv")
+            else "http://127.0.0.1:11434"
+        )
+    ).strip().rstrip("/")
+
+    if "host.docker.internal" in raw and not os.path.exists("/.dockerenv"):
+        raw = raw.replace("host.docker.internal", "127.0.0.1")
+
+    if raw.endswith("/api/generate"):
+        base_url = raw[: -len("/api/generate")].rstrip("/")
+        generate_url = raw
+    elif "/v1" in raw:
+        base_url = raw.split("/v1", 1)[0].rstrip("/")
+        generate_url = f"{base_url}/api/generate"
+    else:
+        base_url = raw
+        generate_url = f"{base_url}/api/generate"
+
+    return base_url, generate_url
+
+
 class YarnBallModelClient:
     """Production inference client for local yarnball-qwen:7b with guardrails."""
 
@@ -81,15 +112,8 @@ class YarnBallModelClient:
         timeout_sec: float = 120.0,
         transport_fn: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
     ):
-        raw_base = (ollama_url or os.getenv("OLLAMA_API_BASE") or "http://127.0.0.1:11434").rstrip("/")
-        if raw_base.endswith("/api/generate"):
-            self.base_url = raw_base[: -len("/api/generate")].rstrip("/")
-            self.ollama_url = raw_base
-        else:
-            self.base_url = raw_base
-            self.ollama_url = f"{raw_base}/api/generate"
-
-        self.model_tag = model_tag or os.getenv("YARNBALL_MODEL_TAG", "yarnball-qwen:7b")
+        self.base_url, self.ollama_url = resolve_ollama_urls(ollama_url)
+        self.model_tag = model_tag or os.getenv("YARNBALL_MODEL_TAG") or DEFAULT_MODEL_TAG
         self.timeout_sec = timeout_sec
         self._transport_fn = transport_fn  # Optional mock transport for testing
 

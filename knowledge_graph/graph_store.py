@@ -11,8 +11,11 @@ import re
 import json
 import logging
 import atexit
-from typing import Optional, Dict, Any, List
+from typing import TYPE_CHECKING, Optional, Dict, Any, List
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from sft_pipeline.serving.model_client import YarnBallModelClient
 
 # Load environment variables
 try:
@@ -28,21 +31,6 @@ logger = logging.getLogger(__name__)
 # Constants for safe Cypher identifier lengths
 MAX_LABEL_LENGTH = 64
 MAX_REL_TYPE_LENGTH = 64
-
-# LLM / Ollama Configuration
-def _default_ollama_url() -> str:
-    """Detect whether running inside Docker container or host."""
-    env_url = os.getenv("QWEN_API_BASE")
-    if env_url:
-        if "host.docker.internal" in env_url and not os.path.exists("/.dockerenv"):
-            return env_url.replace("host.docker.internal", "localhost")
-        return env_url
-    if os.path.exists("/.dockerenv"):
-        return "http://host.docker.internal:11434/api/generate"
-    return "http://localhost:11434/api/generate"
-
-OLLAMA_API_BASE = _default_ollama_url()
-OLLAMA_MODEL_NAME = os.getenv("QWEN_MODEL_NAME", "qwen3:8b")
 
 SYSTEM_EXTRACTION_PROMPT = """You are an expert financial knowledge graph extractor.
 Read the provided financial news article and extract key entities and relationships.
@@ -91,67 +79,37 @@ def _clean_json_response(raw_text: str) -> dict:
     return {"nodes": [], "edges": []}
 
 
-def _extract_entities_via_ollama(text: str) -> dict:
-    """Query local Ollama server for entity extraction."""
-    try:
-        import httpx
-    except ImportError:
-        logger.warning("httpx not installed; skipping Ollama extraction")
+def _extract_entities_via_ollama(
+    text: str,
+    model_client: Optional["YarnBallModelClient"] = None,
+) -> dict:
+    """Query fine-tuned YarnBall model via YarnBallModelClient for entity extraction."""
+    if model_client is None:
+        from sft_pipeline.serving.model_client import YarnBallModelClient
+
+        client = YarnBallModelClient()
+    else:
+        client = model_client
+    resp = client.generate(
+        prompt=f"Article:\n{text}\n\nJSON:",
+        task="EXTRACT_NEWS_EVENT",
+        system_prompt=SYSTEM_EXTRACTION_PROMPT,
+        temperature=0.0,
+    )
+    if resp.error:
+        logger.error("YarnBall extraction request failed: %s", resp.error)
         return {"nodes": [], "edges": []}
-
-    prompt = f"{SYSTEM_EXTRACTION_PROMPT}\n\nArticle:\n{text}\n\nJSON:"
-
-    # Normalize endpoint URL (support both /v1/chat/completions and /api/generate)
-    api_url = OLLAMA_API_BASE
-    if "/v1" in api_url:
-        endpoint = api_url.rstrip("/") + "/chat/completions"
-        payload = {
-            "model": OLLAMA_MODEL_NAME,
-            "messages": [
-                {"role": "system", "content": SYSTEM_EXTRACTION_PROMPT},
-                {"role": "user", "content": text},
-            ],
-            "temperature": 0.0,
-            "stream": False,
-        }
-        try:
-            with httpx.Client(timeout=60.0) as client:
-                resp = client.post(endpoint, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"]
-                return _clean_json_response(content)
-        except Exception as exc:
-            logger.warning("Ollama /v1 API call failed: %s; trying /api/generate", exc)
-
-    # Default to native /api/generate
-    gen_url = OLLAMA_API_BASE
-    if "/v1" in gen_url:
-        gen_url = gen_url.split("/v1")[0].rstrip("/") + "/api/generate"
-    try:
-        with httpx.Client(timeout=120.0) as client:
-            resp = client.post(
-                gen_url,
-                json={
-                    "model": OLLAMA_MODEL_NAME,
-                    "prompt": prompt,
-                    "stream": False,
-                    "format": "json",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return _clean_json_response(data.get("response", ""))
-    except Exception as exc:
-        logger.error("Ollama extraction request failed: %s", exc)
-        return {"nodes": [], "edges": []}
+    return _clean_json_response(resp.final_output)
 
 
-def extract_entities(text: str) -> dict:
-    """Extract entities and relationships from text using local LLM."""
+def extract_entities(
+    text: str,
+    model_client: Optional["YarnBallModelClient"] = None,
+) -> dict:
+    """Extract entities and relationships from text using YarnBallModelClient."""
     if not text or not text.strip():
         return {"nodes": [], "edges": []}
-    return _extract_entities_via_ollama(text)
+    return _extract_entities_via_ollama(text, model_client=model_client)
 
 
 def store_graph_entities(

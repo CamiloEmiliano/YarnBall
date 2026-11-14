@@ -408,40 +408,27 @@ def select_salient_sec_context(text: str, max_chars: int = 2500) -> str:
     return "\n\n".join(p for _, p in selected)
 
 
-def extract_sec_relationships(text: str, max_chars: int = 2500) -> Dict[str, Any]:
-    """Extract entities and relationships from SEC text chunk using local LLM."""
+def extract_sec_relationships(
+    text: str,
+    max_chars: int = 2500,
+    model_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Extract entities and relationships from SEC text chunk using YarnBallModelClient."""
     if not text or not text.strip():
         return {"nodes": [], "edges": []}
 
-    try:
-        import httpx
-    except ImportError:
-        logger.warning("httpx not available; skipping LLM extraction")
-        return {"nodes": [], "edges": []}
-
-    from knowledge_graph.graph_store import _clean_json_response, OLLAMA_API_BASE, OLLAMA_MODEL_NAME
+    from knowledge_graph.graph_store import _clean_json_response
+    from sft_pipeline.serving.model_client import YarnBallModelClient
 
     chunk = select_salient_sec_context(text, max_chars=max_chars)
-    prompt = f"{SEC_EXTRACTION_PROMPT}\n\nSEC Text Section:\n{chunk}\n\nJSON:"
-
-    gen_url = OLLAMA_API_BASE
-    if "/v1" in gen_url:
-        gen_url = gen_url.split("/v1")[0].rstrip("/") + "/api/generate"
-
-    try:
-        with httpx.Client(timeout=90.0) as client:
-            resp = client.post(
-                gen_url,
-                json={
-                    "model": OLLAMA_MODEL_NAME,
-                    "prompt": prompt,
-                    "stream": False,
-                    "format": "json",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return _clean_json_response(data.get("response", ""))
-    except Exception as e:
-        logger.error(f"Failed SEC LLM extraction call: {e}")
+    client = model_client or YarnBallModelClient(timeout_sec=90.0)
+    resp = client.generate(
+        prompt=f"SEC Text Section:\n{chunk}\n\nJSON:",
+        task="EXTRACT_SEC_GRAPH",
+        system_prompt=SEC_EXTRACTION_PROMPT,
+        temperature=0.0,
+    )
+    if resp.error:
+        logger.error(f"Failed SEC LLM extraction call: {resp.error}")
         return {"nodes": [], "edges": []}
+    return _clean_json_response(resp.final_output)

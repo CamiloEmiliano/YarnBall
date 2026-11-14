@@ -3,8 +3,8 @@
 """Guarded Text-to-CQL (Cypher) Engine with Safety Guardrails & Self-Correction.
 
 Translates natural language financial questions into valid, read-only Cypher queries
-executed against Memgraph using local Ollama (qwen3:8b) with dynamic schema injection,
-pre-execution guardrails, AST read-only enforcement, and an auto-correction feedback loop.
+executed against Memgraph using YarnBallModelClient (`yarnball-qwen:7b`) with dynamic
+schema injection, pre-execution guardrails, AST read-only enforcement, and an auto-correction loop.
 """
 
 import os
@@ -12,8 +12,11 @@ import re
 import time
 import json
 import logging
-from typing import Optional, Dict, Any, List, Tuple, Set
+from typing import TYPE_CHECKING, Optional, Dict, Any, List, Tuple, Set
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from sft_pipeline.serving.model_client import YarnBallModelClient
 
 # Load environment variables
 try:
@@ -81,21 +84,6 @@ DEFAULT_ALLOWED_REL_TYPES: Set[str] = {
     "RELATED_TO",
 }
 
-# LLM Configuration
-def _default_ollama_url() -> str:
-    env_url = os.getenv("QWEN_API_BASE")
-    if env_url:
-        if "host.docker.internal" in env_url and not os.path.exists("/.dockerenv"):
-            return env_url.replace("host.docker.internal", "localhost")
-        return env_url
-    if os.path.exists("/.dockerenv"):
-        return "http://host.docker.internal:11434/api/generate"
-    return "http://localhost:11434/api/generate"
-
-OLLAMA_API_BASE = _default_ollama_url()
-OLLAMA_MODEL_NAME = os.getenv("QWEN_MODEL_NAME", "qwen3:8b")
-
-
 class TextToCQLError(Exception):
     """Base exception for Text-to-CQL compilation and guardrail errors."""
     pass
@@ -115,9 +103,19 @@ class TextToCQL:
         model_name: Optional[str] = None,
         max_limit: int = 50,
         query_timeout_sec: float = 3.0,
+        model_client: Optional["YarnBallModelClient"] = None,
     ):
-        self.ollama_url = ollama_url or OLLAMA_API_BASE
-        self.model_name = model_name or OLLAMA_MODEL_NAME
+        if model_client is None:
+            from sft_pipeline.serving.model_client import YarnBallModelClient
+
+            self.model_client = YarnBallModelClient(
+                ollama_url=ollama_url,
+                model_tag=model_name,
+            )
+        else:
+            self.model_client = model_client
+        self.ollama_url = self.model_client.ollama_url
+        self.model_name = self.model_client.model_tag
         self.max_limit = max_limit
         self.query_timeout_sec = query_timeout_sec
         self.guardrail = CypherASTWhitelistGuardrail(
@@ -220,55 +218,17 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
         return cleaned
 
     def _call_llm(self, prompt: str, system_prompt: str) -> str:
-        """Send prompt to local Ollama server."""
-        try:
-            import httpx
-        except ImportError:
-            logger.warning("httpx not installed; returning empty Cypher")
+        """Send prompt to local YarnBallModelClient serving `yarnball-qwen`."""
+        resp = self.model_client.generate(
+            prompt=f"Question: {prompt}\nCypher:",
+            task="TEXT_TO_CYPHER",
+            system_prompt=system_prompt,
+            temperature=0.0,
+        )
+        if resp.error:
+            logger.warning("YarnBallModelClient request failed: %s", resp.error)
             return ""
-
-        api_url = self.ollama_url
-        if "/v1" in api_url:
-            endpoint = api_url.rstrip("/") + "/chat/completions"
-            payload = {
-                "model": self.model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.0,
-                "stream": False,
-            }
-            try:
-                with httpx.Client(timeout=30.0) as client:
-                    resp = client.post(endpoint, json=payload)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    return self.clean_cypher(data["choices"][0]["message"]["content"])
-            except Exception as exc:
-                logger.warning("Ollama /v1 call failed: %s; trying /api/generate", exc)
-
-        gen_url = self.ollama_url
-        if "/v1" in gen_url:
-            gen_url = gen_url.split("/v1")[0].rstrip("/") + "/api/generate"
-
-        try:
-            with httpx.Client(timeout=30.0) as client:
-                full_prompt = f"{system_prompt}\n\nQuestion: {prompt}\nCypher:"
-                resp = client.post(
-                    gen_url,
-                    json={
-                        "model": self.model_name,
-                        "prompt": full_prompt,
-                        "stream": False,
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                return self.clean_cypher(data.get("response", ""))
-        except Exception as exc:
-            logger.warning("Ollama API request failed: %s", exc)
-            return ""
+        return self.clean_cypher(resp.final_output)
 
     # ----------------------------------------------------------------------
     # 3. Pre-Execution Safety Guardrails
