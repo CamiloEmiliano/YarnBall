@@ -20,8 +20,6 @@
 
   const els = {
     modeSelect: document.getElementById("modeSelect"),
-    themeSelect: document.getElementById("themeSelect"),
-    densitySelect: document.getElementById("densitySelect"),
     ollamaDot: document.getElementById("ollamaDot"),
     ollamaText: document.getElementById("ollamaText"),
     srcFixtureBtn: document.getElementById("srcFixtureBtn"),
@@ -76,8 +74,10 @@
     kgProvenancePanel: document.getElementById("kgProvenancePanel"),
     kgCanvasTitle: document.getElementById("kgCanvasTitle"),
     kgCanvasSubtitle: document.getElementById("kgCanvasSubtitle"),
+    kgResetCenterBtn: document.getElementById("kgResetCenterBtn"),
+    kgResetZoomBtn: document.getElementById("kgResetZoomBtn"),
     kgZoomOutBtn: document.getElementById("kgZoomOutBtn"),
-    kgZoomResetBtn: document.getElementById("kgZoomResetBtn"),
+    kgZoomLevel: document.getElementById("kgZoomLevel"),
     kgZoomInBtn: document.getElementById("kgZoomInBtn"),
     kgSvgMount: document.getElementById("kgSvgMount"),
     kgEdgeCountSpan: document.getElementById("kgEdgeCountSpan"),
@@ -283,8 +283,7 @@
       return;
     }
 
-    const compact = els.densitySelect.value === "compact";
-    const rowH = compact ? 26 : 32;
+    const rowH = 26;
     const leftW = 104;
     const rightW = 500;
     const labelRightW = 175;
@@ -738,30 +737,44 @@
         "translate(" + state.kgCam.tx.toFixed(2) + " " + state.kgCam.ty.toFixed(2) + ") scale(" + state.kgCam.k.toFixed(4) + ")"
       );
     }
-    if (els.kgZoomResetBtn) {
-      els.kgZoomResetBtn.textContent = Math.round((state.kgCam.k || 1) * 100) + "%";
+    if (els.kgZoomLevel) {
+      els.kgZoomLevel.textContent = Math.round((state.kgCam.k || 1) * 100) + "%";
     }
   }
 
-  function resetKgCamera() {
+  function getFitKgZoom() {
     const vp = els.kgSvgMount;
     const gw = state.kgGraphBounds.width;
     const gh = state.kgGraphBounds.height;
+    if (!vp || !gw || !gh) return 1;
+    const vpW = vp.clientWidth || 960;
+    const vpH = vp.clientHeight || 440;
+    const fitK = Math.max(0.2, Math.min(1.0, (vpW - 32) / gw, (vpH - 32) / gh));
+    return Math.round(fitK * 100) / 100;
+  }
+
+  function resetKgCenter(targetZoom) {
+    const vp = els.kgSvgMount;
+    const gw = state.kgGraphBounds.width;
+    const gh = state.kgGraphBounds.height;
+    const k = targetZoom !== undefined ? targetZoom : state.kgCam.k || 1;
     if (!vp || !gw || !gh) {
-      state.kgCam = { k: 1, tx: 0, ty: 0 };
+      state.kgCam = { k, tx: 0, ty: 0 };
       applyKgCamera();
       return;
     }
-    const vpW = vp.clientWidth || 760;
-    const vpH = vp.clientHeight || 420;
-    const fitK = Math.max(0.2, Math.min(1.0, (vpW - 32) / gw, (vpH - 32) / gh));
-    const k = Math.round(fitK * 100) / 100;
+    const vpW = vp.clientWidth || 960;
+    const vpH = vp.clientHeight || 440;
     state.kgCam = {
       k,
       tx: (vpW - gw * k) / 2,
       ty: (vpH - gh * k) / 2,
     };
     applyKgCamera();
+  }
+
+  function resetKgCamera() {
+    resetKgCenter(getFitKgZoom());
   }
 
   function zoomKgCamera(nextK, focusClientX, focusClientY) {
@@ -771,9 +784,9 @@
     const prevK = state.kgCam.k || 1;
     const rect = vp.getBoundingClientRect();
     const anchorX =
-      focusClientX !== undefined ? focusClientX - rect.left : (vp.clientWidth || 760) / 2;
+      focusClientX !== undefined ? focusClientX - rect.left : (vp.clientWidth || 960) / 2;
     const anchorY =
-      focusClientY !== undefined ? focusClientY - rect.top : (vp.clientHeight || 420) / 2;
+      focusClientY !== undefined ? focusClientY - rect.top : (vp.clientHeight || 440) / 2;
 
     const gx = (anchorX - state.kgCam.tx) / prevK;
     const gy = (anchorY - state.kgCam.ty) / prevK;
@@ -839,7 +852,7 @@
             ? width / 2
             : 95 + (li / (lanes.length - 1)) * (width - 190);
         group.forEach((n, ni) => {
-          const y = 42 + ((height - 64) / (group.length + 1)) * (ni + 1);
+          const y = 32 + ((height - 64) / (group.length + 1)) * (ni + 1);
           pos.set(n.id, { x, y, node: n });
         });
       });
@@ -856,7 +869,6 @@
       [
         ["kg-arr-supply", "var(--buffer)"],
         ["kg-arr-other", "var(--error)"],
-        ["kg-arr-sel", "var(--primary)"],
       ].forEach(([id, col]) => {
         const marker = document.createElementNS(svgNs, "marker");
         marker.setAttribute("id", id);
@@ -876,27 +888,6 @@
 
       const cameraG = document.createElementNS(svgNs, "g");
       cameraG.setAttribute("id", "kgCameraGroup");
-
-      lanes.forEach((lane, li) => {
-        const x =
-          lanes.length === 1
-            ? width / 2
-            : 95 + (li / (lanes.length - 1)) * (width - 190);
-        const hdr = document.createElementNS(svgNs, "text");
-        hdr.setAttribute("x", String(x));
-        hdr.setAttribute("y", "18");
-        hdr.setAttribute("text-anchor", "middle");
-        hdr.setAttribute("font-size", "11");
-        hdr.setAttribute("fill", "var(--muted)");
-        hdr.textContent = !data.root_ticker
-          ? "Tier " + lane
-          : lane < 0
-            ? "Upstream H" + Math.abs(lane)
-            : lane === 0
-              ? "Root Issuer"
-              : "Downstream H" + lane;
-        cameraG.appendChild(hdr);
-      });
 
       // Group edges by unordered endpoint pair so parallel & reverse edges curve cleanly apart
       const edgesByPair = new Map();
@@ -1070,15 +1061,12 @@
         const visPath = document.createElementNS(svgNs, "path");
         visPath.setAttribute("d", pathD);
         visPath.setAttribute("fill", "none");
-        visPath.setAttribute(
-          "stroke",
-          isSel ? "var(--primary)" : isSupply ? "var(--buffer)" : "var(--error)"
-        );
-        visPath.setAttribute("stroke-width", isSel ? "2.6" : "1.8");
+        visPath.setAttribute("stroke", isSupply ? "var(--buffer)" : "var(--error)");
+        visPath.setAttribute("stroke-width", isSel ? "2.7" : "1.8");
         if (!isSupply) visPath.setAttribute("stroke-dasharray", "5 4");
         visPath.setAttribute(
           "marker-end",
-          isSel ? "url(#kg-arr-sel)" : isSupply ? "url(#kg-arr-supply)" : "url(#kg-arr-other)"
+          isSupply ? "url(#kg-arr-supply)" : "url(#kg-arr-other)"
         );
         g.appendChild(visPath);
 
@@ -1087,7 +1075,8 @@
         lbl.setAttribute("y", String(labelY));
         lbl.setAttribute("text-anchor", labelAnchor || "middle");
         lbl.setAttribute("font-size", "11");
-        lbl.setAttribute("fill", isSel ? "var(--primary)" : "var(--muted)");
+        lbl.setAttribute("font-weight", isSel ? "700" : "400");
+        lbl.setAttribute("fill", isSel ? "var(--fg)" : "var(--muted)");
         const shareStr =
           e.share !== null && e.share !== undefined
             ? Math.round(Number(e.share) * 100) + "%"
@@ -1205,7 +1194,8 @@
     if (ticker) params.set("ticker", ticker);
     params.set("max_hops", els.kgHopsSelect.value || "2");
     params.set("direction", state.kgDirection);
-    if (els.kgDateInput.value) params.set("as_of_date", els.kgDateInput.value);
+    const asOfDate = (els.kgDateInput.value || "").trim();
+    if (asOfDate) params.set("as_of_date", asOfDate);
     if (els.kgRelSelect.value) params.set("rel_types", els.kgRelSelect.value);
     params.set("required_status", els.kgStatusSelect.value || "");
 
@@ -1433,14 +1423,17 @@
       (ctrl) => ctrl.addEventListener("change", querySubgraph)
     );
 
+    if (els.kgResetCenterBtn) {
+      els.kgResetCenterBtn.addEventListener("click", () => resetKgCenter());
+    }
+    if (els.kgResetZoomBtn) {
+      els.kgResetZoomBtn.addEventListener("click", () => zoomKgCamera(getFitKgZoom()));
+    }
     if (els.kgZoomOutBtn) {
       els.kgZoomOutBtn.addEventListener("click", () => zoomKgCamera((state.kgCam.k || 1) / 1.2));
     }
     if (els.kgZoomInBtn) {
       els.kgZoomInBtn.addEventListener("click", () => zoomKgCamera((state.kgCam.k || 1) * 1.2));
-    }
-    if (els.kgZoomResetBtn) {
-      els.kgZoomResetBtn.addEventListener("click", resetKgCamera);
     }
 
     if (els.kgSvgMount) {
@@ -1538,13 +1531,6 @@
       state.showRawDiff = !state.showRawDiff;
       els.rawPanel.classList.toggle("hidden", !state.showRawDiff);
       els.toggleDiffBtn.textContent = state.showRawDiff ? "Hide Raw vs. Stripped" : "Show Raw vs. Stripped";
-    });
-    els.themeSelect.addEventListener("change", () => {
-      document.documentElement.setAttribute("data-theme", els.themeSelect.value);
-    });
-    els.densitySelect.addEventListener("change", () => {
-      document.body.setAttribute("data-density", els.densitySelect.value);
-      if (state.lastEvaluation) renderGanttSvg(state.lastEvaluation.report);
     });
     els.copyJsonlBtn.addEventListener("click", async () => {
       const txt = buildJsonlText();

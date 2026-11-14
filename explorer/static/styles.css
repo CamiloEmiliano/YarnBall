@@ -1,46 +1,6 @@
 /* YarnBall Local Workbench Stylesheet (ADR-00018 — Zero External Assets) */
 
 :root {
-  --bg: #0e1116;
-  --card: #161b22;
-  --subcard: #0d1117;
-  --border: #2b333f;
-  --border-subtle: #21262d;
-  --fg: #e6edf3;
-  --muted: #8b949e;
-  --primary: #2f81f7;
-  --primary-fg: #ffffff;
-  --accent: #1f2937;
-  --link: #58a6ff;
-  --success: #3fb950;
-  --warning: #d29922;
-  --error: #f85149;
-  --buffer: #38bdf8;
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: light) {
-  html[data-theme="auto"] {
-    --bg: #f6f8fa;
-    --card: #ffffff;
-    --subcard: #f9fafb;
-    --border: #d0d7de;
-    --border-subtle: #e5e7eb;
-    --fg: #1f2328;
-    --muted: #59636e;
-    --primary: #0969da;
-    --primary-fg: #ffffff;
-    --accent: #eaeef2;
-    --link: #0969da;
-    --success: #1a7f37;
-    --warning: #9a6700;
-    --error: #cf222e;
-    --buffer: #0284c7;
-  }
-}
-
-html[data-theme="light"] {
   --bg: #f6f8fa;
   --card: #ffffff;
   --subcard: #f9fafb;
@@ -56,6 +16,8 @@ html[data-theme="light"] {
   --warning: #9a6700;
   --error: #cf222e;
   --buffer: #0284c7;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 *,
@@ -95,14 +57,14 @@ body {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 16px;
+  padding: 12px;
 }
 
 .subcard {
   background: var(--subcard);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: 12px;
+  padding: 9px 10px;
 }
 
 .shell-header {
@@ -122,22 +84,6 @@ body {
 .brand-group {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--subcard);
-  color: var(--primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 13px;
 }
 
 .title-row {
@@ -587,32 +533,19 @@ textarea.text-input {
 .data-table th {
   color: var(--muted);
   font-weight: 600;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .data-table td {
-  padding: 7px 8px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
 }
 
 .data-table .num {
   text-align: right;
-}
-
-body[data-density="compact"] .card {
-  padding: 12px;
-}
-
-body[data-density="compact"] .subcard {
-  padding: 9px 10px;
-}
-
-body[data-density="compact"] .data-table td,
-body[data-density="compact"] .data-table th {
-  padding: 4px 6px;
 }
 
 .details-block summary {
@@ -787,15 +720,78 @@ body[data-density="compact"] .data-table th {
   min-width: 28px;
 }
 
+.kg-zoom-level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: normal;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--subcard);
+  color: var(--muted);
+  user-select: none;
+}
+
+body .subcard.kg-viewport-frame {
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+
 .kg-viewport {
   width: 100%;
-  height: 420px;
+  height: 440px;
   padding: 0;
   overflow: hidden;
   position: relative;
   cursor: grab;
   user-select: none;
   touch-action: none;
+}
+
+.kg-query-row-bottom {
+  align-items: end;
+}
+
+.kg-query-btn {
+  padding: 7px 14px;
+  font-size: 12px;
+}
+
+.kg-lower-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 980px) {
+  .kg-lower-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.kg-viewport-legend {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  gap: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--subcard);
+  border: 1px solid var(--border-subtle);
+  opacity: 0.92;
+}
+
+.kg-viewport-legend .swatch {
+  width: 9px;
+  height: 8px;
 }
 
 .kg-viewport.is-panning {

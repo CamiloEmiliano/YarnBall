@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="auto">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,13 +7,12 @@
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="/static/app.js" defer></script>
 </head>
-<body data-density="comfortable">
+<body>
   <div class="shell-root">
     <!-- Top Application Bar -->
     <header class="card shell-header">
       <div class="header-top">
         <div class="brand-group">
-          <div class="brand-mark" aria-hidden="true">YB</div>
           <div>
             <div class="title-row">
               <h1>YarnBall Local Workbench API</h1>
@@ -37,23 +36,6 @@
             <select id="modeSelect" class="select-input mono">
               <option value="MOCK_DETERMINISTIC">MOCK_DETERMINISTIC</option>
               <option value="LIVE_LLM">LIVE_LLM</option>
-            </select>
-          </label>
-
-          <label class="control-inline">
-            <span>Theme</span>
-            <select id="themeSelect" class="select-input">
-              <option value="auto">Auto</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </label>
-
-          <label class="control-inline">
-            <span>Density</span>
-            <select id="densitySelect" class="select-input">
-              <option value="comfortable">Comfortable</option>
-              <option value="compact">Compact</option>
             </select>
           </label>
         </div>
@@ -291,36 +273,64 @@
     </main>
 
     <!-- TAB 2: PiT KG Explorer (ADR-00019) -->
-    <main id="panel-kg" class="audit-grid hidden">
-      <section class="stack-md">
-        <article class="card stack-sm">
-          <div class="panel-head">
-            <h2>Point-in-Time Subgraph Query</h2>
-            <span class="pill mono">GET /api/subgraph</span>
+    <main id="panel-kg" class="stack-md hidden">
+      <!-- Top Full-Width KG Canvas -->
+      <article class="card stack-sm">
+        <div class="panel-head">
+          <div>
+            <h2 id="kgCanvasTitle">Layered Directional Ego Subgraph</h2>
+            <p id="kgCanvasSubtitle" class="subtitle"></p>
           </div>
+          <div class="kg-header-tools">
+            <div class="btn-inline-group kg-zoom-group" role="group" aria-label="Graph view and zoom controls">
+              <button type="button" id="kgResetCenterBtn" class="secondary-btn" title="Center graph at current zoom">Reset Center</button>
+              <button type="button" id="kgResetZoomBtn" class="secondary-btn" title="Reset zoom level">Reset Zoom</button>
+              <button type="button" id="kgZoomOutBtn" class="secondary-btn" title="Zoom out">−</button>
+              <span id="kgZoomLevel" class="kg-zoom-level mono" title="Current zoom level">100%</span>
+              <button type="button" id="kgZoomInBtn" class="secondary-btn" title="Zoom in">+</button>
+            </div>
+          </div>
+        </div>
 
+        <div class="kg-viewport-frame subcard">
+          <div id="kgSvgMount" class="kg-viewport"></div>
+          <div class="legend-row kg-viewport-legend" aria-label="Graph edge legend">
+            <span class="legend-item">
+              <span class="swatch swatch-buffer"></span> SUPPLIES_TO (solid)
+            </span>
+            <span class="legend-item">
+              <span class="swatch swatch-outage"></span> COMPETES_WITH / Other (dashed)
+            </span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Middle Compact Subgraph Query Bar -->
+      <article class="card stack-sm">
+        <div class="panel-head">
+          <h2>Point-in-Time Subgraph Query</h2>
+          <span class="pill mono">GET /api/subgraph</span>
+        </div>
+
+        <div class="filter-grid-4">
           <label class="field">
             <span class="field-label">Snapshot / Edge Manifest</span>
             <select id="kgSourceSelect" class="text-input mono"></select>
           </label>
-
-          <div class="field-row-2">
-            <label class="field">
-              <span class="field-label">Focal Ticker</span>
-              <select id="kgTickerSelect" class="text-input mono"></select>
-            </label>
-            <label class="field">
-              <span class="field-label">Max Hops (1–5)</span>
-              <select id="kgHopsSelect" class="text-input mono">
-                <option value="1">1 hop</option>
-                <option value="2" selected>2 hops</option>
-                <option value="3">3 hops</option>
-                <option value="4">4 hops</option>
-                <option value="5">5 hops</option>
-              </select>
-            </label>
-          </div>
-
+          <label class="field">
+            <span class="field-label">Focal Ticker</span>
+            <select id="kgTickerSelect" class="text-input mono"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Max Hops (1–5)</span>
+            <select id="kgHopsSelect" class="text-input mono">
+              <option value="1">1 hop</option>
+              <option value="2" selected>2 hops</option>
+              <option value="3">3 hops</option>
+              <option value="4">4 hops</option>
+              <option value="5">5 hops</option>
+            </select>
+          </label>
           <div class="field">
             <span class="field-label">Traversal Direction</span>
             <div class="segmented" role="group" aria-label="KG traversal direction">
@@ -329,80 +339,41 @@
               <button type="button" data-dir="downstream" class="dir-btn seg-btn">Downstream</button>
             </div>
           </div>
+        </div>
 
+        <div class="filter-grid-4 kg-query-row-bottom">
           <label class="field">
             <span class="field-label">Point-in-Time Cutoff (<span class="mono">as_of_date</span>)</span>
             <div class="btn-inline-group">
-              <input id="kgDateInput" type="date" class="text-input mono" />
+              <input id="kgDateInput" type="text" placeholder="YYYY-MM-DD" maxlength="10" class="text-input mono" />
               <button type="button" id="kgClearDateBtn" class="secondary-btn">Latest</button>
             </div>
           </label>
-
-          <div class="field-row-2">
-            <label class="field">
-              <span class="field-label">Relationship Filter</span>
-              <select id="kgRelSelect" class="text-input mono">
-                <option value="">ALL</option>
-                <option value="SUPPLIES_TO">SUPPLIES_TO</option>
-                <option value="COMPETES_WITH">COMPETES_WITH</option>
-              </select>
-            </label>
-            <label class="field">
-              <span class="field-label">Lifecycle Status</span>
-              <select id="kgStatusSelect" class="text-input mono">
-                <option value="ACTIVE_CURRENT">ACTIVE_CURRENT</option>
-                <option value="">ALL</option>
-              </select>
-            </label>
+          <label class="field">
+            <span class="field-label">Relationship Filter</span>
+            <select id="kgRelSelect" class="text-input mono">
+              <option value="">ALL</option>
+              <option value="SUPPLIES_TO">SUPPLIES_TO</option>
+              <option value="COMPETES_WITH">COMPETES_WITH</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Lifecycle Status</span>
+            <select id="kgStatusSelect" class="text-input mono">
+              <option value="ACTIVE_CURRENT">ACTIVE_CURRENT</option>
+              <option value="">ALL</option>
+            </select>
+          </label>
+          <div class="field">
+            <button type="button" id="kgQueryBtn" class="primary-btn kg-query-btn">Query Subgraph</button>
           </div>
+        </div>
 
-          <button type="button" id="kgQueryBtn" class="primary-btn">Query Subgraph</button>
-          <div id="kgErrorBox" class="error-box hidden" role="alert"></div>
-        </article>
+        <div id="kgErrorBox" class="error-box hidden" role="alert"></div>
+      </article>
 
-        <article class="card stack-sm">
-          <div class="panel-head">
-            <h2>Edge Contract Provenance</h2>
-            <span class="muted-text">Select an edge</span>
-          </div>
-          <div id="kgProvenancePanel" class="subcard kv-list">
-            <div class="muted-text">
-              Click any arrow in the graph or row below to inspect contract dates, buffers, and source hash.
-            </div>
-          </div>
-        </article>
-      </section>
-
-      <section class="stack-md">
-        <article class="card stack-sm">
-          <div class="panel-head">
-            <div>
-              <h2 id="kgCanvasTitle">Layered Directional Ego Subgraph</h2>
-              <p id="kgCanvasSubtitle" class="subtitle"></p>
-            </div>
-            <div class="kg-header-tools">
-              <div class="legend-row">
-                <span class="legend-item">
-                  <span class="swatch swatch-buffer"></span> SUPPLIES_TO (solid)
-                </span>
-                <span class="legend-item">
-                  <span class="swatch swatch-outage"></span> COMPETES_WITH / Other (dashed)
-                </span>
-              </div>
-              <div class="btn-inline-group kg-zoom-group" role="group" aria-label="Graph zoom controls">
-                <button type="button" id="kgZoomOutBtn" class="secondary-btn" title="Zoom out">−</button>
-                <button type="button" id="kgZoomResetBtn" class="secondary-btn mono" title="Reset zoom and center">100%</button>
-                <button type="button" id="kgZoomInBtn" class="secondary-btn" title="Zoom in">+</button>
-              </div>
-            </div>
-          </div>
-
-          <div id="kgSvgMount" class="kg-viewport subcard"></div>
-          <p class="helper-text">
-            Drag to pan · Ctrl+Wheel to zoom · Click a node to re-center · Click any arrow to inspect contract provenance
-          </p>
-        </article>
-
+      <!-- Bottom Balanced Split: Active Edges Table + Edge Contract Provenance -->
+      <section class="kg-lower-grid">
         <article class="card stack-sm">
           <div class="panel-head-tight">
             <strong>Active Subgraph Edges (<span id="kgEdgeCountSpan" class="mono">0</span>)</strong>
@@ -423,6 +394,18 @@
               </thead>
               <tbody id="kgEdgesTbody"></tbody>
             </table>
+          </div>
+        </article>
+
+        <article class="card stack-sm">
+          <div class="panel-head">
+            <h2>Edge Contract Provenance</h2>
+            <span class="muted-text">Select an edge</span>
+          </div>
+          <div id="kgProvenancePanel" class="subcard kv-list">
+            <div class="muted-text">
+              Click any arrow in the graph or edge row to inspect contract dates, buffers, and source hash.
+            </div>
           </div>
         </article>
       </section>
