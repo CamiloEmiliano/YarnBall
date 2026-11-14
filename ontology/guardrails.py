@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from ontology.compiler import is_hypothetical_or_hedged
+from ontology.schema import ONTOLOGY_SCHEMA
 
 # Known Exhibit 21 Operating Subsidiary -> Parent CIK Rollup Map
 # (e.g. DISH DBS Corporation 0001001811 rolls up to parent DISH Network Corp 0001001082)
@@ -25,27 +26,8 @@ SUBSIDIARY_TO_PARENT_CIK_MAP: Dict[str, str] = {
     "0001326801": "0001326801",  # Meta Platforms Inc (self)
 }
 
-# Canonical Axis-2 Relational Ontology Predicates
-CANONICAL_RELATION_PREDICATES: frozenset[str] = frozenset(
-    {
-        "SUPPLIES_TO",
-        "CUSTOMER_OF",
-        "PARTNERED_WITH",
-        "SUBSIDIARY_OF",
-        "COMPETES_WITH",
-        "LICENSES_FROM",
-        "LICENSES_TO",
-        "SOLE_SOURCE_DEPENDENT_ON",
-        "ACQUIRED_BY",
-        "DEFAULTED_ON",
-        "SPUN_OFF_FROM",
-        "FILED",
-        "EXPOSED_TO_RISK",
-        "OWNS",
-        "HAS_SUBSIDIARY",
-        "PEER_OF",
-    }
-)
+# Canonical Axis-2 Relational Ontology Predicates (derived from ontology.schema)
+CANONICAL_RELATION_PREDICATES: frozenset[str] = frozenset(ONTOLOGY_SCHEMA.keys())
 
 # Lifecycle Termination Predicates that indicate contract end
 LIFECYCLE_TERMINATION_PREDICATES: frozenset[str] = frozenset(

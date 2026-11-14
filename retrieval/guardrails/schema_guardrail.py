@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ontology.schema import ONTOLOGY_SCHEMA, PREDICATE_ALIASES
+
 
 @dataclass
 class SchemaViolation:
@@ -76,27 +78,7 @@ DEFAULT_FINANCE_SCHEMA = SchemaSpecification(
         "Form",
         "Filing",
     },
-    allowed_rel_types={
-        "SUPPLIES_TO",
-        "COMPETES_WITH",
-        "SOLE_SOURCE_DEPENDENT_ON",
-        "LICENSES_FROM",
-        "LICENSES_TO",
-        "ACQUIRED_BY",
-        "ACQUIRED",
-        "DEFAULTED_ON",
-        "OWNS",
-        "HAS_SUBSIDIARY",
-        "PARTNERED_WITH",
-        "INVESTS_IN",
-        "PRODUCES",
-        "IMPACTS",
-        "FILED_FORM",
-        "PEER_OF",
-        "LEADS",
-        "REPORTS",
-        "CO_INVESTS_WITH",
-        "COLLABORATES_WITH",
+    allowed_rel_types=set(ONTOLOGY_SCHEMA.keys()) | set(PREDICATE_ALIASES.keys()) | {
         "MENTIONS",
         "RELATED_TO",
     },

@@ -31,9 +31,13 @@ class EntityClass(str, Enum):
     FINANCIAL_INSTITUTION = "FINANCIALINSTITUTION"
     TECHNOLOGY = "TECHNOLOGY"
     SECTOR = "SECTOR"
+    INDUSTRY = "INDUSTRY"
     METRIC = "METRIC"
     LOCATION = "LOCATION"
     NEWS = "NEWS"
+    FORM = "FORM"
+    FILING = "FILING"
+    DOCUMENT = "DOCUMENT"
 
 
 class RelationPredicate(str, Enum):
@@ -42,6 +46,7 @@ class RelationPredicate(str, Enum):
     PARENT_OF = "PARENT_OF"
     SUPPLIES_TO = "SUPPLIES_TO"
     CUSTOMER_OF = "CUSTOMER_OF"
+    SOLE_SOURCE_DEPENDENT_ON = "SOLE_SOURCE_DEPENDENT_ON"
     COMPETES_WITH = "COMPETES_WITH"
     PARTNERED_WITH = "PARTNERED_WITH"
     CEO_OF = "CEO_OF"
@@ -53,9 +58,41 @@ class RelationPredicate(str, Enum):
     LICENSES_TO = "LICENSES_TO"
     ACQUIRED_BY = "ACQUIRED_BY"
     DEFAULTED_ON = "DEFAULTED_ON"
+    SPUN_OFF_FROM = "SPUN_OFF_FROM"
+    OWNS = "OWNS"
+    INVESTS_IN = "INVESTS_IN"
+    PRODUCES = "PRODUCES"
+    IMPACTS = "IMPACTS"
+    REPORTS = "REPORTS"
+    FILED = "FILED"
     CO_INVESTS_WITH = "CO_INVESTS_WITH"
     PEER_OF = "PEER_OF"
     COLLABORATES_WITH = "COLLABORATES_WITH"
+
+
+# Normalize UI/prompt PascalCase or underscored labels to TBox EntityClass tokens
+LABEL_NORMALIZATION_MAP: Dict[str, str] = {
+    "RISKFACTOR": "RISK",
+    "RISK_FACTOR": "RISK",
+    "GEOPOLITICAL_RISK": "GEOPOLITICALRISK",
+    "REGULATORY_BODY": "REGULATORYBODY",
+    "MARKET_EVENT": "MARKETEVENT",
+    "FINANCIAL_INSTITUTION": "FINANCIALINSTITUTION",
+    "FINANCIALMETRIC": "METRIC",
+    "FINANCIAL_METRIC": "METRIC",
+}
+
+# Deterministic alias normalization: raw_predicate -> (canonical_predicate, swap_direction)
+PREDICATE_ALIASES: Dict[str, Tuple[str, bool]] = {
+    "ACQUIRED": ("ACQUIRED_BY", True),
+    "HAS_SUBSIDIARY": ("SUBSIDIARY_OF", True),
+    "SUPPLIED_BY": ("SUPPLIES_TO", True),
+    "LEADS": ("EXECUTIVE_OF", False),
+    "CONTROLS": ("OWNS", False),
+    "MERGED_WITH": ("PARTNERED_WITH", False),
+    "FILED_FORM": ("FILED", False),
+    "EXPOSED_TO": ("EXPOSED_TO_RISK", False),
+}
 
 
 # ----------------------------------------------------------------------
@@ -67,17 +104,37 @@ ONTOLOGY_SCHEMA: Dict[str, Tuple[Set[str], Set[str], bool]] = {
     "PARENT_OF": ({"COMPANY"}, {"COMPANY", "SUBSIDIARY"}, False),
     "SUPPLIES_TO": ({"COMPANY", "SUBSIDIARY", "SUPPLIER"}, {"COMPANY", "CUSTOMER"}, False),
     "CUSTOMER_OF": ({"COMPANY", "CUSTOMER"}, {"COMPANY", "SUPPLIER"}, False),
+    "SOLE_SOURCE_DEPENDENT_ON": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY", "SUPPLIER"}, False),
     "COMPETES_WITH": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY"}, True),
     "PARTNERED_WITH": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY"}, True),
     "CEO_OF": ({"PERSON", "EXECUTIVE"}, {"COMPANY", "SUBSIDIARY"}, False),
     "EXECUTIVE_OF": ({"PERSON", "EXECUTIVE"}, {"COMPANY", "SUBSIDIARY"}, False),
     "DIRECTOR_OF": ({"PERSON", "EXECUTIVE"}, {"COMPANY", "SUBSIDIARY"}, False),
     "INSIDER_OF": ({"PERSON", "EXECUTIVE"}, {"COMPANY", "SUBSIDIARY"}, False),
-    "EXPOSED_TO_RISK": ({"COMPANY", "SUBSIDIARY"}, {"GEOPOLITICALRISK", "COMMODITY", "REGULATORYBODY", "MARKETEVENT", "RISK"}, False),
+    "EXPOSED_TO_RISK": (
+        {"COMPANY", "SUBSIDIARY"},
+        {"GEOPOLITICALRISK", "COMMODITY", "REGULATORYBODY", "MARKETEVENT", "RISK", "METRIC"},
+        False,
+    ),
     "LICENSES_FROM": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY"}, False),
     "LICENSES_TO": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY"}, False),
     "ACQUIRED_BY": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY"}, False),
     "DEFAULTED_ON": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "FINANCIALINSTITUTION"}, False),
+    "SPUN_OFF_FROM": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY"}, False),
+    "OWNS": ({"COMPANY", "SUBSIDIARY", "FINANCIALINSTITUTION", "PERSON"}, {"COMPANY", "SUBSIDIARY"}, False),
+    "INVESTS_IN": (
+        {"COMPANY", "SUBSIDIARY", "FINANCIALINSTITUTION", "PERSON"},
+        {"COMPANY", "SUBSIDIARY", "SECTOR", "INDUSTRY", "TECHNOLOGY", "PRODUCT"},
+        False,
+    ),
+    "PRODUCES": ({"COMPANY", "SUBSIDIARY"}, {"PRODUCT", "TECHNOLOGY", "COMMODITY"}, False),
+    "IMPACTS": (
+        {"MARKETEVENT", "GEOPOLITICALRISK", "RISK", "REGULATORYBODY", "SECTOR", "COMPANY", "METRIC", "PRODUCT"},
+        {"COMPANY", "SUBSIDIARY", "SECTOR", "PRODUCT", "METRIC"},
+        False,
+    ),
+    "REPORTS": ({"COMPANY", "SUBSIDIARY"}, {"METRIC", "RISK", "FORM", "FILING"}, False),
+    "FILED": ({"COMPANY", "SUBSIDIARY"}, {"FORM", "FILING", "DOCUMENT"}, False),
     "CO_INVESTS_WITH": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY"}, True),
     "PEER_OF": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY"}, True),
     "COLLABORATES_WITH": ({"COMPANY", "SUBSIDIARY"}, {"COMPANY", "SUBSIDIARY"}, True),
@@ -88,7 +145,7 @@ SYMMETRIC_RELATIONSHIPS: Set[str] = {
     rel for rel, (_, _, is_sym) in ONTOLOGY_SCHEMA.items() if is_sym
 }
 
-# Standard allowed node labels for Cypher queries and AST guards
+# Standard allowed node labels for Cypher queries, prompts, and AST guards
 DEFAULT_ALLOWED_LABELS: Set[str] = {
     "Company",
     "Person",
@@ -97,5 +154,16 @@ DEFAULT_ALLOWED_LABELS: Set[str] = {
     "Sector",
     "Metric",
     "Location",
+    "Risk",
+    "RegulatoryBody",
     "News",
 }
+
+EXTRACTION_PROMPT_REL_TYPES: Tuple[str, ...] = tuple(ONTOLOGY_SCHEMA.keys())
+
+
+def format_extraction_prompt_vocab() -> Tuple[str, str]:
+    """Return canonical comma-separated node labels and edge predicates for LLM prompts."""
+    labels = ", ".join(sorted(DEFAULT_ALLOWED_LABELS - {"News"}))
+    rels = ", ".join(sorted(EXTRACTION_PROMPT_REL_TYPES))
+    return labels, rels

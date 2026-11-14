@@ -167,7 +167,11 @@ def test_sec_extraction_quarantine_and_harvester_section_isolation(tmp_path: Pat
         }
     )
     worker.linker.link_entity = MagicMock(
-        return_value={"cik": "0000320193", "company_name": "Apple Inc.", "ticker": "AAPL"}
+        side_effect=lambda name=None, ticker=None: (
+            {"cik": "0000320193", "company_name": "Apple Inc.", "ticker": "AAPL"}
+            if (ticker == "AAPL" or name == "Apple Inc.")
+            else None
+        )
     )
 
     def _side_effect(text, source_id=None):

@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00023
 - **Filename**: `ADR-00023-unified-live-ontology-gate-and-schema---.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
-- **Target Subsystem**: `ontology` / `knowledge_graph` / `ingestion`
-- **Linked Commits**: Pending acceptance
+- **Status**: ACCEPTED
+- **Target Subsystem**: `ontology` / `knowledge_graph` / `ingestion` / `retrieval`
+- **Linked Commits**: Pending commit backfill
 
 ---
 

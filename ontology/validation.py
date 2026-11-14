@@ -23,7 +23,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from ontology.schema import ONTOLOGY_SCHEMA
+from ontology.alignment import canonicalize_symmetric_edge
+from ontology.schema import LABEL_NORMALIZATION_MAP, ONTOLOGY_SCHEMA, PREDICATE_ALIASES
 
 logger = logging.getLogger("ontology_validation")
 
@@ -69,22 +70,42 @@ def validate_and_orient_triple(
     tgt_id: str,
     tgt_label: str,
     rel_type: str,
+    *,
+    strict: bool = True,
 ) -> Optional[Tuple[str, str, str, str, str]]:
     """
     Validate relationship schema against domain and range ontology axioms.
-    If the relationship is inverted (e.g. Company -> CEO_OF -> Person), automatically
-    orients it correctly: (Person -> CEO_OF -> Company).
-    
+    Maps PREDICATE_ALIASES first, auto-orients inverted triples where unambiguous,
+    and rejects off-ontology predicates when strict=True.
+
     Returns:
         (canonical_src, canonical_src_label, canonical_tgt, canonical_tgt_label, canonical_rel)
         or None if the triple is fundamentally incompatible with the ontology schema.
     """
     clean_rel = rel_type.strip().upper()
-    src_lbl = (src_label or "ENTITY").strip().upper()
-    tgt_lbl = (tgt_label or "ENTITY").strip().upper()
+    raw_src_lbl = (src_label or "ENTITY").strip().upper()
+    raw_tgt_lbl = (tgt_label or "ENTITY").strip().upper()
+    src_lbl = LABEL_NORMALIZATION_MAP.get(raw_src_lbl, raw_src_lbl)
+    tgt_lbl = LABEL_NORMALIZATION_MAP.get(raw_tgt_lbl, raw_tgt_lbl)
+
+    if clean_rel in PREDICATE_ALIASES:
+        canonical_rel, should_swap = PREDICATE_ALIASES[clean_rel]
+        clean_rel = canonical_rel
+        if should_swap:
+            src_id, tgt_id = tgt_id, src_id
+            src_lbl, tgt_lbl = tgt_lbl, src_lbl
 
     if clean_rel not in ONTOLOGY_SCHEMA:
-        # Allow open custom relationships with default labels
+        if strict:
+            logger.debug(
+                "Rejecting off-ontology predicate under strict gate: (%s:%s)-[:%s]->(%s:%s)",
+                src_id,
+                src_lbl,
+                clean_rel,
+                tgt_id,
+                tgt_lbl,
+            )
+            return None
         return (src_id, src_lbl, tgt_id, tgt_lbl, clean_rel)
 
     valid_srcs, valid_tgts, is_symmetric = ONTOLOGY_SCHEMA[clean_rel]
@@ -393,3 +414,151 @@ def check_degree_anomaly_quarantine(
     ]
 
     return clean_nodes, clean_edges, quarantined_records
+
+
+def _record_ontology_rejection(
+    *,
+    rejection_queue: Optional[Any],
+    reason: str,
+    detail: str,
+    payload: Dict[str, Any],
+    source_id: Optional[str] = None,
+) -> None:
+    """Best-effort logging of rejected nodes or triples to RuntimeRejectionQueue."""
+    try:
+        from sft_pipeline.rejection_queue import ErrorStage, RuntimeRejectionQueue
+
+        queue = rejection_queue or RuntimeRejectionQueue()
+        queue.record_failure(
+            task_id="LIVE_ONTOLOGY_GATE",
+            prompt=f"source_id={source_id or 'unknown'}",
+            completion=json.dumps(payload, default=str),
+            error_stage=ErrorStage.ONTOLOGY_PRUNING,
+            error_message=f"{reason}: {detail}",
+            metadata={"source_id": source_id, "reason": reason, **payload},
+            sample_id=source_id,
+        )
+    except Exception as exc:
+        logger.warning("Failed to persist ontology gate rejection: %s", exc)
+
+
+def validate_graph_payload(
+    graph_data: Dict[str, Any],
+    *,
+    source_id: Optional[str] = None,
+    rejection_queue: Optional[Any] = None,
+    strict: bool = True,
+    default_node_type: str = "Entity",
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Enforce inline write-time ontology validation across candidate nodes and edges.
+
+    Applies placeholder pruning (`is_generic_placeholder`), lifecycle predicate normalization,
+    strict SHACL domain/range + alias checks (`validate_and_orient_triple`), symmetric edge
+    canonicalization (`canonicalize_symmetric_edge`), and ownership DAG cycle breaking.
+    """
+    from ontology.guardrails import LIFECYCLE_TERMINATION_PREDICATES
+
+    raw_nodes: List[Dict[str, Any]] = graph_data.get("nodes", []) or []
+    raw_edges: List[Dict[str, Any]] = graph_data.get("edges", []) or []
+
+    clean_nodes: List[Dict[str, Any]] = []
+    node_type_by_id: Dict[str, str] = {}
+    dropped_placeholders: Set[str] = set()
+
+    for node in raw_nodes:
+        nid = str(node.get("id", "")).strip()
+        if not nid:
+            continue
+        props = dict(node.get("properties", {}) or {})
+        name_val = str(props.get("name", "")).strip()
+        if is_generic_placeholder(nid) or (name_val and is_generic_placeholder(name_val)):
+            dropped_placeholders.add(nid)
+            _record_ontology_rejection(
+                rejection_queue=rejection_queue,
+                reason="GENERIC_PLACEHOLDER_NODE",
+                detail=f"Rejected abstract placeholder node '{nid}'",
+                payload={"node": node},
+                source_id=source_id,
+            )
+            continue
+
+        raw_type = str(node.get("type", default_node_type)).strip() or default_node_type
+        node_type_by_id[nid] = raw_type
+        clean_nodes.append({"id": nid, "type": raw_type, "properties": props})
+
+    candidate_edges: List[Dict[str, Any]] = []
+    for edge in raw_edges:
+        src = str(edge.get("source", "")).strip()
+        tgt = str(edge.get("target", "")).strip()
+        if not src or not tgt:
+            continue
+        if (
+            src in dropped_placeholders
+            or tgt in dropped_placeholders
+            or is_generic_placeholder(src)
+            or is_generic_placeholder(tgt)
+        ):
+            _record_ontology_rejection(
+                rejection_queue=rejection_queue,
+                reason="GENERIC_PLACEHOLDER_EDGE",
+                detail=f"Rejected edge referencing generic placeholder: {src} -> {tgt}",
+                payload={"edge": edge},
+                source_id=source_id,
+            )
+            continue
+
+        raw_rel = str(edge.get("type", "RELATED_TO")).strip().upper()
+        props = dict(edge.get("properties", {}) or {})
+
+        if raw_rel in LIFECYCLE_TERMINATION_PREDICATES:
+            raw_rel = "SUPPLIES_TO"
+            props.setdefault("status", "TERMINATED")
+            props.setdefault("is_active", False)
+
+        src_lbl = node_type_by_id.get(src, default_node_type)
+        tgt_lbl = node_type_by_id.get(tgt, default_node_type)
+
+        oriented = validate_and_orient_triple(
+            src,
+            src_lbl,
+            tgt,
+            tgt_lbl,
+            raw_rel,
+            strict=strict,
+        )
+        if oriented is None:
+            _record_ontology_rejection(
+                rejection_queue=rejection_queue,
+                reason="SCHEMA_OR_DOMAIN_RANGE_REJECTED",
+                detail=f"Rejected triple ({src}:{src_lbl})-[:{raw_rel}]->({tgt}:{tgt_lbl})",
+                payload={"edge": edge, "source_type": src_lbl, "target_type": tgt_lbl},
+                source_id=source_id,
+            )
+            continue
+
+        v_src, _v_src_lbl, v_tgt, _v_tgt_lbl, v_rel = oriented
+        final_src, final_tgt = canonicalize_symmetric_edge(v_src, v_tgt, v_rel)
+        candidate_edges.append(
+            {
+                "source_id": final_src,
+                "target_id": final_tgt,
+                "rel_type": v_rel,
+                "confidence": float(props.get("confidence", 0.75) or 0.75),
+                "source": final_src,
+                "target": final_tgt,
+                "type": v_rel,
+                "properties": props,
+            }
+        )
+
+    dag_checked = detect_and_break_ownership_cycles(candidate_edges)
+    clean_edges = [
+        {
+            "source": e["source"],
+            "target": e["target"],
+            "type": e["type"],
+            "properties": e["properties"],
+        }
+        for e in dag_checked
+    ]
+    return {"nodes": clean_nodes, "edges": clean_edges}

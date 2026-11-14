@@ -543,6 +543,54 @@ class EdgarWorker:
 
         fiscal_year = int(filing_date[:4]) if filing_date and len(filing_date) >= 4 else datetime.utcnow().year
 
+        from ontology.validation import validate_graph_payload
+
+        linked_nodes: List[Dict[str, Any]] = []
+        for node in nodes:
+            raw_id = str(node.get("id", "")).strip()
+            if not raw_id:
+                continue
+            raw_type = str(node.get("type", "Company")).strip()
+            label = "".join(c for c in raw_type if c.isalnum())[:MAX_LABEL_LENGTH] or "Company"
+            props = dict(node.get("properties", {}) or {})
+            resolved = self.linker.link_entity(name=raw_id, ticker=props.get("ticker"))
+            canonical_id = resolved["company_name"] if resolved else raw_id
+            if resolved and resolved.get("ticker"):
+                props["ticker"] = resolved["ticker"]
+            if resolved and resolved.get("cik"):
+                props["cik"] = resolved["cik"]
+            linked_nodes.append({"id": canonical_id, "type": label, "properties": props})
+
+        linked_edges: List[Dict[str, Any]] = []
+        for edge in edges:
+            source_raw = str(edge.get("source", "")).strip()
+            target_raw = str(edge.get("target", "")).strip()
+            if not source_raw or not target_raw:
+                continue
+            res_s = self.linker.link_entity(name=source_raw)
+            res_t = self.linker.link_entity(name=target_raw)
+            source_id = res_s["company_name"] if res_s else source_raw
+            target_id = res_t["company_name"] if res_t else target_raw
+            raw_type = str(edge.get("type", "RELATED_TO")).strip().upper()
+            rel_type = "".join(c for c in raw_type if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH] or "RELATED_TO"
+            linked_edges.append({
+                "source": source_id,
+                "target": target_id,
+                "type": rel_type,
+                "properties": dict(edge.get("properties", {}) or {}),
+            })
+
+        gated = validate_graph_payload(
+            {"nodes": linked_nodes, "edges": linked_edges},
+            source_id=f"{accession_number}:{section}",
+            strict=True,
+            default_node_type="Company",
+        )
+        gated_nodes = gated["nodes"]
+        gated_edges = gated["edges"]
+        if not gated_nodes and not gated_edges:
+            return [], []
+
         inserted_nodes = []
         inserted_edges = []
 
@@ -554,40 +602,18 @@ class EdgarWorker:
             )
             inserted_nodes.append(primary_name)
 
-            for node in nodes:
-                raw_id = str(node.get("id", "")).strip()
-                if not raw_id:
-                    continue
-
-                raw_type = str(node.get("type", "Company")).strip()
-                label = "".join(c for c in raw_type if c.isalnum())[:MAX_LABEL_LENGTH] or "Company"
+            for node in gated_nodes:
+                canonical_id = node["id"]
+                label = "".join(c for c in node.get("type", "Company") if c.isalnum())[:MAX_LABEL_LENGTH] or "Company"
                 props = node.get("properties", {}) or {}
-
-                resolved = self.linker.link_entity(name=raw_id, ticker=props.get("ticker"))
-                canonical_id = resolved["company_name"] if resolved else raw_id
-                if resolved and resolved.get("ticker"):
-                    props["ticker"] = resolved["ticker"]
-                if resolved and resolved.get("cik"):
-                    props["cik"] = resolved["cik"]
-
                 query = f"MERGE (n:{label} {{id: $id}}) SET n += $props"
                 session.run(query, id=canonical_id, props=props)
                 inserted_nodes.append(canonical_id)
 
-            for edge in edges:
-                source_raw = str(edge.get("source", "")).strip()
-                target_raw = str(edge.get("target", "")).strip()
-                if not source_raw or not target_raw:
-                    continue
-
-                res_s = self.linker.link_entity(name=source_raw)
-                res_t = self.linker.link_entity(name=target_raw)
-
-                source_id = res_s["company_name"] if res_s else source_raw
-                target_id = res_t["company_name"] if res_t else target_raw
-
-                raw_type = str(edge.get("type", "RELATED_TO")).strip().upper()
-                rel_type = "".join(c for c in raw_type if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH] or "RELATED_TO"
+            for edge in gated_edges:
+                source_id = edge["source"]
+                target_id = edge["target"]
+                rel_type = edge["type"]
                 props = edge.get("properties", {}) or {}
 
                 query = f"""

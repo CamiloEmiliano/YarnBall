@@ -326,30 +326,25 @@ def sync_sec_companies_from_sec(pg_conn, sp500_tickers: Optional[List[str]] = No
             cur.close()
 
 
-SEC_EXTRACTION_PROMPT = """You are an expert financial SEC filing knowledge graph extractor.
+from ontology.schema import format_extraction_prompt_vocab
+
+_SEC_ALLOWED_LABELS, _SEC_ALLOWED_RELS = format_extraction_prompt_vocab()
+
+SEC_EXTRACTION_PROMPT = f"""You are an expert financial SEC filing knowledge graph extractor.
 Analyze the following section from an SEC filing (e.g. Form 10-K Item 1 Business / Item 1A Risks, or Form 8-K).
 Extract key corporate entities, suppliers, customers, strategic partners, competitors, key products, and material risks.
 
 Output ONLY a valid JSON object matching this schema:
-{
+{{
     "nodes": [
-        {"id": "<Full Company or Entity Name>", "type": "Company|Product|Technology|RiskFactor|Person|RegulatoryBody", "properties": {"ticker": "<TICKER if known>"}}
+        {{"id": "<Full Company or Entity Name>", "type": "<{_SEC_ALLOWED_LABELS}>", "properties": {{"ticker": "<TICKER if known>"}}}}
     ],
     "edges": [
-        {"source": "<Source Entity>", "target": "<Target Entity>", "type": "<RELATIONSHIP_TYPE>", "properties": {"nature": "<brief context>"}}
+        {{"source": "<Source Entity>", "target": "<Target Entity>", "type": "<RELATIONSHIP_TYPE>", "properties": {{"nature": "<brief context>"}}}}
     ]
-}
+}}
 
-Allowed relationship types:
-- SUPPLIES_TO (source sells/supplies goods/services to target)
-- CUSTOMER_OF (source buys goods/services from target)
-- COMPETES_WITH (source competes directly with target)
-- PARTNERED_WITH (strategic alliance, joint venture, distribution agreement)
-- LICENSES_TO / LICENSES_FROM (IP or patent licensing)
-- OWNS / CONTROLS (equity stake, joint venture)
-- EXPOSED_TO_RISK (company exposed to specific operational/geopolitical/supply risk)
-- ACQUIRED / MERGED_WITH (M&A events)
-
+Allowed relationship types: {_SEC_ALLOWED_RELS}.
 Do not include any explanation or markdown formatting. Output raw JSON only."""
 
 

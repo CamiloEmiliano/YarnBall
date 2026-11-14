@@ -33,19 +33,24 @@ logger = logging.getLogger(__name__)
 MAX_LABEL_LENGTH = 64
 MAX_REL_TYPE_LENGTH = 64
 
-SYSTEM_EXTRACTION_PROMPT = """You are an expert financial knowledge graph extractor.
+from ontology.schema import format_extraction_prompt_vocab
+from ontology.validation import validate_graph_payload
+
+_ALLOWED_NODE_TYPES_STR, _ALLOWED_REL_TYPES_STR = format_extraction_prompt_vocab()
+
+SYSTEM_EXTRACTION_PROMPT = f"""You are an expert financial knowledge graph extractor.
 Read the provided financial news article and extract key entities and relationships.
 Output ONLY a valid JSON object matching this schema:
-{
+{{
     "nodes": [
-        {"id": "<Entity Name>", "type": "<NodeType>", "properties": {"ticker": "<TICKER if applicable>", "<key>": "<value>"}}
+        {{"id": "<Entity Name>", "type": "<NodeType>", "properties": {{"ticker": "<TICKER if applicable>", "<key>": "<value>"}}}}
     ],
     "edges": [
-        {"source": "<Source Entity Name>", "target": "<Target Entity Name>", "type": "<EDGE_TYPE>", "properties": {}}
+        {{"source": "<Source Entity Name>", "target": "<Target Entity Name>", "type": "<EDGE_TYPE>", "properties": {{}}}}
     ]
-}
-Allowed node types: Company, Person, Product, Technology, Sector, Metric, Location.
-Allowed edge types: ACQUIRED, INVESTS_IN, PARTNERED_WITH, COMPETES_WITH, LEADS, PRODUCES, IMPACTS, REPORTS.
+}}
+Allowed node types: {_ALLOWED_NODE_TYPES_STR}.
+Allowed edge types: {_ALLOWED_REL_TYPES_STR}.
 Do not include any explanation or markdown formatting. Output raw JSON only."""
 
 
@@ -486,13 +491,21 @@ def store_graph_entities(
     text: str,
     graph_data: Optional[Dict[str, Any]] = None,
     driver: Optional[Any] = None,
+    rejection_queue: Optional[Any] = None,
 ) -> None:
-    """Extract entities and relationships and persist them to Memgraph."""
+    """Extract entities, enforce live ontology gate, and persist them to Memgraph."""
     if graph_data is None:
-        graph_data = extract_entities(text, source_id=source_hash)
+        graph_data = extract_entities(text, source_id=source_hash, rejection_queue=rejection_queue)
 
-    nodes: List[Dict[str, Any]] = graph_data.get("nodes", [])
-    edges: List[Dict[str, Any]] = graph_data.get("edges", [])
+    gated = validate_graph_payload(
+        graph_data,
+        source_id=source_hash,
+        rejection_queue=rejection_queue,
+        strict=True,
+        default_node_type="Entity",
+    )
+    nodes: List[Dict[str, Any]] = gated.get("nodes", [])
+    edges: List[Dict[str, Any]] = gated.get("edges", [])
 
     if not nodes and not edges:
         return

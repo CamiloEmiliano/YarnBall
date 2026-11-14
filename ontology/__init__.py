@@ -12,9 +12,12 @@ Provides:
 from .schema import (
     DEFAULT_ALLOWED_LABELS,
     EntityClass,
+    LABEL_NORMALIZATION_MAP,
     ONTOLOGY_SCHEMA,
+    PREDICATE_ALIASES,
     RelationPredicate,
     SYMMETRIC_RELATIONSHIPS,
+    format_extraction_prompt_vocab,
 )
 from .reification import (
     AnnotatedTriple,
@@ -34,6 +37,7 @@ from .validation import (
     parse_iso_date,
     resolve_edge_state_transitions,
     validate_and_orient_triple,
+    validate_graph_payload,
     validate_temporal_consistency,
 )
 from .alignment import (
@@ -58,8 +62,11 @@ __all__ = [
     "EntityClass",
     "RelationPredicate",
     "ONTOLOGY_SCHEMA",
+    "PREDICATE_ALIASES",
+    "LABEL_NORMALIZATION_MAP",
     "SYMMETRIC_RELATIONSHIPS",
     "DEFAULT_ALLOWED_LABELS",
+    "format_extraction_prompt_vocab",
     # Reification
     "AnnotatedTriple",
     "PolarityAxis",
@@ -72,6 +79,7 @@ __all__ = [
     "BENCHMARK_TOP_COMPANIES",
     "is_generic_placeholder",
     "validate_and_orient_triple",
+    "validate_graph_payload",
     "compute_edge_confidence",
     "detect_and_break_ownership_cycles",
     "parse_iso_date",
