@@ -62,7 +62,7 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00027](ADR-00027-canonical-staged-8k-envelope-and-catalog.md) | Canonical Staged Form 8-K Envelope & Workbench Discovery | 2026-11-14 19:25 UTC | `PROPOSED` | `ingestion` / `explorer` | Pending acceptance |
 | [ADR-00028](ADR-00028-cross-source-entity-linking-and-kg-sync-.md) | Cross-Source Entity Linking & Live-to-Snapshot Graph Sync | 2026-11-14 19:25 UTC | `PROPOSED` | `knowledge_graph` / `explorer` | Pending acceptance |
 | [ADR-00029](ADR-00029-structured-llm-extraction-and-quarantine.md) | Structured LLM Extraction Outputs & Failure Quarantine Queue | 2026-11-14 19:25 UTC | `PROPOSED` | `knowledge_graph` / `streaming` | Pending acceptance |
-| [ADR-00030](ADR-00030-purge-non-ft-qwen-runtime-dependencies--.md) | Purge Non-FT Qwen Runtime Dependencies & Unify Client | 2026-11-14 20:22 UTC | `ACCEPTED` | `sft_pipeline` / `knowledge_graph` | Pending hash backfill |
+| [ADR-00030](ADR-00030-purge-non-ft-qwen-runtime-dependencies--.md) | Purge Non-FT Qwen Runtime Dependencies & Unify Client | 2026-11-14 20:22 UTC | `ACCEPTED` | `sft_pipeline` / `knowledge_graph` | [`47681f4`](../../sft_pipeline/serving/model_client.py), [`47681f4`](../../knowledge_graph/graph_store.py), [`47681f4`](../../ingestion/sec/parser.py), [`47681f4`](../../retrieval/text_to_cql.py) |
 
 
 

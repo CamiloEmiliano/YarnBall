@@ -5,7 +5,7 @@
 - **Date**: 2026-11-14 20:22 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `sft_pipeline` / `knowledge_graph` / `ingestion` / `retrieval`
-- **Linked Commits**: Pending hash backfill ([`sft_pipeline/serving/model_client.py`](../../sft_pipeline/serving/model_client.py), [`knowledge_graph/graph_store.py`](../../knowledge_graph/graph_store.py), [`ingestion/sec/parser.py`](../../ingestion/sec/parser.py), [`retrieval/text_to_cql.py`](../../retrieval/text_to_cql.py))
+- **Linked Commits**: [`47681f4`](../../sft_pipeline/serving/model_client.py), [`47681f4`](../../knowledge_graph/graph_store.py), [`47681f4`](../../ingestion/sec/parser.py), [`47681f4`](../../retrieval/text_to_cql.py), [`47681f4`](../../tests/knowledge_graph/test_model_client_unification.py)
 
 ---
 
