@@ -5,7 +5,7 @@
 - **Date**: 2026-11-14 19:25 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `ontology` / `knowledge_graph` / `ingestion` / `retrieval`
-- **Linked Commits**: Pending commit backfill
+- **Linked Commits**: [`a4b7325`](../../ontology/schema.py), [`a4b7325`](../../ontology/validation.py), [`a4b7325`](../../knowledge_graph/graph_store.py), [`a4b7325`](../../ingestion/sec/harvester.py)
 
 ---
 

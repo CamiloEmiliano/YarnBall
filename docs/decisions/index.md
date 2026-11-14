@@ -55,7 +55,7 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00020](ADR-00020-fail-fast-embedder-and-zero-vector-guard.md) | Fail-Fast Embedder Initialization & Zero-Vector Prohibition | 2026-11-14 19:25 UTC | `PROPOSED` | `embedding` / `retrieval` | Pending acceptance |
 | [ADR-00021](ADR-00021-contextual-node-embeddings-and-pgvector-.md) | Contextualized Node Embeddings & Composite `pgvector` Keying | 2026-11-14 19:25 UTC | `PROPOSED` | `knowledge_graph` / `retrieval` | Pending acceptance |
 | [ADR-00022](ADR-00022-unified-sec-news-dense-vector-coverage--.md) | Unified SEC & News Dense Vector Coverage & Dimensions | 2026-11-14 19:25 UTC | `PROPOSED` | `retrieval` / `ingestion` | Pending acceptance |
-| [ADR-00023](ADR-00023-unified-live-ontology-gate-and-schema---.md) | Unified Live Ontology Gate & Schema Convergence | 2026-11-14 19:25 UTC | `ACCEPTED` | `ontology` / `knowledge_graph` / `ingestion` / `retrieval` | Pending commit backfill |
+| [ADR-00023](ADR-00023-unified-live-ontology-gate-and-schema---.md) | Unified Live Ontology Gate & Schema Convergence | 2026-11-14 19:25 UTC | `ACCEPTED` | `ontology` / `knowledge_graph` / `ingestion` / `retrieval` | [`a4b7325`](../../ontology/schema.py), [`a4b7325`](../../ontology/validation.py), [`a4b7325`](../../knowledge_graph/graph_store.py) |
 | [ADR-00024](ADR-00024-clause-scoped-negation-and-hedge-filter-.md) | Clause-Scoped Negation, Hedging & Structural Filtering | 2026-11-14 19:25 UTC | `PROPOSED` | `ontology` | Pending acceptance |
 | [ADR-00025](ADR-00025-entity-stoplist-and-dynamic-cik-rollup--.md) | Financial Entity Placeholder Stoplist & Dynamic CIK Rollup | 2026-11-14 19:25 UTC | `PROPOSED` | `ontology` / `knowledge_graph` | Pending acceptance |
 | [ADR-00026](ADR-00026-cascade-parameter-extraction-provenance-.md) | Supply-Chain Cascade Parameter Extraction & Empirical Bounds | 2026-11-14 19:25 UTC | `PROPOSED` | `contagion` / `retrieval` | Pending acceptance |
@@ -63,6 +63,7 @@ ADR-00002-dual-exchange-sp500-universe-grounding-.md  (53 chars)
 | [ADR-00028](ADR-00028-cross-source-entity-linking-and-kg-sync-.md) | Cross-Source Entity Linking & Live-to-Snapshot Graph Sync | 2026-11-14 19:25 UTC | `PROPOSED` | `knowledge_graph` / `explorer` | Pending acceptance |
 | [ADR-00029](ADR-00029-structured-llm-extraction-and-quarantine.md) | Structured LLM Extraction Outputs & Failure Quarantine Queue | 2026-11-14 19:25 UTC | `ACCEPTED` | `knowledge_graph` / `streaming` / `ingestion` / `sft_pipeline` | `e5d1028` |
 | [ADR-00030](ADR-00030-purge-non-ft-qwen-runtime-dependencies--.md) | Purge Non-FT Qwen Runtime Dependencies & Unify Client | 2026-11-14 20:22 UTC | `ACCEPTED` | `sft_pipeline` / `knowledge_graph` | [`47681f4`](../../sft_pipeline/serving/model_client.py), [`47681f4`](../../knowledge_graph/graph_store.py), [`47681f4`](../../ingestion/sec/parser.py), [`47681f4`](../../retrieval/text_to_cql.py) |
+| [ADR-00031](ADR-00031-iterative-predicate-convergence-protocol.md) | Iterative Predicate Sufficiency & Quarantine Convergence | 2026-11-14 23:05 UTC | `PROPOSED` | `ontology` / `sft_pipeline` / `knowledge_graph` | Pending acceptance |
 
 
 
