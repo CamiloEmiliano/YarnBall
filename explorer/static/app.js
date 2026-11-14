@@ -9,6 +9,11 @@
     catalog: null,
     lastEvaluation: null,
     rawInputText: "",
+    kgDirection: "both",
+    lastSubgraph: null,
+    selectedEdgeKey: null,
+    lastCohort: null,
+    cohortOffset: 0,
   };
 
   const els = {
@@ -57,6 +62,36 @@
     copyJsonlBtn: document.getElementById("copyJsonlBtn"),
     downloadJsonlBtn: document.getElementById("downloadJsonlBtn"),
     jsonlStatusText: document.getElementById("jsonlStatusText"),
+    kgSourceSelect: document.getElementById("kgSourceSelect"),
+    kgTickerSelect: document.getElementById("kgTickerSelect"),
+    kgHopsSelect: document.getElementById("kgHopsSelect"),
+    kgDateInput: document.getElementById("kgDateInput"),
+    kgClearDateBtn: document.getElementById("kgClearDateBtn"),
+    kgRelSelect: document.getElementById("kgRelSelect"),
+    kgStatusSelect: document.getElementById("kgStatusSelect"),
+    kgQueryBtn: document.getElementById("kgQueryBtn"),
+    kgErrorBox: document.getElementById("kgErrorBox"),
+    kgProvenancePanel: document.getElementById("kgProvenancePanel"),
+    kgCanvasTitle: document.getElementById("kgCanvasTitle"),
+    kgSvgMount: document.getElementById("kgSvgMount"),
+    kgEdgeCountSpan: document.getElementById("kgEdgeCountSpan"),
+    kgSourceMetaSpan: document.getElementById("kgSourceMetaSpan"),
+    kgEdgesTbody: document.getElementById("kgEdgesTbody"),
+    cohortSelect: document.getElementById("cohortSelect"),
+    cohortCustomPathInput: document.getElementById("cohortCustomPathInput"),
+    cVerdictFilter: document.getElementById("cVerdictFilter"),
+    cCategoryFilter: document.getElementById("cCategoryFilter"),
+    cItemFilter: document.getElementById("cItemFilter"),
+    cTickerFilter: document.getElementById("cTickerFilter"),
+    cLimitSelect: document.getElementById("cLimitSelect"),
+    cohortQueryBtn: document.getElementById("cohortQueryBtn"),
+    cohortMatchSummary: document.getElementById("cohortMatchSummary"),
+    cohortErrorBox: document.getElementById("cohortErrorBox"),
+    cohortSummaryRow: document.getElementById("cohortSummaryRow"),
+    cohortTbody: document.getElementById("cohortTbody"),
+    cohortPageStatus: document.getElementById("cohortPageStatus"),
+    cohortPrevBtn: document.getElementById("cohortPrevBtn"),
+    cohortNextBtn: document.getElementById("cohortNextBtn"),
   };
 
   function clearNode(node) {
@@ -124,6 +159,50 @@
       : "Ollama Offline (Mock Safe)";
   }
 
+  function setKgTickers(tickers, preferredTicker) {
+    const unique = [...new Set((tickers || []).filter(Boolean))];
+    clearNode(els.kgTickerSelect);
+    unique.forEach((t) => {
+      const opt = makeEl("option", "", t);
+      opt.value = t;
+      els.kgTickerSelect.appendChild(opt);
+    });
+    const allOpt = makeEl("option", "", "ALL (Full Snapshot)");
+    allOpt.value = "";
+    els.kgTickerSelect.appendChild(allOpt);
+
+    if (preferredTicker !== undefined && preferredTicker !== null) {
+      if (preferredTicker && !unique.includes(preferredTicker)) {
+        const extra = makeEl("option", "", preferredTicker);
+        extra.value = preferredTicker;
+        els.kgTickerSelect.insertBefore(extra, allOpt);
+      }
+      els.kgTickerSelect.value = preferredTicker;
+    } else if (unique.includes("TSM")) {
+      els.kgTickerSelect.value = "TSM";
+    } else if (unique.length > 0) {
+      els.kgTickerSelect.value = unique[0];
+    } else {
+      els.kgTickerSelect.value = "";
+    }
+  }
+
+  function syncKgSourceTickers(preferredTicker) {
+    if (!state.catalog) return;
+    const val = els.kgSourceSelect.value;
+    if (val.startsWith("snapshot:")) {
+      const sid = val.slice("snapshot:".length);
+      const snap = (state.catalog.snapshots || []).find((s) => s.snapshot_id === sid);
+      setKgTickers(snap ? snap.tickers : [], preferredTicker);
+    } else if (val.startsWith("edges:")) {
+      const epath = val.slice("edges:".length);
+      const manifest = (state.catalog.edge_manifests || []).find((m) => m.path === epath);
+      setKgTickers(manifest ? manifest.tickers : [], preferredTicker);
+    } else {
+      setKgTickers([], "");
+    }
+  }
+
   function populateCatalog(catalog) {
     state.catalog = catalog;
     renderOllamaStatus(catalog.ollama);
@@ -141,24 +220,51 @@
     defaultOpt.value = "canonical";
     els.topologySelect.appendChild(defaultOpt);
 
+    clearNode(els.kgSourceSelect);
     (catalog.snapshots || []).forEach((s) => {
-      const opt = makeEl(
-        "option",
-        "",
-        "Snapshot: " + s.snapshot_id + " (" + s.edge_count + " edges)"
-      );
-      opt.value = "snapshot:" + s.snapshot_id;
-      els.topologySelect.appendChild(opt);
+      const label = "Snapshot: " + s.snapshot_id + " (" + s.edge_count + " edges)";
+      const opt1 = makeEl("option", "", label);
+      opt1.value = "snapshot:" + s.snapshot_id;
+      els.topologySelect.appendChild(opt1);
+
+      const opt2 = makeEl("option", "", label);
+      opt2.value = "snapshot:" + s.snapshot_id;
+      els.kgSourceSelect.appendChild(opt2);
     });
     (catalog.edge_manifests || []).forEach((m) => {
-      const opt = makeEl(
-        "option",
-        "",
-        "Manifest: " + m.name + " (" + m.edge_count + " edges)"
-      );
-      opt.value = "edges:" + m.path;
-      els.topologySelect.appendChild(opt);
+      const label = "Manifest: " + m.name + " (" + m.edge_count + " edges)";
+      const opt1 = makeEl("option", "", label);
+      opt1.value = "edges:" + m.path;
+      els.topologySelect.appendChild(opt1);
+
+      const opt2 = makeEl("option", "", label);
+      opt2.value = "edges:" + m.path;
+      els.kgSourceSelect.appendChild(opt2);
     });
+
+    if (els.kgSourceSelect.querySelector("option[value='snapshot:G_resolved']")) {
+      els.kgSourceSelect.value = "snapshot:G_resolved";
+    }
+    if (!els.kgSourceSelect.options.length) {
+      const emptyOpt = makeEl("option", "", "No local snapshots or manifests found");
+      emptyOpt.value = "";
+      els.kgSourceSelect.appendChild(emptyOpt);
+    }
+    syncKgSourceTickers();
+
+    clearNode(els.cohortSelect);
+    const cohorts = catalog.cohorts || [];
+    if (!cohorts.length) {
+      const noneOpt = makeEl("option", "", "No .jsonl cohorts auto-discovered (enter path)");
+      noneOpt.value = "";
+      els.cohortSelect.appendChild(noneOpt);
+    } else {
+      cohorts.forEach((c) => {
+        const opt = makeEl("option", "", c.name + " (" + c.record_count + " rows)");
+        opt.value = c.path;
+        els.cohortSelect.appendChild(opt);
+      });
+    }
   }
 
   function renderGanttSvg(report) {
@@ -514,13 +620,624 @@
     return rows.map((r) => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : "");
   }
 
+  // ============================================================================
+  // ADR-00019: PiT KG Explorer (GET /api/subgraph)
+  // ============================================================================
+
+  function makeEdgeKey(e) {
+    return [
+      e.source || "",
+      e.rel_type || "",
+      e.target || "",
+      e.input_group || e.nature || "",
+    ].join("|");
+  }
+
+  function showKgError(msg) {
+    els.kgErrorBox.textContent = msg;
+    els.kgErrorBox.classList.toggle("hidden", !msg);
+  }
+
+  function renderKgDirectionButtons() {
+    document.querySelectorAll(".dir-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.dir === state.kgDirection);
+    });
+  }
+
+  function renderKgProvenance(edge) {
+    clearNode(els.kgProvenancePanel);
+    if (!edge) {
+      els.kgProvenancePanel.appendChild(
+        makeEl(
+          "div",
+          "muted-text",
+          "Click any arrow in the graph or row in the table below to inspect contract dates, buffers, and source hash."
+        )
+      );
+      return;
+    }
+    const fields = [
+      ["Edge", (edge.source || "?") + " → " + (edge.target || "?")],
+      ["Relationship", edge.rel_type || "—"],
+      ["Nature / Input", edge.nature || edge.input_group || "—"],
+      [
+        "Procurement Share",
+        edge.share !== null && edge.share !== undefined
+          ? (Number(edge.share) * 100).toFixed(1) + "%"
+          : "N/A",
+      ],
+      [
+        "Inventory Buffer",
+        edge.buffer_days !== null && edge.buffer_days !== undefined
+          ? Number(edge.buffer_days).toFixed(0) + " days"
+          : "N/A",
+      ],
+      [
+        "Confidence / Evid.",
+        edge.confidence !== null && edge.confidence !== undefined
+          ? String(edge.confidence) +
+            (edge.evidence_count !== undefined ? " (" + edge.evidence_count + " src)" : "")
+          : "—",
+      ],
+      ["Valid From", edge.valid_from || "Unbounded"],
+      ["Valid To", edge.valid_to || "Active / Open"],
+      ["Status", edge.status || "—"],
+      ["Source Hash", edge.source_hash || "—"],
+    ];
+    fields.forEach(([k, v]) => {
+      const row = makeEl("div", "kv-row");
+      row.appendChild(makeEl("span", "kv-key", k));
+      row.appendChild(makeEl("span", "kv-val mono", v));
+      els.kgProvenancePanel.appendChild(row);
+    });
+  }
+
+  function computeNodeLanes(nodes, edges, rootTicker) {
+    const laneById = new Map();
+    if (rootTicker) {
+      nodes.forEach((n) => {
+        if (n.role === "ROOT" || Number(n.hop) === 0) {
+          laneById.set(n.id, 0);
+        } else if (n.role === "UPSTREAM") {
+          laneById.set(n.id, -Math.max(1, Number(n.hop || 1)));
+        } else {
+          laneById.set(n.id, Math.max(1, Number(n.hop || 1)));
+        }
+      });
+      return laneById;
+    }
+
+    nodes.forEach((n) => laneById.set(n.id, 0));
+    const maxPasses = Math.min(8, Math.max(2, nodes.length));
+    for (let pass = 0; pass < maxPasses; pass++) {
+      let changed = false;
+      edges.forEach((e) => {
+        const sl = laneById.get(e.source) || 0;
+        const tl = laneById.get(e.target) || 0;
+        if (tl <= sl) {
+          laneById.set(e.target, sl + 1);
+          changed = true;
+        }
+      });
+      if (!changed) break;
+    }
+    return laneById;
+  }
+
+  function renderKgSubgraph(data) {
+    state.lastSubgraph = data;
+    const nodes = data.nodes || [];
+    const edges = data.edges || [];
+
+    if (edges.length && !edges.some((e) => makeEdgeKey(e) === state.selectedEdgeKey)) {
+      state.selectedEdgeKey = makeEdgeKey(edges[0]);
+    } else if (!edges.length) {
+      state.selectedEdgeKey = null;
+    }
+
+    const activeEdge = edges.find((e) => makeEdgeKey(e) === state.selectedEdgeKey) || null;
+    renderKgProvenance(activeEdge);
+
+    const dateSuffix = data.as_of_date ? " @ " + data.as_of_date : " @ latest";
+    els.kgCanvasTitle.textContent = data.root_ticker
+      ? data.root_ticker +
+        " Ego Network (" +
+        data.direction +
+        ", ≤" +
+        data.max_hops +
+        " hops" +
+        dateSuffix +
+        ")"
+      : "Full Snapshot Topology (" + (data.source_path || "snapshot") + dateSuffix + ")";
+
+    els.kgEdgeCountSpan.textContent = String(edges.length);
+    els.kgSourceMetaSpan.textContent =
+      (data.source_path || "") + " · " + nodes.length + " nodes";
+
+    // Render SVG
+    clearNode(els.kgSvgMount);
+    if (!nodes.length) {
+      els.kgSvgMount.appendChild(
+        makeEl("p", "muted-text", "No nodes or active edges matched the current Point-in-Time filters.")
+      );
+    } else {
+      const laneById = computeNodeLanes(nodes, edges, data.root_ticker);
+      const lanes = [...new Set(laneById.values())].sort((a, b) => a - b);
+      const maxPerLane = Math.max(
+        1,
+        ...lanes.map((lane) => nodes.filter((n) => laneById.get(n.id) === lane).length)
+      );
+      const width = Math.max(660, lanes.length * 190 + 90);
+      const height = Math.max(250, maxPerLane * 88 + 64);
+
+      const pos = new Map();
+      lanes.forEach((lane, li) => {
+        const group = nodes
+          .filter((n) => laneById.get(n.id) === lane)
+          .sort((a, b) => String(a.ticker).localeCompare(String(b.ticker)));
+        const x =
+          lanes.length === 1
+            ? width / 2
+            : 95 + (li / (lanes.length - 1)) * (width - 190);
+        group.forEach((n, ni) => {
+          const y = 34 + ((height - 44) / (group.length + 1)) * (ni + 1);
+          pos.set(n.id, { x, y, node: n });
+        });
+      });
+
+      const svgNs = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(svgNs, "svg");
+      svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+      svg.style.width = "100%";
+      svg.style.height = "auto";
+      svg.style.display = "block";
+
+      const defs = document.createElementNS(svgNs, "defs");
+      [
+        ["kg-arr-supply", "var(--buffer)"],
+        ["kg-arr-other", "var(--error)"],
+        ["kg-arr-sel", "var(--primary)"],
+      ].forEach(([id, col]) => {
+        const marker = document.createElementNS(svgNs, "marker");
+        marker.setAttribute("id", id);
+        marker.setAttribute("viewBox", "0 0 10 10");
+        marker.setAttribute("refX", "9");
+        marker.setAttribute("refY", "5");
+        marker.setAttribute("markerWidth", "6");
+        marker.setAttribute("markerHeight", "6");
+        marker.setAttribute("orient", "auto-start-reverse");
+        const arrow = document.createElementNS(svgNs, "path");
+        arrow.setAttribute("d", "M 0 1 L 10 5 L 0 9 z");
+        arrow.setAttribute("fill", col);
+        marker.appendChild(arrow);
+        defs.appendChild(marker);
+      });
+      svg.appendChild(defs);
+
+      lanes.forEach((lane, li) => {
+        const x =
+          lanes.length === 1
+            ? width / 2
+            : 95 + (li / (lanes.length - 1)) * (width - 190);
+        const hdr = document.createElementNS(svgNs, "text");
+        hdr.setAttribute("x", String(x));
+        hdr.setAttribute("y", "18");
+        hdr.setAttribute("text-anchor", "middle");
+        hdr.setAttribute("font-size", "11");
+        hdr.setAttribute("fill", "var(--muted)");
+        hdr.textContent = !data.root_ticker
+          ? "Tier " + lane
+          : lane < 0
+            ? "Upstream H" + Math.abs(lane)
+            : lane === 0
+              ? "Root Issuer"
+              : "Downstream H" + lane;
+        svg.appendChild(hdr);
+      });
+
+      edges.forEach((e) => {
+        const srcPos = pos.get(e.source);
+        const dstPos = pos.get(e.target);
+        if (!srcPos || !dstPos) return;
+
+        const key = makeEdgeKey(e);
+        const isSel = key === state.selectedEdgeKey;
+        const isSupply = e.rel_type === "SUPPLIES_TO";
+        const sameCol = Math.abs(srcPos.x - dstPos.x) < 1;
+        const x1 = sameCol ? srcPos.x : srcPos.x + 42;
+        const y1 = sameCol ? srcPos.y + 20 : srcPos.y;
+        const x2 = sameCol ? dstPos.x : dstPos.x - 46;
+        const y2 = sameCol ? dstPos.y - 24 : dstPos.y;
+        const mx = (x1 + x2) / 2;
+
+        const g = document.createElementNS(svgNs, "g");
+        g.style.cursor = "pointer";
+        g.addEventListener("click", () => {
+          state.selectedEdgeKey = key;
+          renderKgSubgraph(data);
+        });
+
+        const pathD = sameCol
+          ? "M " + x1 + " " + y1 + " C " + (x1 + 50) + " " + y1 + ", " + (x2 + 50) + " " + y2 + ", " + x2 + " " + y2
+          : "M " + x1 + " " + y1 + " C " + mx + " " + y1 + ", " + mx + " " + y2 + ", " + x2 + " " + y2;
+
+        const hitPath = document.createElementNS(svgNs, "path");
+        hitPath.setAttribute("d", pathD);
+        hitPath.setAttribute("fill", "none");
+        hitPath.setAttribute("stroke", "transparent");
+        hitPath.setAttribute("stroke-width", "12");
+        g.appendChild(hitPath);
+
+        const visPath = document.createElementNS(svgNs, "path");
+        visPath.setAttribute("d", pathD);
+        visPath.setAttribute("fill", "none");
+        visPath.setAttribute(
+          "stroke",
+          isSel ? "var(--primary)" : isSupply ? "var(--buffer)" : "var(--error)"
+        );
+        visPath.setAttribute("stroke-width", isSel ? "2.6" : "1.8");
+        if (!isSupply) visPath.setAttribute("stroke-dasharray", "5 4");
+        visPath.setAttribute(
+          "marker-end",
+          isSel ? "url(#kg-arr-sel)" : isSupply ? "url(#kg-arr-supply)" : "url(#kg-arr-other)"
+        );
+        g.appendChild(visPath);
+
+        const lbl = document.createElementNS(svgNs, "text");
+        lbl.setAttribute("x", String(sameCol ? x1 + 48 : mx));
+        lbl.setAttribute("y", String((y1 + y2) / 2 - 6));
+        lbl.setAttribute("text-anchor", "middle");
+        lbl.setAttribute("font-size", "11");
+        lbl.setAttribute("fill", isSel ? "var(--primary)" : "var(--muted)");
+        const shareStr =
+          e.share !== null && e.share !== undefined
+            ? Math.round(Number(e.share) * 100) + "%"
+            : e.rel_type;
+        const bufStr =
+          e.buffer_days !== null && e.buffer_days !== undefined
+            ? " · " + Number(e.buffer_days).toFixed(0) + "d"
+            : "";
+        lbl.textContent = shareStr + bufStr;
+        g.appendChild(lbl);
+
+        svg.appendChild(g);
+      });
+
+      nodes.forEach((n) => {
+        const p = pos.get(n.id);
+        if (!p) return;
+        const isRoot = n.role === "ROOT" || n.ticker === data.root_ticker;
+        const g = document.createElementNS(svgNs, "g");
+        g.style.cursor = "pointer";
+        g.addEventListener("click", () => {
+          setKgTickers(data.available_tickers || [], n.ticker);
+          querySubgraph();
+        });
+
+        const rect = document.createElementNS(svgNs, "rect");
+        rect.setAttribute("x", String(p.x - 42));
+        rect.setAttribute("y", String(p.y - 19));
+        rect.setAttribute("width", "84");
+        rect.setAttribute("height", "38");
+        rect.setAttribute("rx", "8");
+        rect.setAttribute("fill", isRoot ? "var(--primary)" : "var(--card)");
+        rect.setAttribute("stroke", isRoot ? "var(--primary)" : "var(--border)");
+        rect.setAttribute("stroke-width", isRoot ? "2" : "1.5");
+        g.appendChild(rect);
+
+        const txt = document.createElementNS(svgNs, "text");
+        txt.setAttribute("x", String(p.x));
+        txt.setAttribute("y", String(p.y + 4));
+        txt.setAttribute("text-anchor", "middle");
+        txt.setAttribute("font-size", "12");
+        txt.setAttribute("font-weight", "700");
+        txt.setAttribute("fill", isRoot ? "var(--primary-fg)" : "var(--fg)");
+        txt.textContent = n.ticker;
+        g.appendChild(txt);
+
+        svg.appendChild(g);
+      });
+
+      els.kgSvgMount.appendChild(svg);
+    }
+
+    // Render Edge Table
+    clearNode(els.kgEdgesTbody);
+    edges.forEach((e) => {
+      const key = makeEdgeKey(e);
+      const tr = makeEl(
+        "tr",
+        "kg-row-clickable" + (key === state.selectedEdgeKey ? " kg-row-selected" : "")
+      );
+      tr.addEventListener("click", () => {
+        state.selectedEdgeKey = key;
+        renderKgSubgraph(data);
+      });
+      const vals = [
+        { v: (e.source || "?") + " → " + (e.target || "?"), num: false },
+        { v: e.rel_type || "—", num: false },
+        { v: e.nature || e.input_group || "—", num: false },
+        {
+          v:
+            e.share !== null && e.share !== undefined
+              ? (Number(e.share) * 100).toFixed(1) + "%"
+              : "—",
+          num: true,
+        },
+        {
+          v:
+            e.buffer_days !== null && e.buffer_days !== undefined
+              ? Number(e.buffer_days).toFixed(0) + "d"
+              : "—",
+          num: true,
+        },
+        { v: (e.valid_from || "*") + " .. " + (e.valid_to || "open"), num: false },
+        { v: e.status || "—", num: false },
+      ];
+      vals.forEach((cell, idx) => {
+        const td = makeEl("td", cell.num ? "num" : "", cell.v);
+        if (idx === 0) td.style.fontWeight = "600";
+        tr.appendChild(td);
+      });
+      els.kgEdgesTbody.appendChild(tr);
+    });
+  }
+
+  async function querySubgraph() {
+    showKgError("");
+    const srcVal = els.kgSourceSelect.value;
+    if (!srcVal) {
+      showKgError("No local Parquet snapshot or edge manifest is available.");
+      return;
+    }
+    const params = new URLSearchParams();
+    if (srcVal.startsWith("snapshot:")) {
+      params.set("snapshot_id", srcVal.slice("snapshot:".length));
+    } else if (srcVal.startsWith("edges:")) {
+      params.set("edges_file", srcVal.slice("edges:".length));
+    }
+    const ticker = (els.kgTickerSelect.value || "").trim();
+    if (ticker) params.set("ticker", ticker);
+    params.set("max_hops", els.kgHopsSelect.value || "2");
+    params.set("direction", state.kgDirection);
+    if (els.kgDateInput.value) params.set("as_of_date", els.kgDateInput.value);
+    if (els.kgRelSelect.value) params.set("rel_types", els.kgRelSelect.value);
+    params.set("required_status", els.kgStatusSelect.value || "");
+
+    els.kgQueryBtn.disabled = true;
+    els.kgQueryBtn.textContent = "Querying...";
+    try {
+      const resp = await fetch("/api/subgraph?" + params.toString());
+      const data = await resp.json();
+      if (!resp.ok) {
+        showKgError("HTTP " + resp.status + ": " + (data.detail || "Subgraph query failed."));
+        return;
+      }
+      renderKgSubgraph(data);
+    } catch (err) {
+      showKgError("Request error: " + err.message);
+    } finally {
+      els.kgQueryBtn.disabled = false;
+      els.kgQueryBtn.textContent = "Query Subgraph";
+    }
+  }
+
+  // ============================================================================
+  // ADR-00019: Cohort Browser (POST /api/cohort)
+  // ============================================================================
+
+  function showCohortError(msg) {
+    els.cohortErrorBox.textContent = msg;
+    els.cohortErrorBox.classList.toggle("hidden", !msg);
+  }
+
+  function renderDistributionCard(title, countsMap, total) {
+    const card = makeEl("div", "dist-card");
+    card.appendChild(makeEl("div", "dist-title", title));
+    const entries = Object.entries(countsMap || {});
+    if (!entries.length) {
+      card.appendChild(makeEl("div", "muted-text", "No matching entries"));
+      return card;
+    }
+    entries.slice(0, 5).forEach(([label, count]) => {
+      const pct = total > 0 ? Math.round((Number(count) / total) * 100) : 0;
+      const row = makeEl("div", "dist-row");
+      const head = makeEl("div", "dist-row-head mono");
+      head.appendChild(makeEl("span", "", label));
+      head.appendChild(makeEl("span", "muted-text", count + " (" + pct + "%)"));
+      const track = makeEl("div", "dist-bar-track");
+      const fill = makeEl("div", "dist-bar-fill");
+      fill.style.width = pct + "%";
+      if (label === "UNBUFFERED_DISRUPTION") fill.style.backgroundColor = "var(--error)";
+      else if (label === "BUFFER_ABSORBED") fill.style.backgroundColor = "var(--warning)";
+      else if (label === "SAFE") fill.style.backgroundColor = "var(--success)";
+      track.appendChild(fill);
+      row.appendChild(head);
+      row.appendChild(track);
+      card.appendChild(row);
+    });
+    return card;
+  }
+
+  function renderCohort(data) {
+    state.lastCohort = data;
+    const records = data.records || [];
+    const limit = Number(els.cLimitSelect.value || 50);
+    const startIdx = records.length ? state.cohortOffset + 1 : 0;
+    const endIdx = state.cohortOffset + records.length;
+
+    els.cohortMatchSummary.textContent =
+      "Showing " +
+      startIdx +
+      "–" +
+      endIdx +
+      " of " +
+      data.filtered_records +
+      " matching (" +
+      data.total_records +
+      " total)";
+
+    clearNode(els.cohortSummaryRow);
+    els.cohortSummaryRow.appendChild(
+      renderDistributionCard("Verdict Breakdown", data.verdict_counts, data.filtered_records)
+    );
+    els.cohortSummaryRow.appendChild(
+      renderDistributionCard("Disruption Categories", data.category_counts, data.filtered_records)
+    );
+    els.cohortSummaryRow.appendChild(
+      renderDistributionCard("SEC Form 8-K Items", data.sec_item_counts, data.filtered_records)
+    );
+
+    clearNode(els.cohortTbody);
+    records.forEach((rec) => {
+      const tr = document.createElement("tr");
+      const cells = [
+        { v: rec.filing_date || "—", num: false },
+        { v: (rec.disrupted_entity_ticker || "?") + " → " + (rec.target_entity_ticker || "?"), num: false },
+        { v: String(rec.hop_distance), num: true },
+        { v: rec.sec_item || "—", num: false },
+        { v: rec.disruption_category || "—", num: false },
+        { v: Number(rec.capacity_contraction_pct || 0).toFixed(1) + "%", num: true },
+        { v: Number(rec.unbuffered_downtime_days || 0).toFixed(1) + "d", num: true },
+        {
+          v: rec.calendar_onset_date
+            ? rec.calendar_onset_date + " → " + (rec.calendar_recovery_date || "open")
+            : "—",
+          num: false,
+        },
+        { v: rec.verdict || "—", num: false, isVerdict: true },
+        { v: rec.model_mode || "—", num: false },
+      ];
+      cells.forEach((c) => {
+        const td = makeEl("td", c.num ? "num" : "", c.v);
+        if (c.isVerdict) {
+          td.style.fontWeight = "600";
+          td.style.color =
+            c.v === "UNBUFFERED_DISRUPTION"
+              ? "var(--error)"
+              : c.v === "BUFFER_ABSORBED"
+                ? "var(--warning)"
+                : "var(--success)";
+        }
+        tr.appendChild(td);
+      });
+
+      const actTd = document.createElement("td");
+      const inspectBtn = makeEl("button", "link-btn", "Inspect Network");
+      inspectBtn.type = "button";
+      inspectBtn.addEventListener("click", () => {
+        const targetTicker = rec.disrupted_entity_ticker || rec.target_entity_ticker || "";
+        const avail =
+          (state.lastSubgraph && state.lastSubgraph.available_tickers) || [];
+        setKgTickers(avail, targetTicker);
+        if (rec.filing_date) els.kgDateInput.value = String(rec.filing_date).slice(0, 10);
+        state.activeTab = "kg";
+        renderTabs();
+        querySubgraph();
+      });
+      actTd.appendChild(inspectBtn);
+      tr.appendChild(actTd);
+      els.cohortTbody.appendChild(tr);
+    });
+
+    els.cohortPageStatus.textContent =
+      "Offset " + state.cohortOffset + " · Page size " + limit;
+    els.cohortPrevBtn.disabled = state.cohortOffset <= 0;
+    els.cohortNextBtn.disabled = state.cohortOffset + limit >= Number(data.filtered_records || 0);
+  }
+
+  async function queryCohort(newOffset) {
+    showCohortError("");
+    state.cohortOffset = Math.max(0, Number(newOffset || 0));
+    const chosenPath =
+      (els.cohortCustomPathInput.value || "").trim() || (els.cohortSelect.value || "").trim();
+    if (!chosenPath) {
+      showCohortError(
+        "No cohort .jsonl file selected. Pick a discovered cohort or enter an allowlisted workspace path."
+      );
+      return;
+    }
+
+    const body = {
+      cohort_path: chosenPath,
+      limit: Number(els.cLimitSelect.value || 50),
+      offset: state.cohortOffset,
+    };
+    if (els.cVerdictFilter.value) body.verdict = els.cVerdictFilter.value;
+    if ((els.cCategoryFilter.value || "").trim()) {
+      body.disruption_category = els.cCategoryFilter.value.trim();
+    }
+    if ((els.cItemFilter.value || "").trim()) body.sec_item = els.cItemFilter.value.trim();
+    if ((els.cTickerFilter.value || "").trim()) body.ticker = els.cTickerFilter.value.trim();
+
+    els.cohortQueryBtn.disabled = true;
+    els.cohortQueryBtn.textContent = "Loading...";
+    try {
+      const resp = await fetch("/api/cohort", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        showCohortError("HTTP " + resp.status + ": " + (data.detail || "Cohort request failed."));
+        return;
+      }
+      renderCohort(data);
+    } catch (err) {
+      showCohortError("Request error: " + err.message);
+    } finally {
+      els.cohortQueryBtn.disabled = false;
+      els.cohortQueryBtn.textContent = "Load / Filter Cohort";
+    }
+  }
+
   async function init() {
     document.querySelectorAll(".tab-btn").forEach((btn) =>
       btn.addEventListener("click", () => {
         state.activeTab = btn.dataset.tab;
         renderTabs();
+        if (state.activeTab === "kg" && !state.lastSubgraph && els.kgSourceSelect.value) {
+          querySubgraph();
+        } else if (
+          state.activeTab === "cohort" &&
+          !state.lastCohort &&
+          ((els.cohortCustomPathInput.value || "").trim() || (els.cohortSelect.value || "").trim())
+        ) {
+          queryCohort(0);
+        }
       })
     );
+    document.querySelectorAll(".dir-btn").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        state.kgDirection = btn.dataset.dir;
+        renderKgDirectionButtons();
+        querySubgraph();
+      })
+    );
+    els.kgSourceSelect.addEventListener("change", () => {
+      syncKgSourceTickers();
+      querySubgraph();
+    });
+    els.kgQueryBtn.addEventListener("click", querySubgraph);
+    els.kgClearDateBtn.addEventListener("click", () => {
+      els.kgDateInput.value = "";
+      querySubgraph();
+    });
+    [els.kgTickerSelect, els.kgHopsSelect, els.kgDateInput, els.kgRelSelect, els.kgStatusSelect].forEach(
+      (ctrl) => ctrl.addEventListener("change", querySubgraph)
+    );
+
+    els.cohortQueryBtn.addEventListener("click", () => queryCohort(0));
+    els.cohortPrevBtn.addEventListener("click", () => {
+      const limit = Number(els.cLimitSelect.value || 50);
+      queryCohort(Math.max(0, state.cohortOffset - limit));
+    });
+    els.cohortNextBtn.addEventListener("click", () => {
+      const limit = Number(els.cLimitSelect.value || 50);
+      queryCohort(state.cohortOffset + limit);
+    });
+
     els.srcFixtureBtn.addEventListener("click", () => {
       state.inputMode = "fixture";
       renderInputMode();
@@ -568,6 +1285,7 @@
 
     renderTabs();
     renderInputMode();
+    renderKgDirectionButtons();
 
     try {
       const resp = await fetch("/api/catalog");

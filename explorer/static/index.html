@@ -65,12 +65,10 @@
           Event Audit (8-K → Contagion)
         </button>
         <button type="button" data-tab="kg" class="tab-btn">
-          <span>PiT KG Explorer</span>
-          <span class="tab-badge">ADR-00019</span>
+          PiT KG Explorer
         </button>
         <button type="button" data-tab="cohort" class="tab-btn">
-          <span>Cohort Browser</span>
-          <span class="tab-badge">ADR-00019</span>
+          Cohort Browser
         </button>
       </nav>
     </header>
@@ -292,50 +290,233 @@
       </section>
     </main>
 
-    <!-- TAB 2: PiT KG Explorer Placeholder (Deferred to ADR-00019) -->
-    <section id="panel-kg" class="card stack-md hidden">
-      <div class="panel-head">
-        <div>
-          <h2>Point-in-Time Supply-Chain KG Explorer</h2>
-          <p class="subtitle">
-            Backed by ADR-00017 <span class="mono">GET /api/subgraph</span> · Interactive node-link graph &amp; provenance drawer follow in <span class="mono">ADR-00019</span>
-          </p>
-        </div>
-        <span class="pill mono">Placeholder until ADR-00019</span>
-      </div>
-      <div class="placeholder-grid">
-        <div class="placeholder-box">
-          <h3>Temporal Controls</h3>
-          <p>Snapshot selector, focal ticker picker, <span class="mono">as_of_date</span> scrubbing, and upstream/downstream hop depth (<span class="mono">1–5</span>).</p>
-        </div>
-        <div class="placeholder-box">
-          <h3>Layered SVG Subgraph</h3>
-          <p>Visualizes <span class="mono">UPSTREAM → ROOT → DOWNSTREAM</span> supply hops with procurement share and inventory buffer annotations.</p>
-        </div>
-        <div class="placeholder-box">
-          <h3>Edge Contract Provenance</h3>
-          <p>Inspect edge <span class="mono">valid_from</span>, <span class="mono">valid_to</span>, <span class="mono">status</span>, and <span class="mono">source_hash</span> for zero-lookahead audits.</p>
-        </div>
-      </div>
-    </section>
+    <!-- TAB 2: PiT KG Explorer (ADR-00019) -->
+    <main id="panel-kg" class="audit-grid hidden">
+      <section class="stack-md">
+        <article class="card stack-sm">
+          <div class="panel-head">
+            <h2>Point-in-Time Subgraph Query</h2>
+            <span class="pill mono">GET /api/subgraph</span>
+          </div>
 
-    <!-- TAB 3: Cohort Browser Placeholder (Deferred to ADR-00019) -->
-    <section id="panel-cohort" class="card stack-md hidden">
-      <div class="panel-head">
-        <div>
-          <h2>1NF Cohort Browser</h2>
-          <p class="subtitle">
-            Backed by ADR-00017 <span class="mono">POST /api/cohort</span> · Faceted filters, verdict summaries &amp; pagination follow in <span class="mono">ADR-00019</span>
-          </p>
+          <label class="field">
+            <span class="field-label">Snapshot / Edge Manifest</span>
+            <select id="kgSourceSelect" class="text-input mono"></select>
+          </label>
+
+          <div class="field-row-2">
+            <label class="field">
+              <span class="field-label">Focal Ticker</span>
+              <select id="kgTickerSelect" class="text-input mono"></select>
+            </label>
+            <label class="field">
+              <span class="field-label">Max Hops (1–5)</span>
+              <select id="kgHopsSelect" class="text-input mono">
+                <option value="1">1 hop</option>
+                <option value="2" selected>2 hops</option>
+                <option value="3">3 hops</option>
+                <option value="4">4 hops</option>
+                <option value="5">5 hops</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Traversal Direction</span>
+            <div class="segmented" role="group" aria-label="KG traversal direction">
+              <button type="button" data-dir="both" class="dir-btn seg-btn active">Both</button>
+              <button type="button" data-dir="upstream" class="dir-btn seg-btn">Upstream</button>
+              <button type="button" data-dir="downstream" class="dir-btn seg-btn">Downstream</button>
+            </div>
+          </div>
+
+          <label class="field">
+            <span class="field-label">Point-in-Time Cutoff (<span class="mono">as_of_date</span>)</span>
+            <div class="btn-inline-group">
+              <input id="kgDateInput" type="date" class="text-input mono" />
+              <button type="button" id="kgClearDateBtn" class="secondary-btn">Latest</button>
+            </div>
+          </label>
+
+          <div class="field-row-2">
+            <label class="field">
+              <span class="field-label">Relationship Filter</span>
+              <select id="kgRelSelect" class="text-input mono">
+                <option value="">ALL</option>
+                <option value="SUPPLIES_TO">SUPPLIES_TO</option>
+                <option value="COMPETES_WITH">COMPETES_WITH</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Lifecycle Status</span>
+              <select id="kgStatusSelect" class="text-input mono">
+                <option value="ACTIVE_CURRENT">ACTIVE_CURRENT</option>
+                <option value="">ALL</option>
+              </select>
+            </label>
+          </div>
+
+          <button type="button" id="kgQueryBtn" class="primary-btn">Query Subgraph</button>
+          <div id="kgErrorBox" class="error-box hidden" role="alert"></div>
+        </article>
+
+        <article class="card stack-sm">
+          <div class="panel-head">
+            <h2>Edge Contract Provenance</h2>
+            <span class="muted-text">Select an edge</span>
+          </div>
+          <div id="kgProvenancePanel" class="subcard kv-list">
+            <div class="muted-text">
+              Click any arrow in the graph or row below to inspect contract dates, buffers, and source hash.
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="stack-md">
+        <article class="card stack-sm">
+          <div class="panel-head">
+            <div>
+              <h2 id="kgCanvasTitle">Layered Directional Ego Subgraph</h2>
+              <p class="subtitle">
+                Click a node to re-center · Click any arrow to inspect contract provenance
+              </p>
+            </div>
+            <div class="legend-row">
+              <span class="legend-item">
+                <span class="swatch swatch-buffer"></span> SUPPLIES_TO (solid)
+              </span>
+              <span class="legend-item">
+                <span class="swatch swatch-outage"></span> COMPETES_WITH / Other (dashed)
+              </span>
+            </div>
+          </div>
+
+          <div id="kgSvgMount" class="gantt-mount subcard"></div>
+        </article>
+
+        <article class="card stack-sm">
+          <div class="panel-head-tight">
+            <strong>Active Subgraph Edges (<span id="kgEdgeCountSpan" class="mono">0</span>)</strong>
+            <span id="kgSourceMetaSpan" class="mono muted-text"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table mono">
+              <thead>
+                <tr>
+                  <th>Source → Target</th>
+                  <th>Rel Type</th>
+                  <th>Nature</th>
+                  <th class="num">Share</th>
+                  <th class="num">Buffer</th>
+                  <th>Valid Window</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="kgEdgesTbody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <!-- TAB 3: Cohort Browser (ADR-00019) -->
+    <main id="panel-cohort" class="stack-md hidden">
+      <section class="card stack-sm">
+        <div class="panel-head">
+          <div>
+            <h2>1NF Time-Series Cohort Browser</h2>
+            <p class="subtitle">
+              Backed by <span class="mono">POST /api/cohort</span> · Filter exported <span class="mono">ContagionTimeSeriesEventRecord</span> batches &amp; audit PiT graphs
+            </p>
+          </div>
+          <span class="pill mono">POST /api/cohort</span>
         </div>
-        <span class="pill mono">Placeholder until ADR-00019</span>
-      </div>
-      <div class="placeholder-box">
-        <p>
-          Will load allowlisted <span class="mono">.jsonl</span> exports discovered by <span class="mono">/api/catalog</span>, filter by <span class="mono">verdict</span>, <span class="mono">disruption_category</span>, <span class="mono">sec_item</span>, and <span class="mono">ticker</span>, and display paginated 1NF join rows.
-        </p>
-      </div>
-    </section>
+
+        <div class="field-row-2">
+          <label class="field">
+            <span class="field-label">Discovered Cohort (.jsonl)</span>
+            <select id="cohortSelect" class="text-input mono"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Or Allowlisted Workspace Path (optional override)</span>
+            <input id="cohortCustomPathInput" type="text" placeholder="e.g. data/cohorts/sample.jsonl" class="text-input mono" />
+          </label>
+        </div>
+
+        <div class="filter-grid-4">
+          <label class="field">
+            <span class="field-label">Verdict</span>
+            <select id="cVerdictFilter" class="text-input mono">
+              <option value="">ALL VERDICTS</option>
+              <option value="UNBUFFERED_DISRUPTION">UNBUFFERED_DISRUPTION</option>
+              <option value="BUFFER_ABSORBED">BUFFER_ABSORBED</option>
+              <option value="SAFE">SAFE</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Disruption Category</span>
+            <input id="cCategoryFilter" type="text" placeholder="e.g. FACILITY_FIRE_OR_EXPLOSION" class="text-input mono" />
+          </label>
+          <label class="field">
+            <span class="field-label">SEC Item Substring</span>
+            <input id="cItemFilter" type="text" placeholder="e.g. 8.01" class="text-input mono" />
+          </label>
+          <label class="field">
+            <span class="field-label">Ticker (Disrupted or Target)</span>
+            <input id="cTickerFilter" type="text" placeholder="e.g. AAPL, CRUS" class="text-input mono" />
+          </label>
+        </div>
+
+        <div class="action-row">
+          <label class="control-inline">
+            <span>Rows / Page</span>
+            <select id="cLimitSelect" class="select-input mono">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="250">250</option>
+            </select>
+          </label>
+          <button type="button" id="cohortQueryBtn" class="secondary-btn">Load / Filter Cohort</button>
+          <span id="cohortMatchSummary" class="mono muted-text"></span>
+        </div>
+
+        <div id="cohortErrorBox" class="error-box hidden" role="alert"></div>
+        <div id="cohortSummaryRow" class="filter-grid-3"></div>
+      </section>
+
+      <section class="card stack-sm">
+        <div class="table-wrap">
+          <table class="data-table mono">
+            <thead>
+              <tr>
+                <th>Filing Date</th>
+                <th>Disrupted → Target</th>
+                <th class="num">Hop</th>
+                <th>SEC Item</th>
+                <th>Category</th>
+                <th class="num">Loss %</th>
+                <th class="num">Downtime</th>
+                <th>Onset → Recovery</th>
+                <th>Verdict</th>
+                <th>Mode</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="cohortTbody"></tbody>
+          </table>
+        </div>
+
+        <div class="pagination-bar">
+          <span id="cohortPageStatus" class="mono muted-text">No cohort loaded</span>
+          <div class="btn-inline-group">
+            <button type="button" id="cohortPrevBtn" class="secondary-btn" disabled>Previous</button>
+            <button type="button" id="cohortNextBtn" class="secondary-btn" disabled>Next</button>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
 </body>
 </html>

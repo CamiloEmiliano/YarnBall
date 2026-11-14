@@ -3,7 +3,7 @@
 - **ADR ID**: ADR-00019
 - **Filename**: `ADR-00019-pit-kg-explorer-and-cohort-browser-views.md`
 - **Date**: 2026-11-13 22:26 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `explorer` / `tests`
 - **Linked Commits**: Pending acceptance ([`explorer/workbench_api.py`](../../explorer/workbench_api.py), [`explorer/static/index.html`](../../explorer/static/index.html))
 

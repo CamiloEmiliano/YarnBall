@@ -656,3 +656,119 @@ body[data-density="compact"] .data-table th {
 .placeholder-box h3 {
   color: var(--fg);
 }
+
+/* ADR-00019: PiT KG Explorer & Cohort Browser Extensions */
+
+.filter-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.filter-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 960px) {
+  .filter-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .filter-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .filter-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dist-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: var(--subcard);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dist-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.dist-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dist-row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.dist-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.dist-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.kg-row-clickable {
+  cursor: pointer;
+}
+
+.kg-row-clickable:hover td {
+  background: var(--accent);
+}
+
+.kg-row-selected td {
+  background: var(--accent);
+}
+
+.link-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--subcard);
+  color: var(--link);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  background: var(--accent);
+}
+
+.pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.btn-inline-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

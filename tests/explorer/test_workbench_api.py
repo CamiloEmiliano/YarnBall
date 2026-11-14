@@ -392,3 +392,54 @@ def test_ui_catalog_to_event_audit_flow(tmp_path, monkeypatch):
     assert len(payload["timeseries_rows"]) == len(payload["report"]["network_impacts"])
 
 
+def test_adr00019_kg_explorer_and_cohort_browser_assets_and_flow(tmp_path, monkeypatch):
+    """Verifies ADR-00019 interactive PiT KG Explorer and Cohort Browser assets & API flow."""
+    _, _, bundle = _build_fixture_workspace(tmp_path)
+    monkeypatch.setattr(
+        "explorer.workbench_api.YarnBallModelClient.check_health",
+        lambda self, timeout_sec=1.0: (False, "offline test mock"),
+    )
+
+    root_resp = bundle.client.get("/")
+    assert root_resp.status_code == 200
+    assert "Placeholder until ADR-00019" not in root_resp.text
+    for dom_id in ("kgSvgMount", "kgProvenancePanel", "cohortTbody", "cohortSummaryRow"):
+        assert dom_id in root_resp.text
+
+    js_resp = bundle.client.get("/static/app.js")
+    assert js_resp.status_code == 200
+    assert "/api/subgraph?" in js_resp.text
+    assert "/api/cohort" in js_resp.text
+    assert "Inspect Network" in js_resp.text
+    assert ".innerHTML" not in js_resp.text
+
+    # Simulate catalog -> PiT KG Explorer -> Cohort Browser -> Inspect Network jump flow
+    cat = bundle.client.get("/api/catalog").json()
+    snap_id = cat["snapshots"][0]["snapshot_id"]
+    cohort_path = cat["cohorts"][0]["path"]
+
+    cohort_resp = bundle.client.post(
+        "/api/cohort",
+        json={"cohort_path": cohort_path, "verdict": "UNBUFFERED_DISRUPTION"},
+    )
+    assert cohort_resp.status_code == 200
+    rec = cohort_resp.json()["records"][0]
+    assert rec["disrupted_entity_ticker"] == "CRUS"
+
+    # Cross-navigate using disrupted/target ticker & filing_date on G_resolved
+    sub_resp = bundle.client.get(
+        "/api/subgraph",
+        params={
+            "snapshot_id": snap_id,
+            "ticker": rec["target_entity_ticker"],
+            "as_of_date": rec["filing_date"],
+            "direction": "both",
+            "max_hops": 2,
+        },
+    )
+    assert sub_resp.status_code == 200
+    edges = sub_resp.json()["edges"]
+    assert any(e["source"] == "TSM" and e["target"] == "AAPL" for e in edges)
+
+
+
