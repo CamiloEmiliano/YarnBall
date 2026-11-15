@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00025
 - **Filename**: `ADR-00025-entity-stoplist-and-dynamic-cik-rollup--.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `ontology` / `knowledge_graph` / `ingestion`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: Pending commit backfill
 
 ---
 

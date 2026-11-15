@@ -62,9 +62,15 @@ from .compiler import (
 )
 from .guardrails import (
     DEFAULT_ONTOLOGY_GATE,
+    SEED_SUBSIDIARY_TO_PARENT_CIK_MAP,
+    SUBSIDIARY_TO_PARENT_CIK_MAP,
+    SubsidiaryRegistry,
     Tier4OntologyGate,
     apply_runtime_guardrails,
     infer_terminated_relation,
+    invalidate_subsidiary_registry_cache,
+    load_dynamic_subsidiary_registry,
+    load_subsidiary_cik_map,
 )
 
 __all__ = [
@@ -117,6 +123,12 @@ __all__ = [
     # Guardrails
     "Tier4OntologyGate",
     "DEFAULT_ONTOLOGY_GATE",
+    "SEED_SUBSIDIARY_TO_PARENT_CIK_MAP",
+    "SUBSIDIARY_TO_PARENT_CIK_MAP",
+    "SubsidiaryRegistry",
+    "load_dynamic_subsidiary_registry",
+    "load_subsidiary_cik_map",
+    "invalidate_subsidiary_registry_cache",
     "apply_runtime_guardrails",
     "infer_terminated_relation",
 ]

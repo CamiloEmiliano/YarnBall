@@ -475,6 +475,9 @@ class EdgarWorker:
                         records,
                     )
                     self.pg_conn.commit()
+                    from ontology.guardrails import invalidate_subsidiary_registry_cache
+
+                    invalidate_subsidiary_registry_cache()
             except Exception as e:
                 logger.warning(f"Error saving subsidiaries to PostgreSQL: {e}")
             finally:

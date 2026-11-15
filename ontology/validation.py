@@ -21,6 +21,7 @@ from datetime import date, datetime
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ontology.alignment import canonicalize_symmetric_edge
@@ -34,30 +35,79 @@ logger = logging.getLogger("ontology_validation")
 GENERIC_NOUN_STOPLIST: Set[str] = {
     "the company", "the customer", "the customers", "our customer", "our customers",
     "the supplier", "the suppliers", "our supplier", "our suppliers",
-    "management", "the registrant", "the vendor", "the vendors",
+    "management", "the registrant", "registrant", "the vendor", "the vendors",
     "third party", "third parties", "third-party supplier", "third-party vendor",
     "certain customers", "certain suppliers", "certain vendors",
     "the manufacturer", "the manufacturers", "our manufacturer",
-    "our subsidiaries", "certain subsidiaries", "unnamed counterparty",
+    "our subsidiaries", "its subsidiaries", "certain subsidiaries", "unnamed counterparty",
     "competitors", "our competitors", "the industry", "the market",
     "foreign governments", "regulatory bodies", "various clients",
     "all customers", "key suppliers", "major customer", "sole source",
+    "its affiliates", "our affiliates", "this company",
 }
+
+_PRONOUN_PLACEHOLDERS: Set[str] = {
+    "it", "they", "them", "their", "theirs", "we", "us", "its", "our", "ours",
+}
+
+_ANONYMIZED_COUNTERPARTY_RE = re.compile(
+    r"^(?:customer|supplier|vendor|client|partner|manufacturer|distributor|counterparty|oem|buyer|seller|competitor)"
+    r"\s+(?:#|no\.?\s*)?(?:[a-z]|\d{1,2}|[a-z]\d|\d[a-z])$",
+    re.IGNORECASE,
+)
+
+_INDEFINITE_ROLE_DESCRIPTOR_RE = re.compile(
+    r"^(?:a|an|the|our|one|one\s+of\s+our|several|various|certain|unnamed|multiple|other|"
+    r"leading|major|primary|principal|sole|key|largest|significant|external|third[- ]party)\s+"
+    r".*\b(?:supplier|customer|vendor|partner|manufacturer|foundry|distributor|client|competitor|counterparty)s?$",
+    re.IGNORECASE,
+)
+
+_ROLE_CORPORATE_SUFFIX_RE = re.compile(
+    r"\b(?:inc|corp|corporation|co|company|ltd|limited|llc|lp|llp|plc|gmbh|ag|sa|nv|bv|holdings|group)\b",
+    re.IGNORECASE,
+)
+
+_TICKER_OR_CIK_SIGNAL_RE = re.compile(
+    r"(?:\([A-Z]{1,5}\)|\bCIK\s*[:#]?\s*\d{6,10}\b)",
+)
 
 
 def is_generic_placeholder(name: Optional[str]) -> bool:
     """
-    Check if an entity name is an abstract legal or journalistic pronoun rather
-    than a discrete instantiable entity concept.
+    Check if an entity name is an abstract pronoun, SEC ASC 280 anonymized counterparty,
+    or indefinite role descriptor rather than a discrete instantiable entity.
     """
     if not name or not str(name).strip():
         return False
-    norm = str(name).lower().strip()
-    norm_clean = "".join(c for c in norm if c.isalnum() or c.isspace()).strip()
+    raw = str(name).strip()
+    norm = raw.lower()
+    norm_clean = " ".join("".join(c for c in norm if c.isalnum() or c.isspace()).split())
+    if not norm_clean:
+        return False
+
     if norm_clean in GENERIC_NOUN_STOPLIST or norm in GENERIC_NOUN_STOPLIST:
         return True
+
+    # Pronouns (preserve uppercase 2-letter equity tickers like 'IT')
+    if norm_clean in _PRONOUN_PLACEHOLDERS and not (len(raw) <= 3 and raw.isupper()):
+        return True
+
     if norm_clean.startswith("certain ") or norm_clean.startswith("various ") or norm_clean.startswith("unnamed "):
         return True
+
+    # SEC ASC 280 anonymized designations (e.g. 'Customer A', 'Supplier X', 'Vendor 1', 'Client #2')
+    if _ANONYMIZED_COUNTERPARTY_RE.match(norm_clean) or _ANONYMIZED_COUNTERPARTY_RE.match(raw):
+        return True
+
+    # Indefinite / possessive role phrases lacking corporate suffix or ticker/CIK signal
+    if (
+        _INDEFINITE_ROLE_DESCRIPTOR_RE.match(norm_clean)
+        and not _ROLE_CORPORATE_SUFFIX_RE.search(norm_clean)
+        and not _TICKER_OR_CIK_SIGNAL_RE.search(raw)
+    ):
+        return True
+
     return False
 
 

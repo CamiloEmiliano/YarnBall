@@ -10,10 +10,15 @@ Applies deterministic runtime post-processing to extraction outputs (Tasks A and
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import json
+import logging
 import re
+import threading
+import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ontology.alignment import normalize_entity_name
 from ontology.compiler import (
     is_hypothetical_or_hedged,
     is_triple_hedged,
@@ -21,14 +26,150 @@ from ontology.compiler import (
 )
 from ontology.schema import ONTOLOGY_SCHEMA
 
-# Known Exhibit 21 Operating Subsidiary -> Parent CIK Rollup Map
-# (e.g. DISH DBS Corporation 0001001811 rolls up to parent DISH Network Corp 0001001082)
-SUBSIDIARY_TO_PARENT_CIK_MAP: Dict[str, str] = {
+logger = logging.getLogger(__name__)
+
+# Offline deterministic seed for Exhibit 21 Operating Subsidiary -> Parent CIK Rollup
+# (merged beneath PostgreSQL `sec_subsidiaries` + `sec_companies` dynamic records at runtime).
+SEED_SUBSIDIARY_TO_PARENT_CIK_MAP: Dict[str, str] = {
     "0001001811": "0001001082",  # DISH DBS -> DISH Network Corp
     "0001061219": "0001045810",  # Mellanox Technologies -> NVIDIA Corp
     "0001108524": "0001018724",  # Audible Inc -> Amazon.com Inc
     "0001326801": "0001326801",  # Meta Platforms Inc (self)
 }
+SUBSIDIARY_TO_PARENT_CIK_MAP: Dict[str, str] = dict(SEED_SUBSIDIARY_TO_PARENT_CIK_MAP)
+
+
+@dataclass(frozen=True)
+class SubsidiaryRegistry:
+    """Snapshot of subsidiary CIK and normalized-name rollup mappings."""
+
+    cik_map: Dict[str, str] = field(default_factory=lambda: dict(SEED_SUBSIDIARY_TO_PARENT_CIK_MAP))
+    name_to_parent: Dict[str, Tuple[str, str, Optional[str]]] = field(default_factory=dict)
+    loaded_at: float = 0.0
+    from_database: bool = False
+
+
+_REGISTRY_LOCK = threading.Lock()
+_CACHED_REGISTRY: Optional[SubsidiaryRegistry] = None
+
+
+def invalidate_subsidiary_registry_cache() -> None:
+    """Invalidate the cached dynamic subsidiary registry so next lookup reloads from PostgreSQL."""
+    global _CACHED_REGISTRY
+    with _REGISTRY_LOCK:
+        _CACHED_REGISTRY = None
+
+
+def _query_subsidiary_registry_from_conn(conn: Any) -> Tuple[Dict[str, str], Dict[str, Tuple[str, str, Optional[str]]], bool]:
+    """Read `sec_subsidiaries` + `sec_companies` mappings from a DB connection/cursor."""
+    cik_map: Dict[str, str] = dict(SEED_SUBSIDIARY_TO_PARENT_CIK_MAP)
+    name_to_parent: Dict[str, Tuple[str, str, Optional[str]]] = {}
+    if conn is None or not hasattr(conn, "cursor"):
+        return cik_map, name_to_parent, False
+
+    cur = conn.cursor()
+    saw_rows = False
+    try:
+        # 1. Registered subsidiary companies whose normalized_name matches a `sec_companies` filer CIK
+        cur.execute(
+            """
+            SELECT sub_co.cik, s.parent_cik
+            FROM sec_subsidiaries s
+            JOIN sec_companies sub_co ON s.normalized_name = sub_co.normalized_name
+            WHERE s.parent_cik IS NOT NULL
+              AND sub_co.cik IS NOT NULL
+              AND sub_co.cik <> s.parent_cik
+            """
+        )
+        for row in cur.fetchall() or []:
+            if isinstance(row, (tuple, list)) and len(row) >= 2 and row[0] and row[1]:
+                cik_map[str(row[0]).strip()] = str(row[1]).strip()
+                saw_rows = True
+
+        # 2. Exhibit 21 subsidiary normalized names -> parent metadata
+        cur.execute(
+            """
+            SELECT s.normalized_name, c.company_name, c.cik, c.ticker
+            FROM sec_subsidiaries s
+            JOIN sec_companies c ON s.parent_cik = c.cik
+            WHERE s.normalized_name IS NOT NULL AND s.normalized_name <> ''
+            """
+        )
+        for row in cur.fetchall() or []:
+            if isinstance(row, (tuple, list)) and len(row) >= 3 and row[0] and row[1] and row[2]:
+                norm_sub = str(row[0]).strip().lower()
+                parent_name = str(row[1]).strip()
+                parent_cik = str(row[2]).strip()
+                parent_ticker = str(row[3]).strip().upper() if len(row) >= 4 and row[3] else None
+                name_to_parent[norm_sub] = (parent_name, parent_cik, parent_ticker)
+                saw_rows = True
+    finally:
+        if hasattr(cur, "close"):
+            cur.close()
+    return cik_map, name_to_parent, saw_rows
+
+
+def load_dynamic_subsidiary_registry(
+    pg_conn: Optional[Any] = None,
+    *,
+    force_refresh: bool = False,
+    ttl_seconds: float = 300.0,
+) -> SubsidiaryRegistry:
+    """Load Exhibit 21 subsidiary CIK & parent mappings with TTL caching and offline seed fallback."""
+    global _CACHED_REGISTRY
+    now = time.monotonic()
+
+    if pg_conn is None and not force_refresh:
+        with _REGISTRY_LOCK:
+            if _CACHED_REGISTRY is not None and (now - _CACHED_REGISTRY.loaded_at) < ttl_seconds:
+                return _CACHED_REGISTRY
+
+    owned_conn = None
+    conn = pg_conn
+    cik_map: Dict[str, str] = dict(SEED_SUBSIDIARY_TO_PARENT_CIK_MAP)
+    name_to_parent: Dict[str, Tuple[str, str, Optional[str]]] = {}
+    from_db = False
+
+    try:
+        if conn is None:
+            from knowledge_graph.db import pg_connection
+
+            owned_conn = pg_connection()
+            conn = owned_conn
+        cik_map, name_to_parent, from_db = _query_subsidiary_registry_from_conn(conn)
+    except Exception as exc:
+        logger.debug("Falling back to offline seed subsidiary CIK map: %s", exc)
+    finally:
+        if owned_conn is not None and hasattr(owned_conn, "close"):
+            try:
+                owned_conn.close()
+            except Exception:
+                pass
+
+    registry = SubsidiaryRegistry(
+        cik_map=cik_map,
+        name_to_parent=name_to_parent,
+        loaded_at=now,
+        from_database=from_db,
+    )
+    if pg_conn is None:
+        with _REGISTRY_LOCK:
+            _CACHED_REGISTRY = registry
+    return registry
+
+
+def load_subsidiary_cik_map(
+    pg_conn: Optional[Any] = None,
+    *,
+    force_refresh: bool = False,
+    ttl_seconds: float = 300.0,
+) -> Dict[str, str]:
+    """Convenience loader returning `{subsidiary_cik: parent_cik}` with offline seed fallback."""
+    return load_dynamic_subsidiary_registry(
+        pg_conn=pg_conn,
+        force_refresh=force_refresh,
+        ttl_seconds=ttl_seconds,
+    ).cik_map
 
 # Canonical Axis-2 Relational Ontology Predicates (derived from ontology.schema)
 CANONICAL_RELATION_PREDICATES: frozenset[str] = frozenset(ONTOLOGY_SCHEMA.keys())
@@ -201,14 +342,33 @@ class Tier4OntologyGate:
         subsidiary_map: Optional[Dict[str, str]] = None,
         canonical_relations: Optional[Set[str]] = None,
         default_repaired_relation: str = "SUPPLIES_TO",
+        *,
+        pg_conn: Optional[Any] = None,
+        subsidiary_name_map: Optional[Dict[str, Tuple[str, str, Optional[str]]]] = None,
     ):
-        self.subsidiary_map = subsidiary_map or SUBSIDIARY_TO_PARENT_CIK_MAP
+        self._explicit_subsidiary_map = dict(subsidiary_map) if subsidiary_map is not None else None
+        self._explicit_name_map = dict(subsidiary_name_map) if subsidiary_name_map is not None else None
+        self._pg_conn = pg_conn
         self.canonical_relations = (
             frozenset(canonical_relations)
             if canonical_relations
             else CANONICAL_RELATION_PREDICATES
         )
         self.default_repaired_relation = default_repaired_relation
+
+    @property
+    def subsidiary_map(self) -> Dict[str, str]:
+        if self._explicit_subsidiary_map is not None:
+            return self._explicit_subsidiary_map
+        return load_dynamic_subsidiary_registry(pg_conn=self._pg_conn).cik_map
+
+    @property
+    def subsidiary_name_map(self) -> Dict[str, Tuple[str, str, Optional[str]]]:
+        if self._explicit_name_map is not None:
+            return self._explicit_name_map
+        if self._explicit_subsidiary_map is not None:
+            return {}
+        return load_dynamic_subsidiary_registry(pg_conn=self._pg_conn).name_to_parent
 
     def _rollup_text_ciks(self, text: str) -> str:
         for sub_cik, parent_cik in self.subsidiary_map.items():
@@ -251,13 +411,21 @@ class Tier4OntologyGate:
         source_text: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Apply CIK rollup, clause-scoped hedge filtering, noise pruning, and termination repair to JSON payloads."""
+        sub_cik_map = self.subsidiary_map
+        sub_name_map = self.subsidiary_name_map
         nodes = []
         for node in payload.get("nodes", []) or []:
             node_copy = dict(node)
             props = dict(node_copy.get("properties", {}) or {})
             cik = str(props.get("cik", "")).strip()
-            if cik in self.subsidiary_map:
-                props["cik"] = self.subsidiary_map[cik]
+            if cik in sub_cik_map:
+                props["cik"] = sub_cik_map[cik]
+            elif not cik and sub_name_map:
+                norm_name = normalize_entity_name(str(props.get("name") or node_copy.get("id") or ""))
+                parent_info = sub_name_map.get(norm_name)
+                if parent_info:
+                    props["cik"] = parent_info[1]
+                    props.setdefault("parent_company", parent_info[0])
             node_copy["properties"] = props
             nodes.append(node_copy)
 

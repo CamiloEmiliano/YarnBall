@@ -36,6 +36,7 @@ from ontology import (
     canonicalize_symmetric_edge,
     extract_initialism,
     jaro_winkler_similarity,
+    load_dynamic_subsidiary_registry,
 )
 
 # Canonical Alias Registry for High-Entropy Acronyms and Global Conglomerates
@@ -114,8 +115,24 @@ def is_blacklisted_publisher(name: Optional[str]) -> bool:
 class EntityResolver:
     """Resolves duplicate graph entities and canonicalizes edges."""
 
-    def __init__(self, snapshot_manager: Optional[SnapshotManager] = None):
+    def __init__(
+        self,
+        snapshot_manager: Optional[SnapshotManager] = None,
+        *,
+        pg_conn: Optional[Any] = None,
+        subsidiary_cik_map: Optional[Dict[str, str]] = None,
+        subsidiary_name_map: Optional[Dict[str, Tuple[str, str, Optional[str]]]] = None,
+    ):
         self.snapshot_mgr = snapshot_manager or SnapshotManager()
+        self._pg_conn = pg_conn
+        self._explicit_sub_cik_map = dict(subsidiary_cik_map) if subsidiary_cik_map is not None else None
+        self._explicit_sub_name_map = dict(subsidiary_name_map) if subsidiary_name_map is not None else None
+
+    def _get_subsidiary_maps(self) -> Tuple[Dict[str, str], Dict[str, Tuple[str, str, Optional[str]]]]:
+        if self._explicit_sub_cik_map is not None or self._explicit_sub_name_map is not None:
+            return (self._explicit_sub_cik_map or {}), (self._explicit_sub_name_map or {})
+        reg = load_dynamic_subsidiary_registry(pg_conn=self._pg_conn)
+        return reg.cik_map, reg.name_to_parent
 
     # ----------------------------------------------------------------------
     # 1. Node Resolution & Clustering (Quality Controls 1 & 6)
@@ -170,7 +187,9 @@ class EntityResolver:
         }
         all_ids = list(nodes_by_id.keys())
 
-        def get_node_cik(nid: str) -> str:
+        sub_cik_map, sub_name_map = self._get_subsidiary_maps()
+
+        def _raw_node_cik(nid: str) -> str:
             node = nodes_by_id.get(nid, {})
             cik = str(node.get("cik", "") or "").strip()
             if not cik and "properties_json" in node:
@@ -181,29 +200,49 @@ class EntityResolver:
                     pass
             return cik
 
-        def safe_union(u: str, v: str) -> bool:
+        def get_node_cik(nid: str) -> str:
+            cik = _raw_node_cik(nid)
+            if cik:
+                return sub_cik_map.get(cik, cik)
+            norm = _normalize_name(nid)
+            parent_info = sub_name_map.get(norm)
+            if parent_info:
+                return parent_info[1]
+            return ""
+
+        def safe_union(u: str, v: str, *, allow_parent_subsidiary: bool = False) -> bool:
             cik_u = get_node_cik(u)
             cik_v = get_node_cik(v)
             if cik_u and cik_v and cik_u != cik_v:
                 return False
-            t_u = str(nodes_by_id.get(u, {}).get("ticker", "") or "").strip().upper()
-            t_v = str(nodes_by_id.get(v, {}).get("ticker", "") or "").strip().upper()
-            if t_u and t_v and t_u not in ("NONE", "NULL") and t_v not in ("NONE", "NULL") and t_u != t_v:
-                return False
+            if not (allow_parent_subsidiary and cik_u and cik_u == cik_v):
+                t_u = str(nodes_by_id.get(u, {}).get("ticker", "") or "").strip().upper()
+                t_v = str(nodes_by_id.get(v, {}).get("ticker", "") or "").strip().upper()
+                if t_u and t_v and t_u not in ("NONE", "NULL") and t_v not in ("NONE", "NULL") and t_u != t_v:
+                    return False
             union(u, v)
             return True
 
-        # 1. Exact Ticker Clustering
+        # 1. Exact Ticker Clustering & Rolled-Up CIK Clustering (ADR-00025)
         ticker_groups: Dict[str, List[str]] = defaultdict(list)
+        cik_groups: Dict[str, List[str]] = defaultdict(list)
         for nid, node in nodes_by_id.items():
             ticker = str(node.get("ticker", "") or "").strip().upper()
             if ticker and ticker not in ("NONE", "NULL"):
                 ticker_groups[ticker].append(nid)
+            resolved_cik = get_node_cik(nid)
+            if resolved_cik:
+                cik_groups[resolved_cik].append(nid)
 
         for ticker, group in ticker_groups.items():
             first = group[0]
             for other in group[1:]:
                 safe_union(first, other)
+
+        for resolved_cik, group in cik_groups.items():
+            first = group[0]
+            for other in group[1:]:
+                safe_union(first, other, allow_parent_subsidiary=True)
 
         # 2. Normalized Name & High Jaro-Winkler Similarity Clustering
         label_groups: Dict[str, List[str]] = defaultdict(list)
@@ -302,13 +341,19 @@ class EntityResolver:
         resolved_nodes: List[Dict[str, Any]] = []
 
         for root, cluster_ids in clusters.items():
-            def score_candidate(name: str) -> Tuple[int, int, int]:
+            def score_candidate(name: str) -> Tuple[int, int, int, int]:
+                # Penalize Exhibit 21 subsidiaries so canonical parent nodes take precedence
+                raw_c = _raw_node_cik(name)
+                is_sub = int(
+                    _normalize_name(name) in sub_name_map
+                    or (bool(raw_c) and raw_c in sub_cik_map and sub_cik_map[raw_c] != raw_c)
+                )
                 # Penalize descriptive noun phrases / definite descriptions
                 is_descriptive = int(bool(re.search(r"^(the|our|this)\b|\b(giant|maker|supplier|customer|counterparty|firm)\b", name, re.IGNORECASE)))
                 clean_words = set(re.findall(r"\b[a-zA-Z]+\b", name.lower()))
                 has_suffix = int(any(s.rstrip(".") in clean_words for s in CORPORATE_SUFFIXES))
                 length_score = -len(name) if is_descriptive else len(name)
-                return (-is_descriptive, has_suffix, length_score)
+                return (-is_sub, -is_descriptive, has_suffix, length_score)
 
             canonical_id = max(cluster_ids, key=score_candidate)
 
@@ -323,7 +368,8 @@ class EntityResolver:
 
             aliases = [cid for cid in cluster_ids if cid != canonical_id]
 
-            for cid in cluster_ids:
+            ordered_ids = [canonical_id] + aliases
+            for cid in ordered_ids:
                 alias_info = KNOWN_ALIASES.get(cid.lower().strip())
                 if alias_info:
                     if not canonical_ticker:
@@ -354,6 +400,13 @@ class EntityResolver:
 
             merged_props["aliases"] = aliases
             merged_props["mention_count"] = len(cluster_ids)
+            if "cik" in merged_props and merged_props["cik"]:
+                c_val = str(merged_props["cik"]).strip()
+                merged_props["cik"] = sub_cik_map.get(c_val, c_val)
+            else:
+                resolved_c = get_node_cik(canonical_id)
+                if resolved_c:
+                    merged_props["cik"] = resolved_c
             if canonical_exchange:
                 merged_props["listing_exchange"] = canonical_exchange
             if all_source_hashes:
