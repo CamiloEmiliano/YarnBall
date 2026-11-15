@@ -5,7 +5,7 @@
 - **Date**: 2026-11-14 23:05 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `ontology` / `sft_pipeline` / `knowledge_graph` / `retrieval`
-- **Linked Commits**: Pending commit backfill
+- **Linked Commits**: [`7f5a754`](../../sft_pipeline/rejection_queue.py), [`7f5a754`](../../ontology/convergence.py), [`7f5a754`](../../ontology/validation.py)
 
 ---
 
