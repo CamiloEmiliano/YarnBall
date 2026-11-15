@@ -150,3 +150,40 @@ def test_brace_aware_parsing_and_context_aware_termination_repair() -> None:
     )
     parsed = json.loads(json_str_out)
     assert parsed["edges"][0]["type"] == "LICENSES_FROM"
+
+
+def test_edgar_worker_propagates_source_text_for_hedge_and_termination_gating() -> None:
+    from unittest.mock import MagicMock
+
+    from ingestion.sec.harvester import EdgarWorker
+
+    mock_driver = MagicMock()
+    worker = EdgarWorker(memgraph_driver=mock_driver, pg_conn=None)
+    worker.linker.link_entity = MagicMock(return_value=None)
+
+    section_text = (
+        "Intel manufactures wafers for Apple under a 2025 supply agreement. "
+        "Amazon may from time to time consider partnering with Oracle."
+    )
+    _nodes, edges = worker._persist_sec_graph_data(
+        primary_name="Apple Inc.",
+        primary_ticker="AAPL",
+        graph_data={
+            "nodes": [
+                {"id": "Intel", "type": "Company", "properties": {}},
+                {"id": "Apple", "type": "Company", "properties": {}},
+                {"id": "Amazon", "type": "Company", "properties": {}},
+                {"id": "Oracle", "type": "Company", "properties": {}},
+            ],
+            "edges": [
+                {"source": "Intel", "target": "Apple", "type": "SUPPLIES_TO", "properties": {}},
+                {"source": "Amazon", "target": "Oracle", "type": "PARTNERED_WITH", "properties": {}},
+            ],
+        },
+        accession_number="0000320193-26-000011",
+        filing_date="2026-10-30",
+        form_type="10-K",
+        section="Item 1A Risk Factors",
+        source_text=section_text,
+    )
+    assert edges == [{"source": "Intel", "target": "Apple", "type": "SUPPLIES_TO"}]

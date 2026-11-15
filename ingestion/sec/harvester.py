@@ -417,6 +417,7 @@ class EdgarWorker:
                 filing_date=filing_date_str,
                 form_type="10-K",
                 section=section_label,
+                source_text=section_text,
             )
             extracted_nodes.extend(n)
             extracted_edges.extend(e)
@@ -536,6 +537,7 @@ class EdgarWorker:
         filing_date: str,
         form_type: str,
         section: str,
+        source_text: Optional[str] = None,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """Link entities and persist structured relationships into Memgraph with temporal metadata."""
         nodes = graph_data.get("nodes", [])
@@ -588,6 +590,7 @@ class EdgarWorker:
             source_id=f"{accession_number}:{section}",
             strict=True,
             default_node_type="Company",
+            source_text=source_text,
         )
         gated_nodes = gated["nodes"]
         gated_edges = gated["edges"]
