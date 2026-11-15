@@ -5,7 +5,7 @@
 - **Date**: 2026-11-14 19:25 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `knowledge_graph` / `streaming` / `ingestion` / `sft_pipeline`
-- **Linked Commits**: `e5d1028`
+- **Linked Commits**: [`e5d1028`](../../knowledge_graph/graph_store.py), [`e5d1028`](../../knowledge_graph/memgraph_consumer.py), [`e5d1028`](../../ingestion/sec/parser.py), [`e5d1028`](../../sft_pipeline/rejection_queue.py)
 
 ---
 
