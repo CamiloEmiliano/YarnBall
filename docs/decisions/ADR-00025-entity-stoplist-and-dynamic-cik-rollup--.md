@@ -5,7 +5,7 @@
 - **Date**: 2026-11-14 19:25 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `ontology` / `knowledge_graph` / `ingestion`
-- **Linked Commits**: Pending commit backfill
+- **Linked Commits**: [`ba0fbc6`](../../ontology/validation.py), [`ba0fbc6`](../../ontology/guardrails.py), [`ba0fbc6`](../../knowledge_graph/entity_resolver.py)
 
 ---
 
