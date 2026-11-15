@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00032
 - **Filename**: `ADR-00032-full-corpus-static-typing-and-adr-gates-.md`
 - **Date**: 2026-11-15 07:39 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `mypy.ini` / `docs/decisions` / `tests/docs` / `tests/ontology` / `.agents/skills` / `streaming` / `retrieval` / `ontology` / `sft_pipeline` / `tools`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`68cc394`](../../mypy.ini), [`68cc394`](../../tests/docs/test_adr_integrity.py), [`68cc394`](../../tests/ontology/test_architecture_invariants.py), [`68cc394`](../../.agents/skills/adr-implementation/SKILL.md)
 
 ---
 
