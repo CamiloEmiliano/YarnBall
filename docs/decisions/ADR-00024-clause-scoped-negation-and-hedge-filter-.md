@@ -5,7 +5,7 @@
 - **Date**: 2026-11-14 19:25 UTC
 - **Status**: ACCEPTED
 - **Target Subsystem**: `ontology` / `knowledge_graph`
-- **Linked Commits**: Pending commit backfill
+- **Linked Commits**: [`892cbe7`](../../ontology/compiler.py), [`892cbe7`](../../ontology/guardrails.py), [`892cbe7`](../../ontology/validation.py)
 
 ---
 
