@@ -72,6 +72,7 @@ from .guardrails import (
     load_dynamic_subsidiary_registry,
     load_subsidiary_cik_map,
 )
+from .convergence import evaluate_calibration_batch
 
 __all__ = [
     # Schema
@@ -131,4 +132,6 @@ __all__ = [
     "invalidate_subsidiary_registry_cache",
     "apply_runtime_guardrails",
     "infer_terminated_relation",
+    # Convergence
+    "evaluate_calibration_batch",
 ]

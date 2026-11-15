@@ -520,20 +520,53 @@ def validate_graph_payload(
     raw_nodes: List[Dict[str, Any]] = gated_payload.get("nodes", []) or []
     raw_edges: List[Dict[str, Any]] = gated_payload.get("edges", []) or []
     if len(raw_edges) < len(raw_edges_input):
-        kept_keys = {
-            (str(e.get("source", "")).strip(), str(e.get("target", "")).strip())
-            for e in raw_edges
+        from ontology.guardrails import LIFECYCLE_TERMINATION_PREDICATES as _TERM_PREDS
+
+        raw_type_by_id = {
+            str(n.get("id", "")).strip(): (str(n.get("type", default_node_type)).strip() or default_node_type)
+            for n in raw_nodes_input
+            if str(n.get("id", "")).strip()
         }
+        remaining = [
+            (
+                str(e.get("source", "")).strip(),
+                str(e.get("target", "")).strip(),
+                str(e.get("type", "")).strip().upper(),
+                bool(dict(e.get("properties", {}) or {}).get("status") == "TERMINATED"),
+            )
+            for e in raw_edges
+        ]
+        snippet = source_text[:300] if source_text else None
         for dropped in raw_edges_input:
-            pair = (str(dropped.get("source", "")).strip(), str(dropped.get("target", "")).strip())
-            if pair not in kept_keys:
-                _record_ontology_rejection(
-                    rejection_queue=rejection_queue,
-                    reason="ONTOLOGY_GATE_FILTERED",
-                    detail=f"Filtered noise or hedged edge {pair[0]} -[:{dropped.get('type', '')}]-> {pair[1]}",
-                    payload={"edge": dropped},
-                    source_id=source_id,
-                )
+            src_k = str(dropped.get("source", "")).strip()
+            tgt_k = str(dropped.get("target", "")).strip()
+            rel_k = str(dropped.get("type", "")).strip().upper()
+            matched_idx = None
+            for idx, (r_src, r_tgt, r_rel, r_term) in enumerate(remaining):
+                if r_src == src_k and r_tgt == tgt_k and (
+                    r_rel == rel_k or (rel_k in _TERM_PREDS and r_term)
+                ):
+                    matched_idx = idx
+                    break
+            if matched_idx is not None:
+                remaining.pop(matched_idx)
+                continue
+
+            gate_payload_meta: Dict[str, Any] = {
+                "edge": dropped,
+                "predicate": rel_k,
+                "source_type": raw_type_by_id.get(src_k, default_node_type),
+                "target_type": raw_type_by_id.get(tgt_k, default_node_type),
+            }
+            if snippet:
+                gate_payload_meta["snippet"] = snippet
+            _record_ontology_rejection(
+                rejection_queue=rejection_queue,
+                reason="ONTOLOGY_GATE_FILTERED",
+                detail=f"Filtered noise or hedged edge {src_k} -[:{rel_k}]-> {tgt_k}",
+                payload=gate_payload_meta,
+                source_id=source_id,
+            )
 
     clean_nodes: List[Dict[str, Any]] = []
     node_type_by_id: Dict[str, str] = {}
@@ -601,11 +634,21 @@ def validate_graph_payload(
             strict=strict,
         )
         if oriented is None:
+            canonical_rel = PREDICATE_ALIASES.get(raw_rel, (raw_rel, False))[0]
+            rej_payload: Dict[str, Any] = {
+                "edge": edge,
+                "predicate": raw_rel,
+                "canonical_predicate": canonical_rel,
+                "source_type": src_lbl,
+                "target_type": tgt_lbl,
+            }
+            if source_text:
+                rej_payload["snippet"] = source_text[:300]
             _record_ontology_rejection(
                 rejection_queue=rejection_queue,
                 reason="SCHEMA_OR_DOMAIN_RANGE_REJECTED",
                 detail=f"Rejected triple ({src}:{src_lbl})-[:{raw_rel}]->({tgt}:{tgt_lbl})",
-                payload={"edge": edge, "source_type": src_lbl, "target_type": tgt_lbl},
+                payload=rej_payload,
                 source_id=source_id,
             )
             continue

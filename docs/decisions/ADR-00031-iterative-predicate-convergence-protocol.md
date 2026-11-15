@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00031
 - **Filename**: `ADR-00031-iterative-predicate-convergence-protocol.md`
 - **Date**: 2026-11-14 23:05 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `ontology` / `sft_pipeline` / `knowledge_graph` / `retrieval`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: Pending commit backfill
 
 ---
 

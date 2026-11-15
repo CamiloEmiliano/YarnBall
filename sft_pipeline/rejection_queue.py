@@ -15,11 +15,12 @@ import argparse
 import json
 import logging
 import os
+import re
 import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("rejection_queue")
 
@@ -75,6 +76,63 @@ class RejectionRecord(BaseModel):
         )
 
 
+_CYPHER_PRED_RE = re.compile(r"-\[:([A-Za-z0-9_]+)")
+_LOG_DATE_RE = re.compile(r"^rejections_(\d{8})\.jsonl$")
+
+
+def _normalize_checkpoint_ymd(since_checkpoint: Optional[str]) -> Optional[str]:
+    """Extract YYYYMMDD date prefix from a YYYYMMDD, YYYY-MM-DD, or ISO timestamp cursor."""
+    if not since_checkpoint:
+        return None
+    digits = "".join(ch for ch in str(since_checkpoint)[:10] if ch.isdigit())
+    return digits[:8] if len(digits) >= 8 else None
+
+
+def _extract_rejection_signature(
+    record: RejectionRecord, fallback_doc_key: str
+) -> Tuple[str, str, str, str, str, str, str]:
+    """Extract normalized `(predicate, canonical_predicate, src_type, tgt_type, reason, doc_key, snippet)`."""
+    meta = record.metadata or {}
+    edge = meta.get("edge") if isinstance(meta.get("edge"), dict) else {}
+    raw_pred = str(meta.get("predicate") or edge.get("type") or "").strip().upper()
+    if not raw_pred:
+        m = _CYPHER_PRED_RE.search(record.raw_completion or "")
+        if m:
+            raw_pred = m.group(1).strip().upper()
+    pred = raw_pred or "UNKNOWN_PREDICATE"
+    canonical_pred = str(meta.get("canonical_predicate") or pred).strip().upper()
+    src_type = str(meta.get("source_type") or "Entity").strip() or "Entity"
+    tgt_type = str(meta.get("target_type") or "Entity").strip() or "Entity"
+    reason = str(meta.get("reason") or record.error_stage or "").strip()
+    doc_key = str(record.sample_id or meta.get("source_id") or fallback_doc_key)
+    snippet = str(meta.get("snippet") or record.prompt or "")[:300]
+    return pred, canonical_pred, src_type, tgt_type, reason, doc_key, snippet
+
+
+def _classify_predicate_bucket(
+    predicate: str,
+    canonical_predicate: str,
+    reason: str,
+    df: int,
+    min_support: int,
+) -> str:
+    """Assign ADR-00031 triage bucket for an aggregated ONTOLOGY_PRUNING signature."""
+    from ontology.guardrails import NON_SCHEMA_NOISE_PREDICATES
+    from ontology.schema import ONTOLOGY_SCHEMA, PREDICATE_ALIASES
+
+    if reason in ("GENERIC_PLACEHOLDER_NODE", "GENERIC_PLACEHOLDER_EDGE"):
+        return "PLACEHOLDER_NOISE"
+    if predicate in NON_SCHEMA_NOISE_PREDICATES:
+        return "KNOWN_NOISE"
+    if predicate in ONTOLOGY_SCHEMA or canonical_predicate in ONTOLOGY_SCHEMA:
+        return "TYPING_ERROR"
+    if predicate in PREDICATE_ALIASES:
+        return "ALIASED"
+    if df < min_support:
+        return "LOW_SUPPORT"
+    return "CANDIDATE_FOR_REVIEW"
+
+
 class RuntimeRejectionQueue:
     """Thread-safe, non-blocking disk logger and DPO candidate exporter."""
 
@@ -82,6 +140,11 @@ class RuntimeRejectionQueue:
         self.base_dir = Path(base_dir or DEFAULT_REJECTION_DIR)
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+
+    @property
+    def checkpoint_file_path(self) -> Path:
+        """Path to persisted ADR-00031 predicate convergence checkpoint cursor."""
+        return self.base_dir / "predicate_convergence_checkpoint.json"
 
     def _get_daily_log_path(self, date_str: Optional[str] = None) -> Path:
         """Get path for daily partitioned JSONL file (e.g. rejections_20261108.jsonl)."""
@@ -129,17 +192,34 @@ class RuntimeRejectionQueue:
         )
         return self.log_rejection(record)
 
-    def list_log_files(self) -> List[Path]:
-        """List all rejection log files in the directory sorted by date."""
-        return sorted(self.base_dir.glob("rejections_*.jsonl"))
+    def list_log_files(self, since_date: Optional[str] = None) -> List[Path]:
+        """List rejection log files sorted chronologically, pruned by optional YYYYMMDD cursor."""
+        files = sorted(self.base_dir.glob("rejections_*.jsonl"))
+        since_ymd = _normalize_checkpoint_ymd(since_date)
+        if not since_ymd:
+            return files
 
-    def load_records(self, date_str: Optional[str] = None) -> List[RejectionRecord]:
-        """Load records from a specific date or across all available log files."""
+        filtered: List[Path] = []
+        for p in files:
+            m = _LOG_DATE_RE.match(p.name)
+            if not m or m.group(1) >= since_ymd:
+                filtered.append(p)
+        return filtered
+
+    def load_records(
+        self,
+        date_str: Optional[str] = None,
+        *,
+        since_checkpoint: Optional[str] = None,
+    ) -> List[RejectionRecord]:
+        """Load records from a specific date or within a bounded `since_checkpoint` window."""
         records: List[RejectionRecord] = []
         if date_str:
             target_files = [self._get_daily_log_path(date_str)]
         else:
-            target_files = self.list_log_files()
+            target_files = self.list_log_files(since_date=since_checkpoint)
+
+        has_subday_cutoff = bool(since_checkpoint and "T" in str(since_checkpoint))
 
         for p in target_files:
             if not p.exists():
@@ -151,15 +231,157 @@ class RuntimeRejectionQueue:
                         continue
                     try:
                         data = json.loads(line_str)
-                        records.append(RejectionRecord.from_dict(data))
+                        rec = RejectionRecord.from_dict(data)
+                        if has_subday_cutoff and rec.timestamp and rec.timestamp < str(since_checkpoint):
+                            continue
+                        records.append(rec)
                     except json.JSONDecodeError as exc:
                         logger.warning("Skipping corrupt line %d in %s: %s", line_idx, p.name, exc)
 
         return records
 
-    def get_summary_stats(self) -> Dict[str, Any]:
-        """Compute aggregated statistics across all logged rejections."""
-        records = self.load_records()
+    def load_checkpoint(self) -> Optional[Dict[str, Any]]:
+        """Load the latest predicate convergence checkpoint metadata if present."""
+        if not self.checkpoint_file_path.exists():
+            return None
+        try:
+            return json.loads(self.checkpoint_file_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Failed to load convergence checkpoint %s: %s", self.checkpoint_file_path, exc)
+            return None
+
+    def save_checkpoint(
+        self,
+        schema_version: str,
+        *,
+        since_checkpoint: Optional[str] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+    ) -> Path:
+        """Persist a new schema release checkpoint advancing the `since_checkpoint` scan cursor."""
+        cursor = since_checkpoint or datetime.now(timezone.utc).isoformat()
+        payload: Dict[str, Any] = {
+            "schema_version": schema_version,
+            "since_checkpoint": cursor,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "metrics": metrics or {},
+        }
+        self.checkpoint_file_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return self.checkpoint_file_path
+
+    def aggregate_predicate_rejections(
+        self,
+        *,
+        min_support: int = 3,
+        since_checkpoint: Optional[str] = None,
+        max_samples: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Group ONTOLOGY_PRUNING rejections by `(predicate, source_type, target_type)` sorted by `df`."""
+        records = self.load_records(since_checkpoint=since_checkpoint)
+        groups: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+
+        for idx, rec in enumerate(records):
+            if rec.error_stage != ErrorStage.ONTOLOGY_PRUNING:
+                continue
+            pred, canonical_pred, src_type, tgt_type, reason, doc_key, snippet = _extract_rejection_signature(
+                rec, fallback_doc_key=f"__row_{idx}"
+            )
+            key = (pred, src_type, tgt_type)
+            entry = groups.get(key)
+            if entry is None:
+                entry = {
+                    "predicate": pred,
+                    "canonical_predicate": canonical_pred,
+                    "source_type": src_type,
+                    "target_type": tgt_type,
+                    "reason": reason,
+                    "count": 0,
+                    "doc_ids": set(),
+                    "sample_ids": [],
+                    "snippets": [],
+                }
+                groups[key] = entry
+
+            entry["count"] += 1
+            entry["doc_ids"].add(doc_key)
+            if doc_key not in entry["sample_ids"] and len(entry["sample_ids"]) < max_samples:
+                entry["sample_ids"].append(doc_key)
+            if snippet and snippet not in entry["snippets"] and len(entry["snippets"]) < max_samples:
+                entry["snippets"].append(snippet)
+
+        aggregated: List[Dict[str, Any]] = []
+        for entry in groups.values():
+            df = len(entry["doc_ids"])
+            bucket = _classify_predicate_bucket(
+                entry["predicate"],
+                entry["canonical_predicate"],
+                entry["reason"],
+                df,
+                min_support,
+            )
+            aggregated.append(
+                {
+                    "predicate": entry["predicate"],
+                    "canonical_predicate": entry["canonical_predicate"],
+                    "source_type": entry["source_type"],
+                    "target_type": entry["target_type"],
+                    "bucket": bucket,
+                    "df": df,
+                    "count": entry["count"],
+                    "sample_ids": entry["sample_ids"],
+                    "snippets": entry["snippets"],
+                }
+            )
+
+        aggregated.sort(
+            key=lambda item: (-item["df"], -item["count"], item["predicate"], item["source_type"], item["target_type"])
+        )
+        return aggregated
+
+    def evaluate_predicate_convergence(
+        self,
+        *,
+        total_candidate_triples: int = 0,
+        min_support: int = 3,
+        target_max_rate: float = 0.02,
+        since_checkpoint: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Compute ADR-00031 convergence telemetry against holdout/batch thresholds."""
+        aggregated = self.aggregate_predicate_rejections(
+            min_support=min_support,
+            since_checkpoint=since_checkpoint,
+        )
+        total_pruning = sum(item["count"] for item in aggregated)
+        known_noise_count = sum(
+            item["count"] for item in aggregated if item["bucket"] in ("KNOWN_NOISE", "PLACEHOLDER_NOISE")
+        )
+        typing_error_count = sum(item["count"] for item in aggregated if item["bucket"] == "TYPING_ERROR")
+        non_noise_rejections = total_pruning - known_noise_count
+        recurring_gaps = [item for item in aggregated if item["bucket"] == "CANDIDATE_FOR_REVIEW"]
+
+        rate: Optional[float] = None
+        rate_ok = True
+        if total_candidate_triples > 0:
+            rate = non_noise_rejections / total_candidate_triples
+            rate_ok = rate <= target_max_rate
+
+        return {
+            "since_checkpoint": since_checkpoint,
+            "total_candidate_triples": total_candidate_triples,
+            "total_pruning_rejections": total_pruning,
+            "known_noise_count": known_noise_count,
+            "typing_error_count": typing_error_count,
+            "non_noise_rejections": non_noise_rejections,
+            "non_noise_rejection_rate": round(rate, 6) if rate is not None else None,
+            "target_max_rate": target_max_rate,
+            "min_support": min_support,
+            "recurring_unknown_gaps": recurring_gaps,
+            "converged": (len(recurring_gaps) == 0) and rate_ok,
+            "signatures": aggregated,
+        }
+
+    def get_summary_stats(self, *, since_checkpoint: Optional[str] = None) -> Dict[str, Any]:
+        """Compute aggregated statistics across logged rejections in the active window."""
+        records = self.load_records(since_checkpoint=since_checkpoint)
         total_count = len(records)
         by_stage: Dict[str, int] = {}
         by_task: Dict[str, int] = {}
@@ -172,13 +394,15 @@ class RuntimeRejectionQueue:
             "total_rejections": total_count,
             "by_error_stage": by_stage,
             "by_task_id": by_task,
-            "available_log_files": len(self.list_log_files()),
+            "available_log_files": len(self.list_log_files(since_date=since_checkpoint)),
+            "since_checkpoint": since_checkpoint,
         }
 
     def export_dpo_candidates(
         self,
         output_path: Optional[Path] = None,
         min_records: int = 1,
+        since_checkpoint: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Curate logged rejection samples into contrastive DPO candidate pairs.
 
@@ -188,7 +412,7 @@ class RuntimeRejectionQueue:
         - error_stage: Category of failure for preference weighting
         - suggested_repair: Automated guidance or refusal target for the chosen response
         """
-        records = self.load_records()
+        records = self.load_records(since_checkpoint=since_checkpoint)
         if len(records) < min_records:
             logger.info("Not enough records to export (%d < %d)", len(records), min_records)
             return []
@@ -254,15 +478,23 @@ def log_runtime_rejection(
     )
 
 
+def _resolve_since_cursor(queue: RuntimeRejectionQueue, since_arg: Optional[str]) -> Optional[str]:
+    if since_arg == "auto":
+        ckpt = queue.load_checkpoint()
+        return ckpt.get("since_checkpoint") if ckpt else None
+    return since_arg
+
+
 def main() -> None:
-    """CLI utility for inspecting stats and exporting DPO candidate datasets."""
+    """CLI utility for inspecting stats, predicate convergence, and exporting DPO candidates."""
     parser = argparse.ArgumentParser(description="YarnBall Runtime Rejection Queue CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Subcommand: stats
-    subparsers.add_parser("stats", help="Show summary statistics of logged failures")
+    stats_parser = subparsers.add_parser("stats", help="Show summary statistics of logged failures")
+    stats_parser.add_argument("--since-checkpoint", type=str, default=None, help="YYYYMMDD, ISO timestamp, or 'auto'")
 
-    # Subcommand: export-dpo-candidates
+    # Subcommand: export-dpo
     export_parser = subparsers.add_parser("export-dpo", help="Export contrastive DPO candidate pairs")
     export_parser.add_argument(
         "--output",
@@ -271,12 +503,35 @@ def main() -> None:
         default=str(DEFAULT_REJECTION_DIR / "dpo_candidates.jsonl"),
         help="Destination path for curated DPO candidates JSONL",
     )
+    export_parser.add_argument("--since-checkpoint", type=str, default=None, help="YYYYMMDD, ISO timestamp, or 'auto'")
+
+    # Subcommand: predicate-report (ADR-00031 Step 3)
+    pred_parser = subparsers.add_parser(
+        "predicate-report",
+        help="Group ONTOLOGY_PRUNING failures by (predicate, src_type, tgt_type) and distinct doc frequency",
+    )
+    pred_parser.add_argument("--min-support", type=int, default=3, help="Minimum distinct documents df(p)")
+    pred_parser.add_argument("--since-checkpoint", type=str, default=None, help="YYYYMMDD, ISO timestamp, or 'auto'")
+    pred_parser.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    # Subcommand: checkpoint (ADR-00031 Step 8)
+    ckpt_parser = subparsers.add_parser(
+        "checkpoint",
+        help="Evaluate convergence metrics and advance the schema checkpoint cursor",
+    )
+    ckpt_parser.add_argument("--version", type=str, required=True, help="Release tag (e.g. v1)")
+    ckpt_parser.add_argument("--total-candidates", type=int, default=0, help="Candidate triple count in holdout batch")
+    ckpt_parser.add_argument("--target-rate", type=float, default=0.02, help="Max allowed non-noise rejection rate")
+    ckpt_parser.add_argument("--min-support", type=int, default=3, help="Minimum distinct docs for recurring gap")
+    ckpt_parser.add_argument("--since-checkpoint", type=str, default=None, help="YYYYMMDD, ISO timestamp, or 'auto'")
+    ckpt_parser.add_argument("--enforce", action="store_true", help="Exit non-zero if convergence checks fail")
 
     args = parser.parse_args()
     queue = RuntimeRejectionQueue()
+    since_cursor = _resolve_since_cursor(queue, getattr(args, "since_checkpoint", None))
 
     if args.command == "stats":
-        stats = queue.get_summary_stats()
+        stats = queue.get_summary_stats(since_checkpoint=since_cursor)
         print("\n=== YarnBall Rejection Queue Summary ===")
         print(f"Total Rejections Logged: {stats['total_rejections']}")
         print(f"Daily Partition Files:   {stats['available_log_files']}")
@@ -289,8 +544,40 @@ def main() -> None:
         print("=========================================\n")
 
     elif args.command == "export-dpo":
-        candidates = queue.export_dpo_candidates(output_path=Path(args.output))
+        candidates = queue.export_dpo_candidates(
+            output_path=Path(args.output),
+            since_checkpoint=since_cursor,
+        )
         print(f"Exported {len(candidates)} DPO candidate pairs to {args.output}")
+
+    elif args.command == "predicate-report":
+        report = queue.aggregate_predicate_rejections(
+            min_support=args.min_support,
+            since_checkpoint=since_cursor,
+        )
+        if args.json:
+            print(json.dumps(report, indent=2))
+        else:
+            print("\n=== ADR-00031 Predicate Convergence Report ===")
+            for item in report:
+                print(
+                    f"  {item['predicate']} ({item['source_type']} -> {item['target_type']}) "
+                    f"| bucket={item['bucket']} | df={item['df']} | count={item['count']}"
+                )
+            print("==============================================\n")
+
+    elif args.command == "checkpoint":
+        summary = queue.evaluate_predicate_convergence(
+            total_candidate_triples=args.total_candidates,
+            min_support=args.min_support,
+            target_max_rate=args.target_rate,
+            since_checkpoint=since_cursor,
+        )
+        if args.enforce and not summary["converged"]:
+            print(json.dumps(summary, indent=2))
+            raise SystemExit(1)
+        path = queue.save_checkpoint(args.version, metrics=summary)
+        print(f"Saved checkpoint {args.version} to {path} (converged={summary['converged']})")
 
 
 if __name__ == "__main__":
