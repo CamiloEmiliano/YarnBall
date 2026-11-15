@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00024
 - **Filename**: `ADR-00024-clause-scoped-negation-and-hedge-filter-.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
-- **Target Subsystem**: `ontology`
-- **Linked Commits**: Pending acceptance
+- **Status**: ACCEPTED
+- **Target Subsystem**: `ontology` / `knowledge_graph`
+- **Linked Commits**: Pending commit backfill
 
 ---
 

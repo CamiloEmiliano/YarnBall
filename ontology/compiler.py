@@ -46,7 +46,7 @@ POLARITY_TRIGGERS: Dict[str, List[str]] = {
 }
 
 NEGATION_REGEX = regex.compile(
-    r"\b(not|no|never|avoided|avoiding|without|prevented|preventing|neither|nor|denied|unlikely\s+to|no\s+longer|terminated|dissolved|ended|cancelled|canceled)\b",
+    r"\b(not|no|never|avoided|avoiding|without|prevented|preventing|neither|nor|denied|unlikely\s+to|no\s+longer|failed\s+to|declined\s+to)\b",
     regex.IGNORECASE,
 )
 
@@ -54,6 +54,33 @@ MODAL_HEDGE_REGEX = regex.compile(
     r"\b(may\s+consider|may\s+from\s+time\s+to\s+time\s+consider|might\s+consider|might|evaluating|exploring(?:\s+the\s+possibility)?|preliminary\s+talks|if\s+market\s+conditions\s+warrant|conditional\s+upon|subject\s+to\s+customary\s+closing)\b",
     regex.IGNORECASE,
 )
+
+_SENTENCE_SPLIT_RE = regex.compile(
+    r"(?<![0-9])(?<!\bInc)(?<!\bCorp)(?<!\bLtd)(?<!\bCo)(?<!\bSt)(?<!\bNo)[.!?]+\s+|;\s*|\r?\n+",
+    regex.IGNORECASE,
+)
+_CLAUSE_SPLIT_RE = regex.compile(
+    r",\s*(?:and|but|while|however|although|whereas|though)\b\s*|"
+    r"\s+\b(?:but|while|however|although|whereas)\b\s+|"
+    r"\s+\band\b(?=\s+(?:expanded|expand|signed|terminated|ended|dissolved|entered|acquired|launched|built|reduced|cut|suspended|defaulted|increased|partnered|invested|licensed|avoided|maintained|continued|resumed|cancelled|canceled|grew|won)\b)\s*",
+    regex.IGNORECASE,
+)
+
+
+def split_financial_clauses(text: Optional[str]) -> List[str]:
+    """Segment financial text into atomic syntactic clauses without crossing coordination boundaries."""
+    if not text or not str(text).strip():
+        return []
+    clauses: List[str] = []
+    for sentence in _SENTENCE_SPLIT_RE.split(str(text).strip()):
+        sent_clean = sentence.strip()
+        if not sent_clean:
+            continue
+        for part in _CLAUSE_SPLIT_RE.split(sent_clean):
+            part_clean = part.strip(" \t\r\n,;")
+            if part_clean:
+                clauses.append(part_clean)
+    return clauses
 
 
 def is_hypothetical_or_hedged(text: Optional[str]) -> bool:
@@ -65,23 +92,58 @@ def is_hypothetical_or_hedged(text: Optional[str]) -> bool:
     return bool(MODAL_HEDGE_REGEX.search(str(text)))
 
 
+def is_triple_hedged(
+    prompt: Optional[str],
+    entities: Optional[List[str]] = None,
+    prediction_text: Optional[str] = None,
+) -> bool:
+    """Check epistemic hedging scoped to the entity-bearing clause(s) rather than an entire passage."""
+    if is_hypothetical_or_hedged(prediction_text):
+        return True
+    if not prompt or not str(prompt).strip():
+        return False
+
+    clauses = split_financial_clauses(prompt)
+    if not clauses:
+        return False
+
+    clean_entities = [str(e).strip() for e in (entities or []) if e and len(str(e).strip()) >= 2]
+    matched_clauses: List[str] = []
+
+    if clean_entities:
+        for clause in clauses:
+            clause_lower = clause.lower()
+            for ent in clean_entities:
+                ent_lower = ent.lower()
+                if ent_lower in clause_lower:
+                    matched_clauses.append(clause)
+                    break
+                head_token = ent_lower.split()[0].strip(",.")
+                if len(head_token) >= 4 and regex.search(rf"\b{regex.escape(head_token)}\b", clause_lower):
+                    matched_clauses.append(clause)
+                    break
+
+    if matched_clauses:
+        return any(is_hypothetical_or_hedged(c) for c in matched_clauses)
+
+    # Single-clause fallback supports short synthetic mocks; multi-clause passages don't leak unrelated hedges
+    if len(clauses) == 1:
+        return is_hypothetical_or_hedged(clauses[0])
+    return False
+
+
 def has_unnegated_pattern(pattern: str, text: str, window_chars: int = 60) -> bool:
     """
     Check if regex pattern matches in text without being preceded by a negation cue
-    in the local syntactic clause.
+    in the same atomic syntactic clause.
     """
     if not text:
         return False
-    for m in regex.finditer(pattern, text, flags=regex.IGNORECASE):
-        start = m.start()
-        # Look back within the local clause (stopping at clause/sentence boundaries ., ;, !)
-        preceding = text[max(0, start - window_chars) : start]
-        clause_boundary = max(preceding.rfind("."), preceding.rfind(";"), preceding.rfind("!"))
-        if clause_boundary != -1:
-            preceding = preceding[clause_boundary + 1 :]
-
-        if not NEGATION_REGEX.search(preceding):
-            return True
+    for clause in split_financial_clauses(text):
+        for m in regex.finditer(pattern, clause, flags=regex.IGNORECASE):
+            preceding = clause[max(0, m.start() - window_chars) : m.start()]
+            if not NEGATION_REGEX.search(preceding):
+                return True
     return False
 
 

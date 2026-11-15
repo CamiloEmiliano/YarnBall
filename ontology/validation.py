@@ -449,17 +449,41 @@ def validate_graph_payload(
     rejection_queue: Optional[Any] = None,
     strict: bool = True,
     default_node_type: str = "Entity",
+    source_text: Optional[str] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Enforce inline write-time ontology validation across candidate nodes and edges.
 
-    Applies placeholder pruning (`is_generic_placeholder`), lifecycle predicate normalization,
-    strict SHACL domain/range + alias checks (`validate_and_orient_triple`), symmetric edge
-    canonicalization (`canonicalize_symmetric_edge`), and ownership DAG cycle breaking.
+    Applies Tier-4 guardrails (`gate_json_payload` for CIK rollup, noise pruning, clause-scoped
+    hedge suppression, and context-aware termination repair), placeholder pruning
+    (`is_generic_placeholder`), strict SHACL domain/range + alias checks
+    (`validate_and_orient_triple`), symmetric edge canonicalization
+    (`canonicalize_symmetric_edge`), and ownership DAG cycle breaking.
     """
-    from ontology.guardrails import LIFECYCLE_TERMINATION_PREDICATES
+    from ontology.guardrails import DEFAULT_ONTOLOGY_GATE, LIFECYCLE_TERMINATION_PREDICATES
 
-    raw_nodes: List[Dict[str, Any]] = graph_data.get("nodes", []) or []
-    raw_edges: List[Dict[str, Any]] = graph_data.get("edges", []) or []
+    raw_nodes_input: List[Dict[str, Any]] = graph_data.get("nodes", []) or []
+    raw_edges_input: List[Dict[str, Any]] = graph_data.get("edges", []) or []
+    gated_payload = DEFAULT_ONTOLOGY_GATE.gate_json_payload(
+        {"nodes": raw_nodes_input, "edges": raw_edges_input},
+        source_text=source_text,
+    )
+    raw_nodes: List[Dict[str, Any]] = gated_payload.get("nodes", []) or []
+    raw_edges: List[Dict[str, Any]] = gated_payload.get("edges", []) or []
+    if len(raw_edges) < len(raw_edges_input):
+        kept_keys = {
+            (str(e.get("source", "")).strip(), str(e.get("target", "")).strip())
+            for e in raw_edges
+        }
+        for dropped in raw_edges_input:
+            pair = (str(dropped.get("source", "")).strip(), str(dropped.get("target", "")).strip())
+            if pair not in kept_keys:
+                _record_ontology_rejection(
+                    rejection_queue=rejection_queue,
+                    reason="ONTOLOGY_GATE_FILTERED",
+                    detail=f"Filtered noise or hedged edge {pair[0]} -[:{dropped.get('type', '')}]-> {pair[1]}",
+                    payload={"edge": dropped},
+                    source_id=source_id,
+                )
 
     clean_nodes: List[Dict[str, Any]] = []
     node_type_by_id: Dict[str, str] = {}

@@ -49,12 +49,22 @@ from .alignment import (
     normalize_entity_name,
 )
 from .compiler import (
+    MODAL_HEDGE_REGEX,
     NEGATION_REGEX,
     POLARITY_TRIGGERS,
     classify_financial_materiality,
     classify_polarity_from_text,
     compile_to_cypher_dsl,
     has_unnegated_pattern,
+    is_hypothetical_or_hedged,
+    is_triple_hedged,
+    split_financial_clauses,
+)
+from .guardrails import (
+    DEFAULT_ONTOLOGY_GATE,
+    Tier4OntologyGate,
+    apply_runtime_guardrails,
+    infer_terminated_relation,
 )
 
 __all__ = [
@@ -96,8 +106,17 @@ __all__ = [
     # Compiler
     "POLARITY_TRIGGERS",
     "NEGATION_REGEX",
+    "MODAL_HEDGE_REGEX",
+    "split_financial_clauses",
     "has_unnegated_pattern",
+    "is_hypothetical_or_hedged",
+    "is_triple_hedged",
     "classify_polarity_from_text",
     "classify_financial_materiality",
     "compile_to_cypher_dsl",
+    # Guardrails
+    "Tier4OntologyGate",
+    "DEFAULT_ONTOLOGY_GATE",
+    "apply_runtime_guardrails",
+    "infer_terminated_relation",
 ]

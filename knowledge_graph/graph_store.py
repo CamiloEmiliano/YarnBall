@@ -503,6 +503,7 @@ def store_graph_entities(
         rejection_queue=rejection_queue,
         strict=True,
         default_node_type="Entity",
+        source_text=text,
     )
     nodes: List[Dict[str, Any]] = gated.get("nodes", [])
     edges: List[Dict[str, Any]] = gated.get("edges", [])
