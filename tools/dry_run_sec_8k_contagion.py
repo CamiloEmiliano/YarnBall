@@ -88,9 +88,18 @@ class DeterministicMockModelClient(YarnBallModelClient):
         super().__init__(transport_fn=lambda payload: {"response": ""})
         self.shock_origin = shock_origin
 
-    def generate(self, prompt: str, **kwargs) -> ModelResponse:
-        task = str(kwargs.get("task", "CONTAGION_REASONING")).upper()
-        if task in ("TEXT_TO_CYPHER", "C") or "openCypher" in prompt:
+    def generate(
+        self,
+        prompt: str,
+        task: str = "CONTAGION_REASONING",
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.1,
+        max_new_tokens: Optional[int] = None,
+        enforce_think_prefix: bool = True,
+        num_ctx: int = 8192,
+    ) -> ModelResponse:
+        task_name = str(task or "CONTAGION_REASONING").upper()
+        if task_name in ("TEXT_TO_CYPHER", "C") or "openCypher" in prompt:
             cypher = f"MATCH (s:Company {{ticker: '{self.shock_origin}'}})-[r:SUPPLIES_TO*1..3]->(t:Company) RETURN s, r, t;"
             return ModelResponse(
                 raw_text=cypher,

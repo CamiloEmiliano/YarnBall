@@ -9,7 +9,7 @@ dead-letter topic.
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Protocol, cast
 
 # Kafka admin imports for topic creation
 try:
@@ -27,18 +27,23 @@ def _ensure_topics() -> None:
     dlt_topic = os.getenv("KAFKA_DLT_TOPIC") or f"{os.getenv('KAFKA_TOPIC')}.dlt"
     _init_topic(dlt_topic)
 
+class KafkaProducerProtocol(Protocol):
+    def send(self, *args: Any, **kwargs: Any) -> Any: ...
+    def close(self) -> None: ...
+
+
 # ----------------------------------------------------------------------
 # Kafka fallback class
 # ----------------------------------------------------------------------
 class KafkaProducerFallback:
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         from tools.utils import logger
         logger.error("KafkaProducerFallback instantiated - kafka-python is required.")
         raise RuntimeError("kafka-python is required for KafkaProducer")
 
-    def send(self, *args, **kwargs):  # pragma: no cover
+    def send(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         class _NoOpFuture:
-            def get(self, timeout=None):
+            def get(self, timeout: float | None = None) -> Any:
                 return None
         return _NoOpFuture()
 
@@ -53,28 +58,28 @@ try:
 except ImportError:  # pragma: no cover
     KafkaProducerType = KafkaProducerFallback
 
-KafkaProducer = KafkaProducerType
+KafkaProducer: Any = KafkaProducerType
 
 # ----------------------------------------------------------------------
 # Helper to create a producer instance
 # ----------------------------------------------------------------------
-def _producer() -> KafkaProducer:
-    kwargs = {
+def _producer() -> KafkaProducerProtocol:
+    kwargs: dict[str, Any] = {
         "bootstrap_servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS"),
         "value_serializer": lambda value: json.dumps(value).encode("utf-8"),
         "acks": "all",
         "retries": 3,
     }
     try:
-        return KafkaProducer(enable_idempotence=True, **kwargs)
+        return cast(KafkaProducerProtocol, KafkaProducer(enable_idempotence=True, **kwargs))
     except Exception:
-        return KafkaProducer(**kwargs)
+        return cast(KafkaProducerProtocol, KafkaProducer(**kwargs))
 
 # ----------------------------------------------------------------------
 # Send a message to the dead-letter topic (DLT)
 # ----------------------------------------------------------------------
 def send_to_dlt(
-    producer: KafkaProducer | None,
+    producer: KafkaProducerProtocol | None,
     message: Any,
     payload: Any,
     reason: str,
@@ -132,7 +137,7 @@ def send_to_dlt(
 # ----------------------------------------------------------------------
 # Topic initialization and convenience wrapper
 # ----------------------------------------------------------------------
-def _init_topic(topic: str) -> None:
+def _init_topic(topic: str | None) -> None:
     """Create the given topic with configurable partitions if it does not already exist."""
     if KafkaAdminClient is None or not topic:
         return
@@ -146,7 +151,7 @@ def _init_topic(topic: str) -> None:
     finally:
         admin.close()
 
-def get_producer() -> KafkaProducer:
+def get_producer() -> KafkaProducerProtocol:
     """Factory that returns a ready-to-use producer and ensures both main and dead-letter topics exist."""
     prod = _producer()
     main_topic = os.getenv("KAFKA_TOPIC")
@@ -158,7 +163,7 @@ def get_producer() -> KafkaProducer:
 def publish_message(
     payload: Any,
     topic: str | None = None,
-    producer: KafkaProducer | None = None,
+    producer: KafkaProducerProtocol | None = None,
     sync: bool = False,
 ) -> bool:
     """Convenient wrapper for sending a JSON-serialized message."""

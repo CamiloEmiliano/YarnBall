@@ -20,7 +20,7 @@ import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 logger = logging.getLogger("rejection_queue")
 
@@ -93,7 +93,8 @@ def _extract_rejection_signature(
 ) -> Tuple[str, str, str, str, str, str, str]:
     """Extract normalized `(predicate, canonical_predicate, src_type, tgt_type, reason, doc_key, snippet)`."""
     meta = record.metadata or {}
-    edge = meta.get("edge") if isinstance(meta.get("edge"), dict) else {}
+    raw_edge = meta.get("edge")
+    edge: Dict[str, Any] = raw_edge if isinstance(raw_edge, dict) else {}
     raw_pred = str(meta.get("predicate") or edge.get("type") or "").strip().upper()
     if not raw_pred:
         m = _CYPHER_PRED_RE.search(record.raw_completion or "")
@@ -245,7 +246,7 @@ class RuntimeRejectionQueue:
         if not self.checkpoint_file_path.exists():
             return None
         try:
-            return json.loads(self.checkpoint_file_path.read_text(encoding="utf-8"))
+            return cast(Dict[str, Any], json.loads(self.checkpoint_file_path.read_text(encoding="utf-8")))
         except Exception as exc:
             logger.warning("Failed to load convergence checkpoint %s: %s", self.checkpoint_file_path, exc)
             return None

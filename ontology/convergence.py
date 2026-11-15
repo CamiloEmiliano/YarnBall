@@ -44,7 +44,7 @@ def evaluate_calibration_batch(
         )
         accepted_edges += len(gated.get("edges") or [])
 
-    summary = rejection_queue.evaluate_predicate_convergence(
+    summary: Dict[str, Any] = rejection_queue.evaluate_predicate_convergence(
         total_candidate_triples=total_candidates,
         min_support=min_support,
         target_max_rate=target_max_rate,

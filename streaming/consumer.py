@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 # ----------------------------------------------------------------------
 # Kafka fallback classes
@@ -68,7 +68,7 @@ class DLTQueueError(RuntimeError):
 def _deserialize_message(value: bytes | None) -> dict[str, Any] | None:
     if value is None:
         return None
-    return json.loads(value.decode("utf-8"))
+    return cast(dict[str, Any], json.loads(value.decode("utf-8")))
 
 def _is_valid_payload(payload: Any) -> bool:
     if not isinstance(payload, dict):
@@ -110,7 +110,7 @@ def store_raw(
 def process_message(payload: Any) -> dict[str, Any]:
     if not _is_valid_payload(payload):
         raise ConsumerError("invalid_kafka_payload")
-    return payload
+    return cast(dict[str, Any], payload)
 
 def ingest_message(
     payload: Any, *, producer: Any | None = None

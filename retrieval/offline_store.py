@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Dict, Iterable, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Union
 
 try:
     import pyarrow.parquet as pq
@@ -424,18 +424,18 @@ class InMemorySubgraphStore:
         )
         return results
 
-    def session(self):
+    def session(self) -> Any:
         """Returns a Neo4j/Memgraph-compatible session context manager."""
         store = self
 
         class _InMemorySession:
-            def __enter__(self):
+            def __enter__(self) -> "_InMemorySession":
                 return self
 
-            def __exit__(self, exc_type, exc, tb):
+            def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Literal[False]:
                 return False
 
-            def run(self, query: str, **kwargs):
+            def run(self, query: str, **kwargs: Any) -> List[Dict[str, Any]]:
                 return store.query_edges(query, params=kwargs)
 
         return _InMemorySession()
