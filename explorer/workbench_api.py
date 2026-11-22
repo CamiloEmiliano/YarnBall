@@ -85,12 +85,13 @@ class OllamaStatus(BaseModel):
 
 
 class EmbedderStatus(BaseModel):
-    """Dense embedder readiness telemetry (ADR-00020)."""
+    """Dense embedder readiness telemetry (ADR-00020 / ADR-00022)."""
 
     healthy: bool
     ready: bool
     model: str
     dim: int
+    expected_dim: Optional[int] = None
     mock: bool
     detail: str
 

@@ -56,13 +56,22 @@ def _get_model_name() -> str:
     return cleaned or _DEFAULT_MODEL
 
 
-def _get_embedding_dim() -> int:
+def get_embedding_dim() -> int:
+    """Resolve and validate positive configured EMBEDDING_DIM (default 768)."""
     raw = os.getenv("EMBEDDING_DIM", str(_DEFAULT_EMBEDDING_DIM)).strip()
+    if not raw:
+        return _DEFAULT_EMBEDDING_DIM
     try:
         dim = int(raw)
-        return dim if dim > 0 else _DEFAULT_EMBEDDING_DIM
-    except ValueError:
-        return _DEFAULT_EMBEDDING_DIM
+    except ValueError as exc:
+        raise InvalidEmbeddingError(f"Invalid EMBEDDING_DIM='{raw}': expected positive integer.") from exc
+    if dim <= 0:
+        raise InvalidEmbeddingError(f"Invalid EMBEDDING_DIM={dim}: expected positive integer.")
+    return dim
+
+
+def _get_embedding_dim() -> int:
+    return get_embedding_dim()
 
 
 def _is_mock_enabled(allow_mock: Optional[bool] = None) -> bool:
@@ -177,18 +186,29 @@ def verify_embedder_ready(
     allow_mock: Optional[bool] = None,
     probe_text: str = "YarnBall embedder readiness probe",
     raise_on_error: bool = False,
+    expected_dim: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Probe embedder availability and zero-vector integrity at startup or health checks."""
+    """Probe embedder availability, zero-vector integrity, and EMBEDDING_DIM alignment."""
     model_name = _get_model_name()
     use_mock = _is_mock_enabled(allow_mock)
+    target_dim: Optional[int] = expected_dim
     try:
+        if target_dim is None:
+            target_dim = get_embedding_dim()
         probe_vecs = embed_texts([probe_text], allow_mock=allow_mock)
         validated = validate_embedding_vectors(probe_vecs)
+        actual_dim = len(validated[0])
+        if actual_dim != target_dim:
+            raise InvalidEmbeddingError(
+                f"Embedder dimension mismatch for '{model_name}': "
+                f"model emitted dim={actual_dim}, expected EMBEDDING_DIM={target_dim}."
+            )
         return {
             "healthy": True,
             "ready": True,
             "model": model_name,
-            "dim": len(validated[0]),
+            "dim": actual_dim,
+            "expected_dim": target_dim,
             "mock": use_mock,
             "detail": "mock-enabled" if use_mock else "ready",
         }
@@ -200,6 +220,7 @@ def verify_embedder_ready(
             "ready": False,
             "model": model_name,
             "dim": 0,
+            "expected_dim": target_dim,
             "mock": use_mock,
             "detail": str(exc),
         }

@@ -566,8 +566,12 @@ def store_graph_entities(
 
     # 4. Persist node embeddings to PGVECTOR
     if nodes:
+        from embedding.embedder import InvalidEmbeddingError
+
         try:
             from .embedding_store import store_node_embeddings
             store_node_embeddings(nodes, source_hash=source_hash)
+        except InvalidEmbeddingError:
+            raise
         except Exception as exc:
             logger.warning("Failed to store node embeddings for %s: %s", source_hash, exc)

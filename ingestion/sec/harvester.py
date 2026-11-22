@@ -526,7 +526,64 @@ class EdgarWorker:
                 )
                 edges.append({"source": sub_name, "target": parent_name, "type": "SUBSIDIARY_OF"})
 
+        embed_nodes: List[Dict[str, Any]] = [
+            {
+                "id": parent_name,
+                "type": "Company",
+                "properties": {"ticker": parent_ticker, "cik": parent_cik},
+            }
+        ]
+        for sub in subsidiaries:
+            sub_name = sub.get("name", "").strip()
+            if sub_name:
+                embed_nodes.append(
+                    {
+                        "id": sub_name,
+                        "type": "Company",
+                        "properties": {"jurisdiction": sub.get("jurisdiction", "Unknown")},
+                    }
+                )
+        self._emit_sec_node_embeddings(embed_nodes, source_hash=f"{accession_number}:Exhibit21")
+
         return nodes, edges
+
+    def _emit_sec_node_embeddings(
+        self,
+        nodes: List[Dict[str, Any]],
+        source_hash: str,
+    ) -> None:
+        """Persist contextual pgvector embeddings for canonical SEC entities (ADR-00022)."""
+        if not nodes:
+            return
+        deduped: Dict[str, Dict[str, Any]] = {}
+        for node in nodes:
+            nid = str(node.get("id", "")).strip()
+            if not nid:
+                continue
+            existing = deduped.get(nid)
+            if existing is None:
+                deduped[nid] = {
+                    "id": nid,
+                    "type": node.get("type", "Company"),
+                    "properties": dict(node.get("properties", {}) or {}),
+                }
+            else:
+                merged_props = dict(existing.get("properties", {}) or {})
+                merged_props.update(node.get("properties", {}) or {})
+                existing["properties"] = merged_props
+
+        if not deduped:
+            return
+
+        from embedding.embedder import InvalidEmbeddingError
+        from knowledge_graph.embedding_store import store_node_embeddings
+
+        try:
+            store_node_embeddings(list(deduped.values()), source_hash=source_hash)
+        except InvalidEmbeddingError:
+            raise
+        except Exception as exc:
+            logger.warning("Failed to store SEC node embeddings for %s: %s", source_hash, exc)
 
     def _persist_sec_graph_data(
         self,
@@ -646,6 +703,16 @@ class EdgarWorker:
                     acc_num=accession_number,
                 )
                 inserted_edges.append({"source": source_id, "target": target_id, "type": rel_type})
+
+        embed_nodes: List[Dict[str, Any]] = [
+            {
+                "id": primary_name,
+                "type": "Company",
+                "properties": {"ticker": primary_ticker},
+            },
+            *gated_nodes,
+        ]
+        self._emit_sec_node_embeddings(embed_nodes, source_hash=f"{accession_number}:{section}")
 
         return inserted_nodes, inserted_edges
 

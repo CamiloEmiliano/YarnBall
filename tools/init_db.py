@@ -147,13 +147,21 @@ def ensure_database(db_name: str = "financial_rag"):
 # 2️ Create the staging table
 # ----------------------------------------------------------------------
 def create_queue_table(db_name: str = "financial_rag"):
-    """Create `financial_news_queue` with the required columns."""
+    """Create `financial_news_queue` and pgvector tables parameterized by EMBEDDING_DIM (ADR-00022)."""
+    from embedding.embedder import InvalidEmbeddingError, _get_model_name, get_embedding_dim, verify_embedder_ready
+
+    emb_dim = get_embedding_dim()
+    model_name = _get_model_name()
+    probe = verify_embedder_ready(raise_on_error=False, expected_dim=emb_dim)
+    if probe.get("detail") and "dimension mismatch" in str(probe["detail"]).lower():
+        raise InvalidEmbeddingError(str(probe["detail"]))
+
     conn = _connect_db(db_name)
     cur = conn.cursor()
 
     cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
 
-    cur.execute("""
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS financial_news_queue (
             id                    SERIAL PRIMARY KEY,
             raw_text              TEXT NOT NULL,
@@ -171,10 +179,10 @@ def create_queue_table(db_name: str = "financial_rag"):
             provider              TEXT,
             ingestion_window_start TIMESTAMPTZ,
             ingestion_window_end   TIMESTAMPTZ,
-            embedding             vector(768)
+            embedding             vector({emb_dim})
         );
         """)
-    logger.info("Created/checked table financial_news_queue")
+    logger.info("Created/checked table financial_news_queue (embedding dim=%d)", emb_dim)
 
     # Ensure UNIQUE constraint on source_hash (idempotent inserts)
     try:
@@ -195,14 +203,14 @@ def create_queue_table(db_name: str = "financial_rag"):
 
     # Ensure embedding column exists (in case table was already created)
     try:
-        cur.execute("""
+        cur.execute(f"""
             DO $$
             BEGIN
                 IF NOT EXISTS (
                     SELECT 1 FROM information_schema.columns 
                     WHERE table_name='financial_news_queue' AND column_name='embedding'
                 ) THEN
-                    ALTER TABLE financial_news_queue ADD COLUMN embedding vector(768);
+                    ALTER TABLE financial_news_queue ADD COLUMN embedding vector({emb_dim});
                 END IF;
             END$$;
         """)
@@ -222,12 +230,12 @@ def create_queue_table(db_name: str = "financial_rag"):
     """)
     logger.info("Created/checked table domain_status")
 
-    # Create the node_embeddings table & non-destructive mention provenance table (ADR-00021)
-    cur.execute("""
+    # Create the node_embeddings table & non-destructive mention provenance table (ADR-00021 / ADR-00022)
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS node_embeddings (
             node_id TEXT PRIMARY KEY,
             entity_type VARCHAR(64),
-            embedding vector(768),
+            embedding vector({emb_dim}),
             source_hash VARCHAR(64),
             updated_at TIMESTAMPTZ DEFAULT now()
         );
@@ -239,8 +247,37 @@ def create_queue_table(db_name: str = "financial_rag"):
             PRIMARY KEY (node_id, source_hash)
         );
         CREATE INDEX IF NOT EXISTS idx_node_embedding_sources_hash ON node_embedding_sources(source_hash);
+        CREATE TABLE IF NOT EXISTS embedding_schema_metadata (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            embedder_model TEXT NOT NULL,
+            embedding_dim INTEGER NOT NULL,
+            updated_at TIMESTAMPTZ DEFAULT now()
+        );
     """)
-    logger.info("Created/checked tables node_embeddings and node_embedding_sources")
+    cur.execute("SELECT embedder_model, embedding_dim FROM embedding_schema_metadata WHERE id = 1;")
+    existing_meta = cur.fetchone()
+    if (
+        isinstance(existing_meta, (tuple, list))
+        and len(existing_meta) >= 2
+        and isinstance(existing_meta[1], int)
+        and existing_meta[1] != emb_dim
+    ):
+        raise ValueError(
+            f"Embedding schema dimension mismatch: database initialized with dim={existing_meta[1]} "
+            f"(model='{existing_meta[0]}'), but active EMBEDDING_DIM={emb_dim} (model='{model_name}')."
+        )
+    cur.execute(
+        """
+        INSERT INTO embedding_schema_metadata (id, embedder_model, embedding_dim)
+        VALUES (1, %s, %s)
+        ON CONFLICT (id) DO UPDATE
+        SET embedder_model = EXCLUDED.embedder_model,
+            embedding_dim = EXCLUDED.embedding_dim,
+            updated_at = now();
+        """,
+        (model_name, emb_dim),
+    )
+    logger.info("Created/checked tables node_embeddings, node_embedding_sources, and embedding_schema_metadata")
 
     # Create the graph_snapshots registry table
     cur.execute("""
