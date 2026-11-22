@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00020
 - **Filename**: `ADR-00020-fail-fast-embedder-and-zero-vector-guard.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `embedding` / `retrieval` / `streaming`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`6710e0e`](../../embedding/embedder.py), [`6710e0e`](../../knowledge_graph/embedding_store.py), [`6710e0e`](../../retrieval/hybrid.py), [`6710e0e`](../../retrieval/service.py), [`6710e0e`](../../streaming/consumer.py), [`6710e0e`](../../tools/utils.py)
 
 ---
 
