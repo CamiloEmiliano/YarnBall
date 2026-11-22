@@ -54,12 +54,21 @@ class HybridRetriever:
         k = top_k or self.top_k_dense
         results = []
 
+        from embedding.embedder import (
+            EmbedderUnavailableError,
+            InvalidEmbeddingError,
+            embed_texts,
+            validate_embedding_vectors,
+        )
+
         try:
-            from embedding.embedder import embed_texts
             embeddings = embed_texts([query])
             if not embeddings or not embeddings[0]:
                 return []
-            query_vector = embeddings[0]
+            query_vector = validate_embedding_vectors([embeddings[0]])[0]
+        except (EmbedderUnavailableError, InvalidEmbeddingError):
+            logger.error("Dense query embedding unavailable or invalid for query '%s'", query[:80])
+            raise
         except Exception as exc:
             logger.debug("Embedding generation failed (%s); returning empty dense results", exc)
             return []

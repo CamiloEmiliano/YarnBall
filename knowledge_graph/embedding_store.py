@@ -1,7 +1,7 @@
 import os
 import logging
 from typing import List
-from embedding.embedder import embed_texts
+import embedding.embedder as _embedder
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def store_node_embeddings(nodes: List[dict], source_hash: str = "") -> None:
 
     # 1️⃣ Build the list of texts to embed – currently we embed the node id.
     texts = [node["id"] for node in nodes]
-    embeddings = embed_texts(texts)  # → List[List[float]]
+    embeddings = _embedder.validate_embedding_vectors(_embedder.embed_texts(texts))  # → List[List[float]]
 
     # 2️⃣ Prepare rows for bulk insert.
     records = []

@@ -84,14 +84,26 @@ class OllamaStatus(BaseModel):
     detail: str
 
 
+class EmbedderStatus(BaseModel):
+    """Dense embedder readiness telemetry (ADR-00020)."""
+
+    healthy: bool
+    ready: bool
+    model: str
+    dim: int
+    mock: bool
+    detail: str
+
+
 class CatalogResponse(BaseModel):
-    """Catalog of read-only local snapshots, fixtures, edge manifests, cohorts, and LLM health."""
+    """Catalog of read-only local snapshots, fixtures, edge manifests, cohorts, LLM, and embedder health."""
 
     snapshots: List[SnapshotEntry] = Field(default_factory=list)
     filings: List[FilingEntry] = Field(default_factory=list)
     edge_manifests: List[EdgeManifestEntry] = Field(default_factory=list)
     cohorts: List[CohortExportEntry] = Field(default_factory=list)
     ollama: OllamaStatus
+    embedder: Optional[EmbedderStatus] = None
 
 
 class SubgraphNode(BaseModel):
@@ -592,13 +604,17 @@ def create_workbench_app(
 
     @fastapi_app.get("/api/catalog", response_model=CatalogResponse)
     def get_catalog() -> CatalogResponse:
+        from embedding.embedder import verify_embedder_ready
+
         healthy, detail = YarnBallModelClient().check_health(timeout_sec=1.0)
+        embedder_info = verify_embedder_ready(raise_on_error=False)
         return CatalogResponse(
             snapshots=_discover_snapshots(resolved_snapshots, resolved_root, allowed_roots),
             filings=_discover_filings(resolved_filings, resolved_root, allowed_roots),
             edge_manifests=_discover_edge_manifests(resolved_root, resolved_snapshots, allowed_roots),
             cohorts=_discover_cohorts(resolved_root, allowed_roots),
             ollama=OllamaStatus(healthy=healthy, detail=detail),
+            embedder=EmbedderStatus(**embedder_info),
         )
 
     @fastapi_app.get("/api/subgraph", response_model=SubgraphResponse)

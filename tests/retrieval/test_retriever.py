@@ -35,7 +35,7 @@ def insert_test_embeddings():
         ON CONFLICT (node_id) DO UPDATE
         SET embedding = EXCLUDED.embedding;
     """
-    dummy_vec = [0.0] * 768
+    dummy_vec = [1.0] + [0.0] * 767
     with conn_ctx as conn:
         if conn is None:
             pytest.skip("PostgreSQL connection not available for test_retriever")
@@ -57,8 +57,8 @@ def insert_test_embeddings():
 
 
 def test_search_endpoint(insert_test_embeddings):
-    # Mock embed_texts to return a zero vector (so the k‑NN will match our test rows)
-    with patch('embedding.embedder.embed_texts', return_value=[[0.0] * 768]):
+    # Mock embed_texts to return a non-zero unit vector (ADR-00020)
+    with patch('embedding.embedder.embed_texts', return_value=[[1.0] + [0.0] * 767]):
         response = client.post("/search", json={"query": "any text", "k": 2})
     assert response.status_code == 200
     payload = response.json()
@@ -70,6 +70,13 @@ def test_search_endpoint(insert_test_embeddings):
         # The enrichment returns at least the node itself in "nodes"
         assert "nodes" in entry
         assert any(node.get("id") == entry["root_id"] for node in entry["nodes"])
+
+
+def test_search_rejects_zero_vector_adr00020():
+    with patch('embedding.embedder.embed_texts', return_value=[[0.0] * 768]):
+        response = client.post("/search", json={"query": "any text", "k": 2})
+    assert response.status_code == 422
+    assert "Zero-norm" in response.json()["detail"]
 
 
 def teardown_module(module):

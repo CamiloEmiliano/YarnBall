@@ -47,7 +47,7 @@ from tools.utils import (
     store_embedding,
     logger,
 )
-from embedding.embedder import embed_texts
+import embedding.embedder as _embedder
 from knowledge_graph.graph_store import store_graph_entities
 
 # ----------------------------------------------------------------------
@@ -192,8 +192,10 @@ def process_streaming_event(
         # 3. Embedding storage
         if not skip_embedding:
             try:
-                vector = embed_texts([free_text])[0]
+                vector = _embedder.validate_embedding_vectors(_embedder.embed_texts([free_text]))[0]
                 store_embedding(payload["source_hash"], vector)
+            except (_embedder.EmbedderUnavailableError, _embedder.InvalidEmbeddingError):
+                raise
             except Exception as exc:
                 logger.warning("Embedding generation skipped or failed: %s", exc)
 
@@ -220,6 +222,7 @@ def process_streaming_event(
 # Consumer execution entry point
 # ----------------------------------------------------------------------
 def run_consumer() -> None:
+    _embedder.verify_embedder_ready(raise_on_error=True)
     dlt_producer = _producer()
     consumer = KafkaConsumer(
         KAFKA_TOPIC,
