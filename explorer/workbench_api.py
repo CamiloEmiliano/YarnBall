@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, model_validator
 from ingestion.sec.disruption_gating import (
     SanitizedDisruptionAssessment,
     assess_sec_8k_disruption,
+    normalize_staged_8k_payload,
 )
 from retrieval.offline_store import InMemorySubgraphStore
 from retrieval.reporting import (
@@ -378,31 +379,70 @@ def _discover_filings(
     filings_root: Path,
     project_root: Path,
     allowed_roots: Sequence[Path],
+    *,
+    max_staged_files: int = 50,
 ) -> List[FilingEntry]:
-    if not filings_root.is_dir() or not _is_within_roots(filings_root, allowed_roots):
-        return []
     entries: List[FilingEntry] = []
-    for json_file in sorted(filings_root.glob("*.json"), key=lambda p: p.name):
+    seen_paths: set[str] = set()
+
+    def _add_filing_file(json_file: Path, *, is_staged: bool) -> None:
         if not _is_within_roots(json_file, allowed_roots):
-            continue
+            return
+        display_path = _to_repo_display_path(json_file, project_root)
+        if display_path in seen_paths:
+            return
         try:
-            payload = json.loads(json_file.read_text(encoding="utf-8"))
+            raw_payload = json.loads(json_file.read_text(encoding="utf-8"))
         except Exception:
-            continue
-        if not isinstance(payload, dict):
-            continue
-        items = [str(item) for item in payload.get("items", [])] if isinstance(payload.get("items"), list) else []
+            return
+        if not isinstance(raw_payload, dict):
+            return
+        try:
+            normalized = normalize_staged_8k_payload(
+                raw_payload,
+                filing_path=json_file,
+                require_identity=False,
+            )
+        except Exception:
+            return
+        seen_paths.add(display_path)
+        ticker = str(normalized.get("ticker") or "").upper() or None
+        company_name = str(normalized.get("company_name") or "") or None
+        filing_date = str(normalized.get("filing_date") or "") or None
+        entry_name = (
+            f"{ticker or 'SEC'} · {filing_date or 'unknown-date'} · {json_file.parent.name}"
+            if is_staged
+            else json_file.name
+        )
         entries.append(
             FilingEntry(
-                name=json_file.name,
-                path=_to_repo_display_path(json_file, project_root),
-                ticker=str(payload["ticker"]).upper() if payload.get("ticker") else None,
-                company_name=str(payload["company_name"]) if payload.get("company_name") else None,
-                filing_date=str(payload["filing_date"]) if payload.get("filing_date") else None,
-                items=items,
-                headline=str(payload["headline"]) if payload.get("headline") else None,
+                name=entry_name,
+                path=display_path,
+                ticker=ticker,
+                company_name=company_name,
+                filing_date=filing_date,
+                items=list(normalized.get("items") or []),
+                headline=str(normalized.get("headline") or "") or None,
             )
         )
+
+    if filings_root.is_dir() and _is_within_roots(filings_root, allowed_roots):
+        for json_file in sorted(filings_root.glob("*.json"), key=lambda p: p.name):
+            _add_filing_file(json_file, is_staged=False)
+
+    staged_added = 0
+    for staged_rel in (("data", "dry_run_staging", "sec"), ("data", "sec_filings")):
+        staged_root = project_root.joinpath(*staged_rel)
+        if not staged_root.is_dir() or not _is_within_roots(staged_root, allowed_roots):
+            continue
+        for json_file in sorted(staged_root.glob("**/form8k_events.json")):
+            if staged_added >= max_staged_files:
+                break
+            before_count = len(entries)
+            _add_filing_file(json_file, is_staged=True)
+            if len(entries) > before_count:
+                staged_added += 1
+
     return entries
 
 
@@ -689,17 +729,20 @@ def create_workbench_app(
                 expect_dir=False,
             )
             try:
-                filing_data = json.loads(filing_file.read_text(encoding="utf-8"))
+                raw_filing_data = json.loads(filing_file.read_text(encoding="utf-8"))
+                filing_data = normalize_staged_8k_payload(
+                    raw_filing_data,
+                    filing_path=filing_file,
+                    require_identity=True,
+                )
             except Exception as exc:
-                raise HTTPException(status_code=400, detail=f"Malformed SEC Form 8-K JSON: {exc}") from exc
-            if not isinstance(filing_data, dict):
-                raise HTTPException(status_code=400, detail="SEC Form 8-K payload must be a JSON object.")
+                raise HTTPException(status_code=400, detail=f"Invalid SEC Form 8-K payload: {exc}") from exc
 
             assessment = assess_sec_8k_disruption(
-                items=filing_data.get("items", ["Item 8.01 Other Events"]),
-                headline=str(filing_data.get("headline", "")),
-                content=str(filing_data.get("content", "")),
-                metadata=filing_data.get("metadata", {}),
+                items=filing_data["items"],
+                headline=str(filing_data["headline"]),
+                content=str(filing_data["content"]),
+                metadata=filing_data["metadata"],
             )
             report, _ = run_sec_8k_dry_run(
                 filing_path=filing_file,
@@ -711,7 +754,13 @@ def create_workbench_app(
             )
         else:
             assert request.inline_filing is not None
-            payload_dict = request.inline_filing.model_dump()
+            try:
+                payload_dict = normalize_staged_8k_payload(
+                    request.inline_filing.model_dump(),
+                    require_identity=True,
+                )
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid SEC Form 8-K payload: {exc}") from exc
             assessment = assess_sec_8k_disruption(
                 items=payload_dict["items"],
                 headline=payload_dict["headline"],

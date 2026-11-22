@@ -226,6 +226,8 @@ class HistoricalSECHarvester:
 
         # 3. Form 8-K
         if "8-K" in forms_to_fetch:
+            from .disruption_gating import normalize_staged_8k_payload
+
             time.sleep(self.rate_limit_delay)
             filings_8k = self.client.fetch_recent_8k(ticker, limit=5, year=year)
             for k_filing in filings_8k:
@@ -233,8 +235,18 @@ class HistoricalSECHarvester:
                 acc_dir = company_year_dir / f"8K_{acc_num}"
                 acc_dir.mkdir(parents=True, exist_ok=True)
 
+                canonical_8k = normalize_staged_8k_payload(
+                    {
+                        **k_filing,
+                        "cik": k_filing.get("cik") or constituent.cik,
+                        "ticker": k_filing.get("ticker") or ticker,
+                        "company_name": k_filing.get("company_name") or constituent.company_name,
+                    },
+                    filing_path=acc_dir / "form8k_events.json",
+                    require_identity=False,
+                )
                 with open(acc_dir / "form8k_events.json", "w", encoding="utf-8") as f:
-                    json.dump(k_filing, f, indent=2)
+                    json.dump(canonical_8k, f, indent=2)
 
                 stats["8k_count"] += 1
                 stats["filings_saved"].append(f"8K_{acc_num}")

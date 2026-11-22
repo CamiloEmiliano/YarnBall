@@ -31,6 +31,7 @@ from .disruption_gating import (
     SanitizedDisruptionAssessment,
     assess_sec_8k_disruption,
     get_sec_8k_item_tier,
+    normalize_staged_8k_payload,
     sanitize_sec_8k_text,
     select_primary_sec_8k_item,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "SanitizedDisruptionAssessment",
     "assess_sec_8k_disruption",
     "get_sec_8k_item_tier",
+    "normalize_staged_8k_payload",
     "sanitize_sec_8k_text",
     "select_primary_sec_8k_item",
 ]

@@ -11,8 +11,11 @@ disclosures prior to supply-chain cascade propagation and LLM reasoning:
 
 from __future__ import annotations
 
+from functools import lru_cache
+import json
+from pathlib import Path
 import re
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 from pydantic import BaseModel, Field
 
 from retrieval.reporting import OperationalDisruptionCategory, SECForm8KItem
@@ -444,3 +447,229 @@ def assess_sec_8k_disruption(
         stripped_paragraph_count=total_stripped,
         gating_reason=gating_reason,
     )
+
+
+_SP500_REGISTRY_PATH = Path(__file__).resolve().parents[2] / "data" / "sp500_constituents_historical.json"
+_TICKER_TOKEN_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
+_ACCESSION_DIR_RE = re.compile(r"^8K_([0-9A-Za-z\-]+)$", re.IGNORECASE)
+_CIK_PREFIX_RE = re.compile(r"^(\d{10})-")
+_CHARTER_NAME_RE = re.compile(
+    r"^\s*([^\n]+?)\s*\n+\s*\(Exact name of Registrant",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+@lru_cache(maxsize=1)
+def _load_sp500_identity_index() -> Tuple[Dict[str, Dict[str, str]], Dict[str, Dict[str, str]]]:
+    by_ticker: Dict[str, Dict[str, str]] = {}
+    by_cik: Dict[str, Dict[str, str]] = {}
+    if not _SP500_REGISTRY_PATH.is_file():
+        return by_ticker, by_cik
+    try:
+        rows = json.loads(_SP500_REGISTRY_PATH.read_text(encoding="utf-8"))
+        if not isinstance(rows, list):
+            return by_ticker, by_cik
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            ticker = str(row.get("ticker") or "").strip().upper()
+            cik_raw = re.sub(r"\D", "", str(row.get("cik") or ""))
+            cik = cik_raw.zfill(10) if cik_raw else ""
+            name = str(row.get("company_name") or "").strip()
+            entry = {"ticker": ticker, "cik": cik, "company_name": name}
+            if ticker and ticker not in by_ticker:
+                by_ticker[ticker] = entry
+            if cik and cik not in by_cik:
+                by_cik[cik] = entry
+    except Exception:
+        return by_ticker, by_cik
+    return by_ticker, by_cik
+
+
+def _normalize_8k_items(raw_items: Any) -> List[str]:
+    if isinstance(raw_items, str):
+        tokens = [part.strip() for part in raw_items.split(",") if part.strip()]
+    elif isinstance(raw_items, (list, tuple)):
+        tokens = [str(part).strip() for part in raw_items if str(part).strip()]
+    else:
+        tokens = []
+
+    normalized: List[str] = []
+    for token in tokens:
+        m = _ITEM_CODE_RE.search(token)
+        if m and token == m.group(1):
+            normalized.append(f"Item {m.group(1)}")
+        elif m and token.lower().startswith("item "):
+            normalized.append(token)
+        elif m:
+            normalized.append(f"Item {m.group(1)}")
+        else:
+            normalized.append(token)
+    return normalized or ["Item 8.01 Other Events"]
+
+
+def _infer_path_metadata(filing_path: Optional[Union[str, Path]]) -> Tuple[Optional[str], Optional[str]]:
+    if not filing_path:
+        return None, None
+    p = Path(filing_path)
+    parts = list(p.parts)
+    inferred_acc: Optional[str] = None
+    for part in reversed(parts):
+        m_acc = _ACCESSION_DIR_RE.match(part)
+        if m_acc:
+            inferred_acc = m_acc.group(1)
+            break
+
+    inferred_ticker: Optional[str] = None
+    # Patterns: .../sec/{TICKER}/{YEAR}/8K_{ACC}/form8k_events.json or .../{TICKER}/8K_{ACC}/...
+    for idx, part in enumerate(parts):
+        if part.lower() == "sec" and idx + 1 < len(parts):
+            cand = parts[idx + 1].upper()
+            if _TICKER_TOKEN_RE.match(cand):
+                inferred_ticker = cand
+                break
+    if inferred_ticker is None and len(parts) >= 3:
+        for idx in range(len(parts) - 2, -1, -1):
+            seg = parts[idx].upper()
+            if _ACCESSION_DIR_RE.match(seg) or re.match(r"^(?:19|20)\d{2}$", seg):
+                continue
+            if seg not in ("SEC", "FILINGS", "FIXTURES", "TESTS", "DATA", "DRY_RUN_STAGING"):
+                if _TICKER_TOKEN_RE.match(seg):
+                    inferred_ticker = seg
+                break
+    return inferred_ticker, inferred_acc
+
+
+def _synthesize_8k_headline(content: str, items: Sequence[str]) -> str:
+    cleaned_body = sanitize_sec_8k_text(content)
+    lines = [line.strip() for line in cleaned_body.splitlines() if line.strip()]
+    cover_skip = re.compile(
+        r"^(?:united\s+states|securities\s+and\s+exchange\s+commission|"
+        r"united\s+states\s+securities\s+and\s+exchange\s+commission|"
+        r"washington,\s*d\.?c\.?|form\s+8-k|current\s+report)\b",
+        re.IGNORECASE,
+    )
+    item_heading = ""
+    body_snippet = ""
+    for line in lines:
+        normalized_line = re.sub(r"\s+", " ", line)
+        if re.match(r"^item\s+\d+\.\d{2}\b", normalized_line, re.IGNORECASE):
+            if not item_heading:
+                item_heading = normalized_line.rstrip(".")
+            continue
+        if cover_skip.match(normalized_line):
+            continue
+        if len(normalized_line) >= 20:
+            body_snippet = normalized_line
+            break
+
+    if item_heading and body_snippet:
+        combined = f"{item_heading}: {body_snippet}"
+    elif item_heading:
+        combined = item_heading
+    elif body_snippet:
+        combined = body_snippet
+    else:
+        combined = f"Form 8-K ({', '.join(items[:2])})"
+
+    if len(combined) > 140:
+        return combined[:137].rstrip() + "..."
+    return combined
+
+
+def normalize_staged_8k_payload(
+    payload: Mapping[str, Any],
+    *,
+    filing_path: Optional[Union[str, Path]] = None,
+    require_identity: bool = True,
+) -> Dict[str, Any]:
+    """Normalize both canonical inline fixtures and legacy staged `form8k_events.json` payloads (ADR-00027)."""
+    if not isinstance(payload, Mapping):
+        raise ValueError("SEC Form 8-K payload must be a JSON object/mapping.")
+
+    by_ticker, by_cik = _load_sp500_identity_index()
+    path_ticker, path_acc = _infer_path_metadata(filing_path)
+
+    content = str(
+        payload.get("content")
+        if payload.get("content") is not None
+        else (payload.get("text") or "")
+    )
+    items = _normalize_8k_items(payload.get("items"))
+    form_type = str(payload.get("form_type") or payload.get("form") or "8-K").strip() or "8-K"
+    accession_number = str(payload.get("accession_number") or path_acc or "").strip()
+    filing_date = str(payload.get("filing_date") or "2024-10-28").strip() or "2024-10-28"
+    metadata = dict(payload.get("metadata") or {}) if isinstance(payload.get("metadata"), Mapping) else {}
+    filing_timestamp = payload.get("filing_timestamp") or metadata.get("filing_timestamp")
+
+    raw_ticker = str(payload.get("ticker") or "").strip().upper()
+    ticker = "" if raw_ticker in ("", "UNKNOWN") else raw_ticker
+    if not ticker and path_ticker:
+        ticker = path_ticker
+
+    raw_cik_digits = re.sub(r"\D", "", str(payload.get("cik") or ""))
+    cik = "" if (not raw_cik_digits or raw_cik_digits == "0000000000") else raw_cik_digits.zfill(10)
+    if not cik and accession_number:
+        m_cik = _CIK_PREFIX_RE.match(accession_number)
+        if m_cik and m_cik.group(1) != "0001193125":
+            # Skip SEC filing agent prefix 0001193125 (DFIN/filers), otherwise issuer prefix
+            cik = m_cik.group(1)
+
+    raw_company = str(payload.get("company_name") or "").strip()
+    company_name = "" if raw_company.lower() in ("", "unknown", "unknown corporate entity") else raw_company
+
+    # Cross-reference ticker <-> CIK/company_name via static S&P 500 ground-truth index
+    if ticker and ticker in by_ticker:
+        entry = by_ticker[ticker]
+        if not cik and entry["cik"]:
+            cik = entry["cik"]
+        if not company_name and entry["company_name"]:
+            company_name = entry["company_name"]
+    elif cik and cik in by_cik:
+        entry = by_cik[cik]
+        if not ticker and entry["ticker"]:
+            ticker = entry["ticker"]
+        if not company_name and entry["company_name"]:
+            company_name = entry["company_name"]
+
+    if not company_name and content:
+        m_charter = _CHARTER_NAME_RE.search(content[:2000])
+        if m_charter:
+            candidate = " ".join(m_charter.group(1).split()).strip()
+            if candidate and candidate.lower() != "unknown corporate entity":
+                company_name = candidate
+
+    if require_identity and not ticker and not company_name:
+        raise ValueError(
+            "Unable to resolve SEC Form 8-K entity identity (`ticker` and `company_name` are both missing)."
+        )
+
+    if not ticker and company_name:
+        # Derive clean identifier from resolved company_name if ticker wasn't present
+        ticker = company_name
+    if not company_name and ticker:
+        company_name = ticker
+    if not cik:
+        cik = "0000000000"
+
+    raw_headline = str(payload.get("headline") or "").strip()
+    headline = raw_headline or _synthesize_8k_headline(content, items)
+
+    normalized: Dict[str, Any] = dict(payload)
+    normalized.update(
+        {
+            "cik": cik,
+            "ticker": ticker,
+            "company_name": company_name,
+            "form_type": form_type,
+            "accession_number": accession_number or None,
+            "filing_date": filing_date,
+            "filing_timestamp": filing_timestamp,
+            "items": items,
+            "headline": headline,
+            "content": content,
+            "text": content,
+            "metadata": metadata,
+        }
+    )
+    return normalized

@@ -29,6 +29,7 @@ from contagion import (
 )
 from ingestion.sec.disruption_gating import (
     assess_sec_8k_disruption,
+    normalize_staged_8k_payload,
     select_primary_sec_8k_item,
 )
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail
@@ -190,20 +191,25 @@ def run_sec_8k_dry_run(
     if not path.is_file():
         raise FileNotFoundError(f"SEC Form 8-K filing not found at: {path}")
 
-    # 1. Parse Filing Payload
+    # 1. Parse & Normalize Filing Payload via Shared Normalizer (ADR-00027)
     with open(path, "r", encoding="utf-8") as f:
-        filing_data = json.load(f)
+        raw_filing_data = json.load(f)
 
-    cik = str(filing_data.get("cik", "0000000000"))
-    reporting_ticker = str(filing_data.get("ticker", "UNKNOWN")).upper()
-    company_name = str(filing_data.get("company_name", "Unknown Corporate Entity"))
-    filing_type = str(filing_data.get("form_type", "8-K"))
-    filing_date = str(filing_data.get("filing_date", "2024-10-28"))
-    metadata = filing_data.get("metadata", {})
+    filing_data = normalize_staged_8k_payload(
+        raw_filing_data,
+        filing_path=path,
+        require_identity=True,
+    )
+    cik = str(filing_data["cik"])
+    reporting_ticker = str(filing_data["ticker"]).upper()
+    company_name = str(filing_data["company_name"])
+    filing_type = str(filing_data["form_type"])
+    filing_date = str(filing_data["filing_date"])
+    metadata = filing_data["metadata"]
     filing_timestamp = filing_data.get("filing_timestamp") or metadata.get("filing_timestamp")
-    items = filing_data.get("items", ["Item 8.01 Other Events"])
-    headline = str(filing_data.get("headline", ""))
-    content = str(filing_data.get("content", ""))
+    items = filing_data["items"]
+    headline = str(filing_data["headline"])
+    content = str(filing_data["content"])
 
     assessment = assess_sec_8k_disruption(
         items=items,
