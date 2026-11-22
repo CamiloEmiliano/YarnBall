@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00026
 - **Filename**: `ADR-00026-cascade-parameter-extraction-provenance-.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `contagion` / `retrieval` / `ingestion` / `explorer`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`489cc4a`](../../contagion/parameters.py), [`489cc4a`](../../retrieval/reporting.py), [`489cc4a`](../../retrieval/offline_store.py), [`489cc4a`](../../retrieval/pipeline.py), [`489cc4a`](../../explorer/static/app.js)
 
 ---
 
