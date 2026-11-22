@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00021
 - **Filename**: `ADR-00021-contextual-node-embeddings-and-pgvector-.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `knowledge_graph` / `retrieval` / `tools`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`ec406db`](../../knowledge_graph/embedding_store.py), [`ec406db`](../../embedding/embedder.py), [`ec406db`](../../tools/init_db.py), [`ec406db`](../../tools/utils.py), [`ec406db`](../../retrieval/hybrid.py), [`ec406db`](../../retrieval/service.py)
 
 ---
 
