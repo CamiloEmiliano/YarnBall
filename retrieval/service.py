@@ -27,10 +27,10 @@ async def health() -> JSONResponse:
 
 @app.post("/search")
 async def search(req: SearchRequest) -> List[Dict[str, Any]]:
-    # 1. Embed and validate the user query (prohibit zero vectors / unavailable embedder)
+    # 1. Embed, validate, and serialize the user query (ADR-00020 & ADR-00021)
     try:
         raw_vectors = _embedder.embed_texts([req.query])
-        query_vec = _embedder.validate_embedding_vectors(raw_vectors)[0]
+        query_vec_literal = _embedder.format_pgvector_literal(raw_vectors[0] if raw_vectors else [])
     except _embedder.InvalidEmbeddingError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except _embedder.EmbedderUnavailableError as exc:
@@ -44,7 +44,7 @@ async def search(req: SearchRequest) -> List[Dict[str, Any]]:
     """
     with pg_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (query_vec, req.k))
+            cur.execute(sql, (query_vec_literal, req.k))
             ids = [row[0] for row in cur.fetchall()]
 
     if not ids:

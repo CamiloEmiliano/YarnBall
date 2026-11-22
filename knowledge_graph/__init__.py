@@ -12,7 +12,7 @@ from knowledge_graph.entity_resolver import (
     is_generic_placeholder,
     _jaro_winkler_similarity,
 )
-from knowledge_graph.embedding_store import store_node_embeddings
+from knowledge_graph.embedding_store import format_node_embedding_text, store_node_embeddings
 
 __all__ = [
     "pg_connection",
@@ -24,5 +24,6 @@ __all__ = [
     "is_clickbait_article_source",
     "is_generic_placeholder",
     "_jaro_winkler_similarity",
+    "format_node_embedding_text",
     "store_node_embeddings",
 ]

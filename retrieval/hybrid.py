@@ -58,14 +58,14 @@ class HybridRetriever:
             EmbedderUnavailableError,
             InvalidEmbeddingError,
             embed_texts,
-            validate_embedding_vectors,
+            format_pgvector_literal,
         )
 
         try:
             embeddings = embed_texts([query])
             if not embeddings or not embeddings[0]:
                 return []
-            query_vector = validate_embedding_vectors([embeddings[0]])[0]
+            query_vector_literal = format_pgvector_literal(embeddings[0])
         except (EmbedderUnavailableError, InvalidEmbeddingError):
             logger.error("Dense query embedding unavailable or invalid for query '%s'", query[:80])
             raise
@@ -85,7 +85,7 @@ class HybridRetriever:
                     ORDER BY embedding <=> %s::vector
                     LIMIT %s;
                     """,
-                    (query_vector, query_vector, k),
+                    (query_vector_literal, query_vector_literal, k),
                 )
                 rows = cur.fetchall()
                 for row in rows:

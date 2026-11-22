@@ -222,16 +222,25 @@ def create_queue_table(db_name: str = "financial_rag"):
     """)
     logger.info("Created/checked table domain_status")
 
-    # Create the node_embeddings table for PGVECTOR similarity search
+    # Create the node_embeddings table & non-destructive mention provenance table (ADR-00021)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS node_embeddings (
             node_id TEXT PRIMARY KEY,
             entity_type VARCHAR(64),
             embedding vector(768),
-            source_hash VARCHAR(64)
+            source_hash VARCHAR(64),
+            updated_at TIMESTAMPTZ DEFAULT now()
         );
+        CREATE TABLE IF NOT EXISTS node_embedding_sources (
+            node_id TEXT NOT NULL,
+            source_hash VARCHAR(64) NOT NULL,
+            entity_type VARCHAR(64),
+            first_seen_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (node_id, source_hash)
+        );
+        CREATE INDEX IF NOT EXISTS idx_node_embedding_sources_hash ON node_embedding_sources(source_hash);
     """)
-    logger.info("Created/checked table node_embeddings")
+    logger.info("Created/checked tables node_embeddings and node_embedding_sources")
 
     # Create the graph_snapshots registry table
     cur.execute("""

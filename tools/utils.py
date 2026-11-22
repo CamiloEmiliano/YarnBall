@@ -222,15 +222,14 @@ def store_embedding(payload_hash: str, vector: list[float]) -> None:
     """Persist a pgvector embedding for an existing row.
     The vector is stored as a PostgreSQL `vector` type after zero-norm/finite validation.
     """
-    from embedding.embedder import validate_embedding_vectors
+    from embedding.embedder import format_pgvector_literal
 
-    validated_vec = validate_embedding_vectors([vector])[0]
+    vector_str = format_pgvector_literal(vector)
     sql = """
         UPDATE financial_news_queue
         SET embedding = %s::vector
         WHERE source_hash = %s;
     """
-    vector_str = "[" + ",".join(map(str, validated_vec)) + "]"
     with _db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (vector_str, payload_hash))

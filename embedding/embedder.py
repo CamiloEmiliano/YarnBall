@@ -126,6 +126,12 @@ def validate_embedding_vectors(
     return validated
 
 
+def format_pgvector_literal(vector: Sequence[float]) -> str:
+    """Validate and serialize a dense vector into a canonical pgvector literal string (ADR-00021)."""
+    validated_vec = validate_embedding_vectors([vector])[0]
+    return "[" + ",".join(repr(val) for val in validated_vec) + "]"
+
+
 def get_embedder_model(allow_mock: Optional[bool] = None) -> Any:
     """Lazily load and cache SentenceTransformer, failing fast unless mock mode is opted in."""
     global _model_instance, _mock_model_instance
