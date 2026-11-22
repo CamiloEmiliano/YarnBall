@@ -46,7 +46,7 @@ Output ONLY a valid JSON object matching this schema:
         {{"id": "<Entity Name>", "type": "<NodeType>", "properties": {{"ticker": "<TICKER if applicable>", "<key>": "<value>"}}}}
     ],
     "edges": [
-        {{"source": "<Source Entity Name>", "target": "<Target Entity Name>", "type": "<EDGE_TYPE>", "properties": {{}}}}
+        {{"source": "<Source Entity Name>", "target": "<Target Entity Name>", "type": "<EDGE_TYPE>", "properties": {{"input_group": "<component or input group>", "share": "<optional 0.0-1.0 procurement/revenue share if stated>", "buffer_days": "<optional inventory buffer days if stated>", "sole_source": "<true if explicitly sole/single source>"}}}}
     ]
 }}
 Allowed node types: {_ALLOWED_NODE_TYPES_STR}.
@@ -539,6 +539,8 @@ def store_graph_entities(
             session.run(mention_query, source_hash=source_hash, id=node_id)
 
         # 3. Insert/Merge Relationship Edges
+        from contagion.parameters import resolve_edge_cascade_parameters
+
         for edge in edges:
             source = str(edge.get("source", "")).strip()
             target = str(edge.get("target", "")).strip()
@@ -547,7 +549,9 @@ def store_graph_entities(
 
             raw_type = str(edge.get("type", "RELATED_TO")).strip().upper()
             rel_type = "".join(c for c in raw_type if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH] or "RELATED_TO"
-            props = edge.get("properties", {}) or {}
+            props = dict(edge.get("properties", {}) or {})
+            resolved_params = resolve_edge_cascade_parameters({**edge, "rel_type": rel_type})
+            props.update(resolved_params)
 
             query = f"""
             MATCH (s {{id: $source}})

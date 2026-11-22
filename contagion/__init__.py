@@ -11,6 +11,11 @@ from contagion.cascade import (
     ConvergentShockSummary,
     SparseNetworkCascadeEngine,
 )
+from contagion.parameters import (
+    ParameterProvenance,
+    extract_cascade_parameters_from_text,
+    resolve_edge_cascade_parameters,
+)
 
 __all__ = [
     "CascadeNode",
@@ -18,5 +23,8 @@ __all__ = [
     "CascadeGraph",
     "ConvergentShockSummary",
     "SparseNetworkCascadeEngine",
+    "ParameterProvenance",
+    "extract_cascade_parameters_from_text",
+    "resolve_edge_cascade_parameters",
 ]
 

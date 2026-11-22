@@ -340,7 +340,7 @@ Output ONLY a valid JSON object matching this schema:
         {{"id": "<Full Company or Entity Name>", "type": "<{_SEC_ALLOWED_LABELS}>", "properties": {{"ticker": "<TICKER if known>"}}}}
     ],
     "edges": [
-        {{"source": "<Source Entity>", "target": "<Target Entity>", "type": "<RELATIONSHIP_TYPE>", "properties": {{"nature": "<brief context>"}}}}
+        {{"source": "<Source Entity>", "target": "<Target Entity>", "type": "<RELATIONSHIP_TYPE>", "properties": {{"nature": "<brief context>", "input_group": "<component or service group>", "share": "<optional 0.0-1.0 procurement/revenue share ONLY if explicitly stated>", "buffer_days": "<optional inventory buffer days ONLY if explicitly stated>", "sole_source": "<true ONLY if explicitly sole/single source>"}}}}
     ]
 }}
 

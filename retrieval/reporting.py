@@ -12,6 +12,8 @@ import math
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from pydantic import BaseModel, Field, field_validator
 
+from contagion.parameters import ParameterProvenance, resolve_edge_cascade_parameters
+
 
 # ==============================================================================
 # 1. CONTROLLED CATEGORICAL TAXONOMIES (CLOSED ENUMS)
@@ -194,6 +196,9 @@ class NetworkNodeImpact(BaseModel):
     verdict: ContagionSeverityVerdict
     dependency_domain: DependencyDomain = DependencyDomain.PHYSICAL_COMPONENT
     operational_scope: OperationalScope = OperationalScope.CORE_OPERATIONAL_DELIVERY
+    param_provenance: ParameterProvenance = ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND
+    share_is_default: bool = False
+    buffer_days_is_default: bool = False
 
     @field_validator("input_group")
     @classmethod
@@ -213,6 +218,9 @@ class TopologicalEdgeDescriptor(BaseModel):
     nature: str = Field(default="default")
     share: float = Field(default=1.0, ge=0.0, le=1.0)
     buffer_days: float = Field(default=0.0, ge=0.0)
+    param_provenance: ParameterProvenance = ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND
+    share_is_default: bool = False
+    buffer_days_is_default: bool = False
     dependency_domain: DependencyDomain = DependencyDomain.PHYSICAL_COMPONENT
     operational_scope: OperationalScope = OperationalScope.CORE_OPERATIONAL_DELIVERY
 
@@ -232,6 +240,8 @@ class ExecutionTelemetry(BaseModel):
     cascade_propagation_ms: float = 0.0
     task_d_contagion_ms: float = 0.0
     total_latency_ms: float = 0.0
+    extracted_parameter_edge_count: int = 0
+    defaulted_parameter_edge_count: int = 0
 
 
 class OperationalContagionReport(BaseModel):
@@ -429,6 +439,12 @@ def format_operational_contagion_report(report: OperationalContagionReport) -> s
     lines.append(f"{'Cascade Propagation:':<30}{t.cascade_propagation_ms:5.1f} ms")
     lines.append(f"{'Model Contagion Reasoning:':<30}{t.task_d_contagion_ms:5.1f} ms")
     lines.append(f"{'Total Pipeline Latency:':<30}{t.total_latency_ms:5.1f} ms")
+    if t.extracted_parameter_edge_count > 0 or t.defaulted_parameter_edge_count > 0:
+        lines.append(
+            f"{'Parameter Provenance:':<30}"
+            f"{t.extracted_parameter_edge_count} extracted, "
+            f"{t.defaulted_parameter_edge_count} default bounds"
+        )
     lines.append("=" * 80)
 
     return "\n".join(lines)
@@ -495,27 +511,19 @@ def build_operational_contagion_report(
         s = str(r.get("source") or r.get("source_ticker") or "UNKNOWN").upper()
         t = str(r.get("target") or r.get("target_ticker") or "UNKNOWN").upper()
         rel_type = str(r.get("rel_type") or r.get("type") or "SUPPLIES_TO")
-        nature = str(r.get("nature") or r.get("input_group") or r.get("group") or "default")
-
-        # Share conversion
-        share_val = 1.0
-        if "share" in r and r["share"] is not None:
-            share_val = float(r["share"])
-        elif "exposure_pct" in r and r["exposure_pct"] is not None:
-            share_val = float(r["exposure_pct"]) / 100.0
-        elif "revenue_share_pct" in r and r["revenue_share_pct"] is not None:
-            share_val = float(r["revenue_share_pct"]) / 100.0
-        elif "loss_ratio" in r and r["loss_ratio"] is not None:
-            val = float(r["loss_ratio"])
-            share_val = val / 100.0 if val > 1.0 else val
-        share_val = max(0.0, min(1.0, share_val))
-
-        buffer_days = float(r.get("buffer_days", 0.0) or 0.0)
+        resolved = resolve_edge_cascade_parameters({**r, "rel_type": rel_type})
 
         # Hop distance of the target node
         hop_dist = distances.get(t, distances.get(s, 0) + 1)
         if hop_dist < 1:
             hop_dist = 1
+
+        domain_str = str(resolved["dependency_domain"])
+        domain_enum = (
+            DependencyDomain(domain_str)
+            if domain_str in DependencyDomain._value2member_map_
+            else DependencyDomain.PHYSICAL_COMPONENT
+        )
 
         active_edges.append(
             TopologicalEdgeDescriptor(
@@ -523,9 +531,13 @@ def build_operational_contagion_report(
                 target=t,
                 rel_type=rel_type,
                 hop_distance=hop_dist,
-                nature=nature,
-                share=round(share_val, 4),
-                buffer_days=buffer_days,
+                nature=str(resolved["input_group"]),
+                share=round(float(resolved["share"]), 4),
+                buffer_days=float(resolved["buffer_days"]),
+                param_provenance=ParameterProvenance(str(resolved["param_provenance"])),
+                share_is_default=bool(resolved["share_is_default"]),
+                buffer_days_is_default=bool(resolved["buffer_days_is_default"]),
+                dependency_domain=domain_enum,
             )
         )
 
@@ -551,19 +563,27 @@ def build_operational_contagion_report(
         input_grp = "default"
         share_pct = 0.0
         buf_days = 0.0
+        imp_prov = ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND
+        imp_share_def = False
+        imp_buf_def = False
+        imp_domain = DependencyDomain.PHYSICAL_COMPONENT
+
+        incoming = [e for e in active_edges if e.target == nid_clean]
+        if incoming:
+            imp_prov = incoming[0].param_provenance
+            imp_share_def = incoming[0].share_is_default
+            imp_buf_def = incoming[0].buffer_days_is_default
+            imp_domain = incoming[0].dependency_domain
 
         if hasattr(summary, "contributing_edges") and summary.contributing_edges:
             first_c = summary.contributing_edges[0]
             input_grp = first_c.get("input_group", "default")
             share_pct = float(first_c.get("share_pct", 0.0))
             buf_days = float(first_c.get("buffer_days", 0.0))
-        else:
-            # Find incoming edge in active edges
-            incoming = [e for e in active_edges if e.target == nid_clean]
-            if incoming:
-                input_grp = incoming[0].nature
-                share_pct = round(incoming[0].share * 100.0, 2)
-                buf_days = incoming[0].buffer_days
+        elif incoming:
+            input_grp = incoming[0].nature
+            share_pct = round(incoming[0].share * 100.0, 2)
+            buf_days = incoming[0].buffer_days
 
         downtime = float(getattr(summary, "downtime_days", 0.0) or 0.0)
         peak_shock = float(getattr(summary, "peak_shock_pct", 0.0) or 0.0)
@@ -588,6 +608,10 @@ def build_operational_contagion_report(
                 capacity_contraction_pct=peak_shock,
                 lost_capacity_days=lost_cap,
                 verdict=verdict,
+                dependency_domain=imp_domain,
+                param_provenance=imp_prov,
+                share_is_default=imp_share_def,
+                buffer_days_is_default=imp_buf_def,
             )
         )
 
@@ -604,6 +628,10 @@ def build_operational_contagion_report(
     is_dag = spectral_rad == 0.0
 
     # 5. Extract Telemetry Breakdown
+    defaulted_edge_count = sum(
+        1 for edge in active_edges if edge.param_provenance == ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND
+    )
+    extracted_edge_count = len(active_edges) - defaulted_edge_count
     lat_breakdown = getattr(result, "latency_breakdown_ms", {}) or {}
     telemetry = ExecutionTelemetry(
         task_c_cypher_ms=round(float(lat_breakdown.get("task_c_cypher_ms", 0.0)), 1),
@@ -612,6 +640,8 @@ def build_operational_contagion_report(
         cascade_propagation_ms=round(float(lat_breakdown.get("cascade_engine_ms", 0.0)), 1),
         task_d_contagion_ms=round(float(lat_breakdown.get("task_d_contagion_ms", 0.0)), 1),
         total_latency_ms=round(float(getattr(result, "total_latency_ms", 0.0) or 0.0), 1),
+        extracted_parameter_edge_count=extracted_edge_count,
+        defaulted_parameter_edge_count=defaulted_edge_count,
     )
 
     # 6. Model synthesis and think trace

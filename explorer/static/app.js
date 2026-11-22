@@ -447,9 +447,12 @@
       report.model_mode;
 
     clearNode(els.dagHealthBadges);
+    const telem = report.telemetry || {};
     [
       "is_acyclic_dag=" + String(report.is_acyclic_dag),
       "spectral_radius=" + Number(report.spectral_radius || 0).toFixed(3),
+      "extracted_params=" + String(telem.extracted_parameter_edge_count || 0),
+      "default_bounds=" + String(telem.defaulted_parameter_edge_count || 0),
     ].forEach((txt) => els.dagHealthBadges.appendChild(makeEl("span", "pill", txt)));
 
     renderGanttSvg(report);
@@ -460,12 +463,14 @@
     );
     sortedImpacts.forEach((imp) => {
       const tr = document.createElement("tr");
+      const shareSuffix = imp.share_is_default ? " (default)" : "";
+      const bufSuffix = imp.buffer_days_is_default ? " (default)" : "";
       const cells = [
         { val: imp.entity_ticker, cls: "" },
         { val: String(imp.hop_distance), cls: "" },
         { val: imp.input_group, cls: "" },
-        { val: Number(imp.procurement_share_pct).toFixed(1) + "%", cls: "num" },
-        { val: Number(imp.inventory_buffer_days).toFixed(0) + "d", cls: "num" },
+        { val: Number(imp.procurement_share_pct).toFixed(1) + "%" + shareSuffix, cls: "num" },
+        { val: Number(imp.inventory_buffer_days).toFixed(0) + "d" + bufSuffix, cls: "num" },
         {
           val:
             imp.shock_onset_day !== null && imp.shock_onset_day !== undefined
@@ -665,16 +670,17 @@
       ["Edge", (edge.source || "?") + " → " + (edge.target || "?")],
       ["Relationship", edge.rel_type || "—"],
       ["Nature / Input", edge.nature || edge.input_group || "—"],
+      ["Param Provenance", edge.param_provenance || "DEFAULT_CONSERVATIVE_BOUND"],
       [
         "Procurement Share",
         edge.share !== null && edge.share !== undefined
-          ? (Number(edge.share) * 100).toFixed(1) + "%"
+          ? (Number(edge.share) * 100).toFixed(1) + "%" + (edge.share_is_default ? " (default bound)" : "")
           : "N/A",
       ],
       [
         "Inventory Buffer",
         edge.buffer_days !== null && edge.buffer_days !== undefined
-          ? Number(edge.buffer_days).toFixed(0) + " days"
+          ? Number(edge.buffer_days).toFixed(0) + " days" + (edge.buffer_days_is_default ? " (default bound)" : "")
           : "N/A",
       ],
       [
@@ -1154,14 +1160,14 @@
         {
           v:
             e.share !== null && e.share !== undefined
-              ? (Number(e.share) * 100).toFixed(1) + "%"
+              ? (Number(e.share) * 100).toFixed(1) + "%" + (e.share_is_default ? " (def)" : "")
               : "—",
           num: true,
         },
         {
           v:
             e.buffer_days !== null && e.buffer_days !== undefined
-              ? Number(e.buffer_days).toFixed(0) + "d"
+              ? Number(e.buffer_days).toFixed(0) + "d" + (e.buffer_days_is_default ? " (def)" : "")
               : "—",
           num: true,
         },

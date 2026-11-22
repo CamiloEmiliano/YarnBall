@@ -327,41 +327,30 @@ class GraphRAGPipelineOrchestrator:
         return edges
 
     def _build_cascade_graph(self, normalized_edges: List[Dict[str, Any]]) -> CascadeGraph:
-        """Constructs a CascadeGraph from normalized database records."""
+        """Constructs a CascadeGraph from normalized database records (ADR-00026)."""
+        from contagion.parameters import resolve_edge_cascade_parameters
+
         graph = CascadeGraph()
         for r in normalized_edges:
             source = str(r.get("source") or r.get("source_ticker") or "UNKNOWN")
             target = str(r.get("target") or r.get("target_ticker") or "UNKNOWN")
-            input_group = str(r.get("input_group") or r.get("nature") or r.get("group") or "default")
-
-            # Extract procurement share a_uv
-            if "share" in r and r["share"] is not None:
-                share_val = float(r["share"])
-            elif "exposure_pct" in r and r["exposure_pct"] is not None:
-                share_val = float(r["exposure_pct"]) / 100.0
-            elif "revenue_share_pct" in r and r["revenue_share_pct"] is not None:
-                share_val = float(r["revenue_share_pct"]) / 100.0
-            elif "revenue_share" in r and r["revenue_share"] is not None:
-                val = float(r["revenue_share"])
-                share_val = val / 100.0 if val > 1.0 else val
-            elif "loss_ratio" in r and r["loss_ratio"] is not None:
-                val = float(r["loss_ratio"])
-                share_val = val / 100.0 if val > 1.0 else val
-            else:
-                share_val = 1.0
-
-            share_val = max(0.0, min(1.0, share_val))
-            buffer_days = float(r.get("buffer_days", 0.0) or 0.0)
+            resolved = resolve_edge_cascade_parameters(r)
             materiality = str(r.get("materiality", r.get("materiality_tier", "NON_CRITICAL")))
 
             graph.add_edge(
                 CascadeEdge(
                     source=source,
                     target=target,
-                    input_group=input_group,
-                    share=share_val,
-                    buffer_days=buffer_days,
+                    input_group=str(resolved["input_group"]),
+                    share=float(resolved["share"]),
+                    buffer_days=float(resolved["buffer_days"]),
                     materiality_tier=materiality,
+                    metadata={
+                        "param_provenance": resolved["param_provenance"],
+                        "share_is_default": resolved["share_is_default"],
+                        "buffer_days_is_default": resolved["buffer_days_is_default"],
+                        "dependency_domain": resolved["dependency_domain"],
+                    },
                 )
             )
         return graph

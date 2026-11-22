@@ -673,11 +673,15 @@ class EdgarWorker:
                 session.run(query, id=canonical_id, props=props)
                 inserted_nodes.append(canonical_id)
 
+            from contagion.parameters import resolve_edge_cascade_parameters
+
             for edge in gated_edges:
                 source_id = edge["source"]
                 target_id = edge["target"]
                 rel_type = edge["type"]
-                props = edge.get("properties", {}) or {}
+                props = dict(edge.get("properties", {}) or {})
+                resolved_params = resolve_edge_cascade_parameters({**edge, "rel_type": rel_type})
+                props.update(resolved_params)
 
                 query = f"""
                 MATCH (s {{id: $source}})

@@ -166,7 +166,9 @@ def _normalize_date_str(val: Any) -> Optional[str]:
 
 
 def _normalize_edge_record(edge: Mapping[str, Any]) -> Dict[str, Any]:
-    """Produces a consistent edge dictionary preserving cascade & PiT properties."""
+    """Produces a consistent edge dictionary preserving cascade, provenance & PiT properties."""
+    from contagion.parameters import resolve_edge_cascade_parameters
+
     source = str(edge.get("source") or edge.get("source_id") or "UNKNOWN").strip().upper()
     target = str(edge.get("target") or edge.get("target_id") or "UNKNOWN").strip().upper()
     rel_type = str(edge.get("rel_type") or edge.get("type") or "SUPPLIES_TO").strip().upper()
@@ -181,12 +183,11 @@ def _normalize_edge_record(edge: Mapping[str, Any]) -> Dict[str, Any]:
         "valid_from": _normalize_date_str(edge.get("valid_from")),
         "valid_to": _normalize_date_str(edge.get("valid_to")),
     })
-    if "nature" not in norm and "input_group" in norm:
-        norm["nature"] = norm["input_group"]
-    if "share" not in norm and "exposure_pct" in norm and norm["exposure_pct"] is not None:
-        norm["share"] = float(norm["exposure_pct"]) / 100.0
-    elif "exposure_pct" not in norm and "share" in norm and norm["share"] is not None:
-        norm["exposure_pct"] = float(norm["share"]) * 100.0
+    resolved = resolve_edge_cascade_parameters(norm)
+    norm.update(resolved)
+    if "nature" not in norm or not norm.get("nature"):
+        norm["nature"] = resolved["input_group"]
+    norm["exposure_pct"] = round(float(resolved["share"]) * 100.0, 4)
     return norm
 
 
