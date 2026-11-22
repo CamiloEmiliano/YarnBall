@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00027
 - **Filename**: `ADR-00027-canonical-staged-8k-envelope-and-catalog.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `ingestion` / `tools` / `explorer`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`4f0ca8b`](../../ingestion/sec/disruption_gating.py), [`4f0ca8b`](../../ingestion/sec/harvester.py), [`4f0ca8b`](../../tools/dry_run_sec_8k_contagion.py), [`4f0ca8b`](../../explorer/workbench_api.py)
 
 ---
 
