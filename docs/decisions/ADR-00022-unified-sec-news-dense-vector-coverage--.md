@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00022
 - **Filename**: `ADR-00022-unified-sec-news-dense-vector-coverage--.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `retrieval` / `ingestion` / `knowledge_graph` / `tools`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`0d56e18`](../../ingestion/sec/harvester.py), [`0d56e18`](../../retrieval/hybrid.py), [`0d56e18`](../../tools/init_db.py), [`0d56e18`](../../embedding/embedder.py), [`0d56e18`](../../knowledge_graph/graph_store.py)
 
 ---
 
