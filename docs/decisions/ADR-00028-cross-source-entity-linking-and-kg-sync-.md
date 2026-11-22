@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00028
 - **Filename**: `ADR-00028-cross-source-entity-linking-and-kg-sync-.md`
 - **Date**: 2026-11-14 19:25 UTC
-- **Status**: PROPOSED
-- **Target Subsystem**: `knowledge_graph` / `ingestion` / `explorer`
-- **Linked Commits**: Pending acceptance
+- **Status**: ACCEPTED
+- **Target Subsystem**: `knowledge_graph` / `ingestion` / `streaming` / `tools`
+- **Linked Commits**: [`d613d00`](../../knowledge_graph/graph_store.py), [`d613d00`](../../ingestion/sec/parser.py), [`d613d00`](../../ingestion/sec/harvester.py), [`d613d00`](../../knowledge_graph/memgraph_consumer.py), [`d613d00`](../../tools/build_kg_snapshot.py)
 
 ---
 
