@@ -26,7 +26,12 @@ class TestMemgraphConsumer(unittest.TestCase):
         }
         result = process_graph_message(payload)
         self.assertTrue(result)
-        mock_store.assert_called_once_with("hash123", "Apple News Q3 record profits")
+        mock_store.assert_called_once_with(
+            "hash123",
+            "Apple News Q3 record profits",
+            published_at=None,
+            source_type="news",
+        )
 
     @patch("knowledge_graph.memgraph_consumer.store_graph_entities")
     def test_process_graph_message_raw_string(self, mock_store):
@@ -36,7 +41,12 @@ class TestMemgraphConsumer(unittest.TestCase):
         }
         result = process_graph_message(payload)
         self.assertTrue(result)
-        mock_store.assert_called_once_with("hash456", "Raw text news article")
+        mock_store.assert_called_once_with(
+            "hash456",
+            "Raw text news article",
+            published_at=None,
+            source_type="news",
+        )
 
 
 if __name__ == "__main__":

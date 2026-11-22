@@ -492,8 +492,11 @@ def store_graph_entities(
     graph_data: Optional[Dict[str, Any]] = None,
     driver: Optional[Any] = None,
     rejection_queue: Optional[Any] = None,
+    published_at: Optional[str] = None,
+    source_type: str = "news",
+    linker: Optional[Any] = None,
 ) -> None:
-    """Extract entities, enforce live ontology gate, and persist them to Memgraph."""
+    """Extract entities, enforce live ontology gate, link canonically, and persist to Memgraph (ADR-00028)."""
     if graph_data is None:
         graph_data = extract_entities(text, source_id=source_hash, rejection_queue=rejection_queue)
 
@@ -511,41 +514,101 @@ def store_graph_entities(
     if not nodes and not edges:
         return
 
+    from ingestion.sec.parser import EdgarEntityLinker, normalize_company_name
+
+    active_linker = linker if linker is not None else EdgarEntityLinker(pg_conn=None)
+    canonical_id_map: Dict[str, str] = {}
+    linked_nodes_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    for node in nodes:
+        raw_id = str(node.get("id", "")).strip()
+        if not raw_id:
+            continue
+        raw_type = str(node.get("type", "Entity")).strip()
+        label = "".join(c for c in raw_type if c.isalnum())[:MAX_LABEL_LENGTH] or "Entity"
+        props = dict(node.get("properties", {}) or {})
+        canonical_id = raw_id
+
+        if label in ("Company", "Organization", "Entity"):
+            resolved = active_linker.link_entity(
+                name=raw_id,
+                ticker=props.get("ticker"),
+                event_date=str(published_at)[:10] if published_at else None,
+            )
+            if resolved and resolved.get("company_name"):
+                canonical_id = str(resolved["company_name"]).strip()
+                if resolved.get("ticker") and not props.get("ticker"):
+                    props["ticker"] = resolved["ticker"]
+                if resolved.get("cik") and not props.get("cik"):
+                    props["cik"] = resolved["cik"]
+
+        canonical_id_map[raw_id] = canonical_id
+        norm_key = normalize_company_name(raw_id)
+        if norm_key and norm_key not in canonical_id_map:
+            canonical_id_map[norm_key] = canonical_id
+
+        dedup_key = (label, canonical_id)
+        if dedup_key not in linked_nodes_by_key:
+            linked_nodes_by_key[dedup_key] = {
+                "id": canonical_id,
+                "label": label,
+                "properties": props,
+            }
+        else:
+            existing_props = linked_nodes_by_key[dedup_key]["properties"]
+            merged_props = {**existing_props, **props}
+            linked_nodes_by_key[dedup_key]["properties"] = merged_props
+
+    clean_source_type = str(source_type or "news").strip().lower() or "news"
+    valid_from: Optional[str] = None
+    if published_at is not None:
+        pub_str = str(published_at).strip()
+        if pub_str and pub_str.lower() not in ("none", "null", "nan"):
+            valid_from = pub_str[:10]
+    is_temporal_unanchored = valid_from is None
+
     active_driver = driver if driver is not None else get_memgraph_driver()
 
     with active_driver.session() as session:
-        # 1. Insert/Merge Article News Node
+        # 1. Insert/Merge Article News Node with published_at provenance
         session.run(
-            "MERGE (n:News {id: $source_hash}) SET n.updated_at = datetime()",
+            "MERGE (n:News {id: $source_hash}) SET n.updated_at = datetime(), n.published_at = $published_at, n.source_type = $source_type",
             source_hash=source_hash,
+            published_at=published_at,
+            source_type=clean_source_type,
         )
 
-        # 2. Insert/Merge Entity Nodes
-        for node in nodes:
-            node_id = str(node.get("id", "")).strip()
-            if not node_id:
-                continue
-
-            raw_type = str(node.get("type", "Entity")).strip()
-            # Clean label to ensure valid Cypher identifier
-            label = "".join(c for c in raw_type if c.isalnum())[:MAX_LABEL_LENGTH] or "Entity"
-            props = node.get("properties", {}) or {}
+        # 2. Insert/Merge Canonical Entity Nodes
+        for node_entry in linked_nodes_by_key.values():
+            node_id = node_entry["id"]
+            label = node_entry["label"]
+            props = node_entry["properties"]
 
             query = f"MERGE (n:{label} {{id: $id}}) SET n += $props"
             session.run(query, id=node_id, props=props)
 
-            # Link news article to mentioned entity
+            # Link news article to mentioned canonical entity
             mention_query = f"MATCH (news:News {{id: $source_hash}}), (e:{label} {{id: $id}}) MERGE (news)-[:MENTIONS]->(e)"
             session.run(mention_query, source_hash=source_hash, id=node_id)
 
-        # 3. Insert/Merge Relationship Edges
+        # 3. Insert/Merge Relationship Edges with source_type and temporal provenance
         from contagion.parameters import resolve_edge_cascade_parameters
 
         for edge in edges:
-            source = str(edge.get("source", "")).strip()
-            target = str(edge.get("target", "")).strip()
-            if not source or not target:
+            source_raw = str(edge.get("source", "")).strip()
+            target_raw = str(edge.get("target", "")).strip()
+            if not source_raw or not target_raw:
                 continue
+
+            source = canonical_id_map.get(source_raw) or canonical_id_map.get(normalize_company_name(source_raw))
+            if not source:
+                res_s = active_linker.link_entity(name=source_raw)
+                source = str(res_s["company_name"]).strip() if res_s and res_s.get("company_name") else source_raw
+
+            target = canonical_id_map.get(target_raw) or canonical_id_map.get(normalize_company_name(target_raw))
+            if not target:
+                res_t = active_linker.link_entity(name=target_raw)
+                target = str(res_t["company_name"]).strip() if res_t and res_t.get("company_name") else target_raw
 
             raw_type = str(edge.get("type", "RELATED_TO")).strip().upper()
             rel_type = "".join(c for c in raw_type if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH] or "RELATED_TO"
@@ -557,24 +620,42 @@ def store_graph_entities(
             MATCH (s {{id: $source}})
             MATCH (t {{id: $target}})
             MERGE (s)-[r:{rel_type}]->(t)
-            SET r += $props, r.source_hash = $source_hash
+            SET r += $props,
+                r.source_hash = $source_hash,
+                r.source_type = $source_type,
+                r.valid_from = $valid_from,
+                r.is_current = true,
+                r.is_temporal_unanchored = $is_temporal_unanchored
             """
-            session.run(query, source=source, target=target, props=props, source_hash=source_hash)
+            session.run(
+                query,
+                source=source,
+                target=target,
+                props=props,
+                source_hash=source_hash,
+                source_type=clean_source_type,
+                valid_from=valid_from,
+                is_temporal_unanchored=is_temporal_unanchored,
+            )
 
     logger.info(
-        "Stored %d nodes and %d edges in Memgraph for source_hash %s",
-        len(nodes),
+        "Stored %d canonical nodes and %d edges in Memgraph for source_hash %s",
+        len(linked_nodes_by_key),
         len(edges),
         source_hash,
     )
 
     # 4. Persist node embeddings to PGVECTOR
-    if nodes:
+    if linked_nodes_by_key:
         from embedding.embedder import InvalidEmbeddingError
 
+        embed_nodes = [
+            {"id": n["id"], "type": n["label"], "properties": n["properties"]}
+            for n in linked_nodes_by_key.values()
+        ]
         try:
             from .embedding_store import store_node_embeddings
-            store_node_embeddings(nodes, source_hash=source_hash)
+            store_node_embeddings(embed_nodes, source_hash=source_hash)
         except InvalidEmbeddingError:
             raise
         except Exception as exc:

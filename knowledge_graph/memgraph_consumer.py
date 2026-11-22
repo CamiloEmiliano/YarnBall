@@ -72,7 +72,8 @@ def process_graph_message(payload: dict[str, Any]) -> bool:
         logger.warning("Skipping malformed payload in Memgraph consumer: %s", payload)
         return False
 
-    # Extract text content (e.g. title + summary if JSON, or raw string)
+    # Extract text content and publication timestamp
+    published_at = payload.get("published_at") or payload.get("fetched_at")
     try:
         data = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
         text_parts = []
@@ -81,11 +82,18 @@ def process_graph_message(payload: dict[str, Any]) -> bool:
                 text_parts.append(data["title"])
             if data.get("summary"):
                 text_parts.append(data["summary"])
+            if not published_at and data.get("published_at"):
+                published_at = data.get("published_at")
         free_text = " ".join(text_parts) if text_parts else str(raw_payload)
     except Exception:
         free_text = str(raw_payload)
 
-    store_graph_entities(source_hash, free_text)
+    store_graph_entities(
+        source_hash,
+        free_text,
+        published_at=str(published_at) if published_at else None,
+        source_type="news",
+    )
     return True
 
 

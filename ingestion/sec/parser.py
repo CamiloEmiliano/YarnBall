@@ -101,6 +101,54 @@ class EdgarEntityLinker:
         self._cache: OrderedDict[str, Optional[Dict[str, Any]]] = OrderedDict()
         self.tier3_failures_total: int = 0
 
+    def _resolve_offline(
+        self,
+        name: Optional[str] = None,
+        ticker: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Offline fallback against static S&P 500 JSON registry when Postgres is unavailable."""
+        from ingestion.sec.disruption_gating import _load_sp500_identity_index
+
+        by_ticker, _ = _load_sp500_identity_index()
+        if not by_ticker:
+            return None
+
+        if ticker:
+            clean_ticker = ticker.strip().upper()
+            hit = by_ticker.get(clean_ticker)
+            if hit:
+                return {
+                    "cik": hit["cik"],
+                    "ticker": hit["ticker"],
+                    "company_name": hit["company_name"],
+                    "normalized_name": normalize_company_name(hit["company_name"]),
+                    "sic": None,
+                    "sic_description": None,
+                    "is_sp500": True,
+                    "match_tier": "offline_tier_1_ticker",
+                    "match_score": 1.0,
+                    "resolved_via": "offline_sp500_registry",
+                }
+
+        if name:
+            norm_input = normalize_company_name(name)
+            if norm_input:
+                for entry in by_ticker.values():
+                    if normalize_company_name(entry["company_name"]) == norm_input:
+                        return {
+                            "cik": entry["cik"],
+                            "ticker": entry["ticker"],
+                            "company_name": entry["company_name"],
+                            "normalized_name": norm_input,
+                            "sic": None,
+                            "sic_description": None,
+                            "is_sp500": True,
+                            "match_tier": "offline_tier_2_name",
+                            "match_score": 1.0,
+                            "resolved_via": "offline_sp500_registry",
+                        }
+        return None
+
     def link_entity(
         self,
         name: Optional[str] = None,
@@ -139,8 +187,7 @@ class EdgarEntityLinker:
         cursor=None,
     ) -> Optional[Dict[str, Any]]:
         if not self.pg_conn and cursor is None:
-            logger.debug("No database connection provided for EdgarEntityLinker")
-            return None
+            return self._resolve_offline(name=name, ticker=ticker)
 
         should_close_cur = False
         if cursor is None:

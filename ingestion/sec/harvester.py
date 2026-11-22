@@ -525,6 +525,8 @@ class EdgarWorker:
                     SET r.fiscal_year = $fiscal_year,
                         r.valid_from = $valid_from,
                         r.is_current = true,
+                        r.source_type = 'sec_filing',
+                        r.is_temporal_unanchored = ($valid_from IS NULL),
                         r.form_type = '10-K',
                         r.accession_number = $acc_num,
                         r.jurisdiction = $jurisdiction
@@ -532,7 +534,7 @@ class EdgarWorker:
                     parent_id=parent_name,
                     sub_id=sub_name,
                     fiscal_year=fiscal_year,
-                    valid_from=filing_date,
+                    valid_from=filing_date or None,
                     acc_num=accession_number,
                     jurisdiction=sub.get("jurisdiction", "Unknown"),
                 )
@@ -703,6 +705,8 @@ class EdgarWorker:
                     r.fiscal_year = $fiscal_year,
                     r.valid_from = $valid_from,
                     r.is_current = true,
+                    r.source_type = 'sec_filing',
+                    r.is_temporal_unanchored = ($valid_from IS NULL),
                     r.form_type = $form_type,
                     r.section = $section,
                     r.accession_number = $acc_num
@@ -713,7 +717,7 @@ class EdgarWorker:
                     target=target_id,
                     props=props,
                     fiscal_year=fiscal_year,
-                    valid_from=filing_date,
+                    valid_from=filing_date or None,
                     form_type=form_type,
                     section=section,
                     acc_num=accession_number,

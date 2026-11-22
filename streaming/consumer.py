@@ -176,6 +176,7 @@ def process_streaming_event(
         )
 
         # 2. Extract free-text for embedding and graph extraction
+        published_at = payload.get("published_at") or payload.get("fetched_at")
         try:
             data = json.loads(payload["raw_payload"])
             text_parts = []
@@ -185,6 +186,8 @@ def process_streaming_event(
                 text_parts.append(data["summary"])
             if "content" in data and data["content"]:
                 text_parts.append(data["content"])
+            if isinstance(data, dict) and data.get("published_at"):
+                published_at = data.get("published_at")
             free_text = " ".join(text_parts) if text_parts else payload["raw_payload"]
         except Exception:
             free_text = payload["raw_payload"]
@@ -199,12 +202,14 @@ def process_streaming_event(
             except Exception as exc:
                 logger.warning("Embedding generation skipped or failed: %s", exc)
 
-        # 4. Extract and store graph entities via idempotent MERGE
+        # 4. Extract and store graph entities via idempotent MERGE with source_type and PiT provenance
         store_graph_entities(
             source_hash=payload["source_hash"],
             text=free_text,
             graph_data=graph_data,
             driver=graph_driver,
+            published_at=str(published_at) if published_at else None,
+            source_type="news",
         )
         return True
     except Exception as exc:

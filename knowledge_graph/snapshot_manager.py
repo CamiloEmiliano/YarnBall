@@ -44,6 +44,7 @@ class SnapshotManager:
         description: str = "",
         time_window: Optional[Tuple[datetime | str, datetime | str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        driver: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Export the active Memgraph graph to Parquet files and record in PostgreSQL.
 
@@ -53,6 +54,7 @@ class SnapshotManager:
             description: Human-readable notes or description.
             time_window: Optional tuple of (start_time, end_time).
             metadata: Optional dictionary of additional metadata.
+            driver: Optional pre-configured Memgraph or in-memory session driver.
 
         Returns:
             Dictionary summarizing the exported snapshot.
@@ -60,13 +62,13 @@ class SnapshotManager:
         snapshot_dir = self.base_dir / snapshot_id
         snapshot_dir.mkdir(parents=True, exist_ok=True)
 
-        driver = get_memgraph_driver()
+        active_driver = driver if driver is not None else get_memgraph_driver()
         nodes: List[Dict[str, Any]] = []
         edges: List[Dict[str, Any]] = []
 
         # 1. Fetch nodes from Memgraph
         try:
-            with driver.session() as session:
+            with active_driver.session() as session:
                 node_result = session.run(
                     "MATCH (n) RETURN labels(n) AS labels, properties(n) AS props"
                 )
