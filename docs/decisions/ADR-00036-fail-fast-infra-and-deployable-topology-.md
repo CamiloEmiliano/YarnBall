@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00036
 - **Filename**: `ADR-00036-fail-fast-infra-and-deployable-topology-.md`
 - **Date**: 2026-11-22 08:48 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `knowledge_graph` / `retrieval` / `docker` / `tests`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`69ceaa6`](../../knowledge_graph/errors.py), [`69ceaa6`](../../knowledge_graph/memgraph_driver.py), [`69ceaa6`](../../knowledge_graph/db.py), [`69ceaa6`](../../knowledge_graph/ledger.py), [`69ceaa6`](../../retrieval/facade.py), [`69ceaa6`](../../retrieval/service.py), [`69ceaa6`](../../tools/hydrate_memgraph.py), [`69ceaa6`](../../pyproject.toml), [`69ceaa6`](../../retrieval/Dockerfile), [`69ceaa6`](../../docker-compose.yml), [`69ceaa6`](../../tests/knowledge_graph/test_adr00036_infra_invariants.py)
 
 ---
 
