@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -93,6 +93,7 @@ class PipelineResult(BaseModel):
 
     query: str
     as_of_date: str
+    route_used: Literal["local", "global", "hybrid"] = "local"
     cypher_query: Optional[str] = None
     is_valid_query: bool
     degraded: bool = False
@@ -101,7 +102,13 @@ class PipelineResult(BaseModel):
     retrieved_subgraph: List[Dict[str, Any]] = Field(default_factory=list)
     seed_hits: List[Dict[str, Any]] = Field(default_factory=list)
     articles: List[Dict[str, Any]] = Field(default_factory=list)
+    community_reports: List[Dict[str, Any]] = Field(default_factory=list)
     unanchored_excluded: int = 0
+    edges_total: int = 0
+    edges_shown: int = 0
+    truncated: bool = False
+    dropped_impact_share: float = 0.0
+    legacy_unchunked_evidence: int = 0
     verbalized_subgraph: str
     contagion_verdict: str
     contagion_think_trace: Optional[str] = None
@@ -177,6 +184,105 @@ class HopOrderedSubgraphVerbalizer:
         self.max_edges = max_edges
         self.chunks_parquet_path = chunks_parquet_path
         self.chunk_fetcher = chunk_fetcher
+        self.last_edges_total: int = 0
+        self.last_edges_shown: int = 0
+        self.last_truncated: bool = False
+        self.last_dropped_impact_share: float = 0.0
+        self.last_legacy_unchunked_evidence: int = 0
+
+    @staticmethod
+    def _is_legacy_unchunked(edge: Mapping[str, Any]) -> bool:
+        props_raw = edge.get("properties")
+        eprops: Mapping[str, Any] = props_raw if isinstance(props_raw, Mapping) else {}
+        ev_status = str(edge.get("evidence_status") or eprops.get("evidence_status") or "").strip().lower()
+        if ev_status == "legacy_unchunked":
+            return True
+        raw_cids = edge.get("evidence_chunk_ids") or eprops.get("evidence_chunk_ids")
+        if raw_cids is None:
+            return ev_status != "chunked"
+        if isinstance(raw_cids, (list, tuple, set)):
+            return len([c for c in raw_cids if str(c).strip()]) == 0
+        return False
+
+    @staticmethod
+    def _compute_edge_impact_score(
+        edge: Mapping[str, Any],
+        summary_by_target: Mapping[str, ConvergentShockSummary],
+    ) -> float:
+        """Compute edge contribution to propagated cascade loss (ADR-00037 Section 4.4)."""
+        if edge.get("cascade_impact") is not None:
+            try:
+                return max(0.0, float(edge["cascade_impact"]))
+            except (TypeError, ValueError):
+                pass
+        props_raw = edge.get("properties")
+        eprops: Mapping[str, Any] = props_raw if isinstance(props_raw, Mapping) else {}
+        if eprops.get("cascade_impact") is not None:
+            try:
+                return max(0.0, float(eprops["cascade_impact"]))
+            except (TypeError, ValueError):
+                pass
+
+        src = str(edge.get("source") or edge.get("source_ticker") or "").strip().upper()
+        tgt = str(edge.get("target") or edge.get("target_ticker") or "").strip().upper()
+        if not tgt or tgt not in summary_by_target:
+            return 0.0
+
+        summ = summary_by_target[tgt]
+        target_loss = float(summ.lost_capacity_days or 0.0)
+        if target_loss <= 0.0:
+            target_loss = float(summ.peak_shock_pct or 0.0)
+        if target_loss <= 0.0:
+            return 0.0
+
+        contribs = list(getattr(summ, "contributing_edges", None) or [])
+        if contribs:
+            edge_grp = str(
+                edge.get("input_group")
+                or edge.get("nature")
+                or eprops.get("input_group")
+                or eprops.get("nature")
+                or ""
+            ).strip().lower()
+            weights: List[float] = []
+            matched_weight = 0.0
+            for c in contribs:
+                w = (float(c.get("share_pct", 0.0) or 0.0) / 100.0) * (
+                    float(c.get("source_shock_pct", 0.0) or 0.0) / 100.0
+                )
+                w = max(0.0, w)
+                weights.append(w)
+                c_src = str(c.get("source", "")).strip().upper()
+                c_grp = str(c.get("input_group", "")).strip().lower()
+                if c_src == src and (not edge_grp or not c_grp or c_grp == edge_grp):
+                    matched_weight += w
+            total_w = sum(weights)
+            if total_w > 0.0 and matched_weight > 0.0:
+                return round(target_loss * (matched_weight / total_w), 6)
+
+        share_val = edge.get("share") if edge.get("share") is not None else eprops.get("share")
+        try:
+            share_f = max(0.0, min(1.0, float(share_val))) if share_val is not None else 0.0
+        except (TypeError, ValueError):
+            share_f = 0.0
+        return round(target_loss * share_f, 6)
+
+    @staticmethod
+    def _compute_provenance_rank(edge: Mapping[str, Any]) -> int:
+        from contagion.parameters import PROVENANCE_CONFIDENCE_RANK, resolve_edge_cascade_parameters
+
+        props_raw = edge.get("properties")
+        eprops: Mapping[str, Any] = props_raw if isinstance(props_raw, Mapping) else {}
+        prov = edge.get("param_provenance") or eprops.get("param_provenance")
+        if not prov:
+            resolved = resolve_edge_cascade_parameters(edge)
+            prov = resolved.get("param_provenance")
+        prov_str = (
+            str(getattr(prov, "value"))
+            if prov is not None and hasattr(prov, "value")
+            else str(prov or "DEFAULT_CONSERVATIVE_BOUND")
+        )
+        return int(PROVENANCE_CONFIDENCE_RANK.get(prov_str, 1))
 
     def _fetch_evidence_chunks(self, chunk_ids: Sequence[str]) -> Dict[str, Dict[str, Any]]:
         unique_ids = list(dict.fromkeys(str(cid).strip() for cid in chunk_ids if str(cid).strip()))
@@ -194,7 +300,7 @@ class HopOrderedSubgraphVerbalizer:
         cascade_summary: Optional[ConvergentShockSummary] = None,
         all_summaries: Optional[Dict[str, ConvergentShockSummary]] = None,
     ) -> str:
-        """Format a list of edge dicts and optional cascade shock summary into structured markdown text."""
+        """Format impact-ranked edge dicts and optional cascade shock summary into structured markdown text."""
         sections: List[str] = []
 
         if cascade_summary:
@@ -221,21 +327,64 @@ class HopOrderedSubgraphVerbalizer:
             sections.append("\n".join(casc_lines))
 
         if not edges:
+            self.last_edges_total = 0
+            self.last_edges_shown = 0
+            self.last_truncated = False
+            self.last_dropped_impact_share = 0.0
+            self.last_legacy_unchunked_evidence = 0
             sections.append("No matching supply-chain relationships discovered in active knowledge graph.")
             return "\n\n".join(sections)
 
-        # 1. Sort edges: hop_distance ascending, then source ticker, target ticker
-        sorted_edges = sorted(
-            edges,
-            key=lambda e: (
-                e.get("hop", e.get("hops", e.get("distance", 1))),
-                e.get("source", ""),
-                e.get("target", ""),
-            ),
+        summary_by_target: Dict[str, ConvergentShockSummary] = {}
+        if all_summaries:
+            for key, summ in all_summaries.items():
+                summary_by_target[str(key).strip().upper()] = summ
+                summary_by_target[str(summ.target_entity).strip().upper()] = summ
+        if cascade_summary is not None:
+            summary_by_target[str(cascade_summary.target_entity).strip().upper()] = cascade_summary
+
+        # 1. Rank edges by (cascade_impact desc, hop asc, provenance_rank desc, source asc, target asc) (ADR-00037)
+        scored_edges: List[Tuple[Dict[str, Any], float, int, int]] = []
+        for edge in edges:
+            impact_score = self._compute_edge_impact_score(edge, summary_by_target)
+            hop_val = int(edge.get("hop", edge.get("hops", edge.get("distance", 1))) or 1)
+            prov_rank = self._compute_provenance_rank(edge)
+            scored_edges.append((edge, impact_score, hop_val, prov_rank))
+
+        scored_edges.sort(
+            key=lambda item: (
+                -item[1],
+                item[2],
+                -item[3],
+                str(item[0].get("source", "")),
+                str(item[0].get("target", "")),
+            )
         )
 
-        # 2. Cap at max_edges (clutter cliff defense) & collect evidence chunk IDs ONLY for clamped edges (ADR-00035)
-        clamped_edges = sorted_edges[: self.max_edges]
+        # 2. Cap at max_edges (clutter cliff defense) & record structured coverage/truncation metrics (ADR-00037)
+        clamped_tuples = scored_edges[: self.max_edges]
+        dropped_tuples = scored_edges[self.max_edges :]
+        clamped_edges = [item[0] for item in clamped_tuples]
+
+        total_impact = sum(item[1] for item in scored_edges)
+        dropped_impact = sum(item[1] for item in dropped_tuples)
+
+        self.last_edges_total = len(scored_edges)
+        self.last_edges_shown = len(clamped_edges)
+        self.last_truncated = self.last_edges_total > self.last_edges_shown
+        if total_impact > 0.0:
+            self.last_dropped_impact_share = round(min(1.0, max(0.0, dropped_impact / total_impact)), 6)
+        elif self.last_truncated and self.last_edges_total > 0:
+            self.last_dropped_impact_share = round(
+                (self.last_edges_total - self.last_edges_shown) / float(self.last_edges_total),
+                6,
+            )
+        else:
+            self.last_dropped_impact_share = 0.0
+        self.last_legacy_unchunked_evidence = sum(
+            1 for edge in edges if self._is_legacy_unchunked(edge)
+        )
+
         clamped_chunk_ids: List[str] = []
         edge_chunk_lists: List[List[str]] = []
         for edge in clamped_edges:
@@ -249,13 +398,14 @@ class HopOrderedSubgraphVerbalizer:
         resolved_chunks = self._fetch_evidence_chunks(clamped_chunk_ids) if clamped_chunk_ids else {}
 
         lines = [
-            f"### Active Subgraph Topology ({len(clamped_edges)} edges retrieved, sorted by hop distance):"
+            f"### Active Subgraph Topology ({len(clamped_edges)} of {len(scored_edges)} edges retrieved, impact-ranked):"
         ]
         evidence_passage_lines: List[str] = []
 
         current_hop = None
-        for edge_idx, (edge, cids) in enumerate(zip(clamped_edges, edge_chunk_lists), start=1):
-            hop = edge.get("hop", edge.get("hops", edge.get("distance", 1)))
+        for edge_idx, ((edge, impact_score, hop, _prov), cids) in enumerate(
+            zip(clamped_tuples, edge_chunk_lists), start=1
+        ):
             if hop != current_hop:
                 current_hop = hop
                 lines.append(f"\n[Hop Distance {current_hop}]")
@@ -268,6 +418,8 @@ class HopOrderedSubgraphVerbalizer:
             revenue_share = edge.get("revenue_share_pct", edge.get("revenue_share"))
 
             props = [f"status: '{status}'"]
+            if impact_score > 0.0:
+                props.append(f"cascade_impact: {impact_score:.2f}")
             if loss_ratio is not None:
                 props.append(f"loss_ratio: {loss_ratio}")
             if revenue_share is not None:
@@ -287,9 +439,10 @@ class HopOrderedSubgraphVerbalizer:
 
             lines.append(f"- ({source}) -[:{rel_type}{prop_str}]-> ({target}){citation_suffix}")
 
-        if len(sorted_edges) > self.max_edges:
+        if len(scored_edges) > self.max_edges:
             lines.append(
-                f"\n(Note: {len(sorted_edges) - self.max_edges} additional distant edges pruned to maintain context fidelity)"
+                f"\n(Note: {len(scored_edges) - self.max_edges} additional distant edges pruned to maintain context fidelity; "
+                f"dropped_impact_share={self.last_dropped_impact_share:.2%})"
             )
 
         sections.append("\n".join(lines))
@@ -755,6 +908,11 @@ class GraphRAGPipelineOrchestrator:
             seed_hits=seed_hits_payload,
             articles=articles,
             unanchored_excluded=unanchored_excluded,
+            edges_total=self.verbalizer.last_edges_total,
+            edges_shown=self.verbalizer.last_edges_shown,
+            truncated=self.verbalizer.last_truncated,
+            dropped_impact_share=self.verbalizer.last_dropped_impact_share,
+            legacy_unchunked_evidence=self.verbalizer.last_legacy_unchunked_evidence,
             verbalized_subgraph=verbalized_context,
             contagion_verdict=contagion_resp.final_output,
             contagion_think_trace=contagion_resp.think_trace,

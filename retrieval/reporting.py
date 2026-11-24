@@ -9,10 +9,37 @@ from collections import deque
 from datetime import date, timedelta
 from enum import Enum
 import math
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
-from pydantic import BaseModel, Field, field_validator
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from contagion.parameters import ParameterProvenance, resolve_edge_cascade_parameters
+
+# ADR-00037 Section 4.5: 3-Segment Provenance Grading Thresholds
+DEFAULT_FILING_GROUNDED_MAX_SHARE = 0.10   # ASC 280 statutory 10% materiality threshold
+DEFAULT_STRESS_UPPER_BOUND_MIN_SHARE = 0.50  # Majority dominance threshold
+
+CoverageDataStatus = Literal["ok", "degraded", "no_coverage"]
+ProvenanceTier = Literal["FILING_GROUNDED", "PARTIALLY_ASSUMED", "STRESS_UPPER_BOUND"]
+
+
+def classify_provenance_tier(
+    default_param_impact_share: float,
+    *,
+    filing_grounded_max: float = DEFAULT_FILING_GROUNDED_MAX_SHARE,
+    stress_upper_min: float = DEFAULT_STRESS_UPPER_BOUND_MIN_SHARE,
+) -> ProvenanceTier:
+    """Apply 3-segment piecewise provenance grading over `default_param_impact_share` (ADR-00037).
+
+    - `<= 0.10`: `FILING_GROUNDED` (>=90% of propagated loss backed by SEC/extracted params)
+    - `0.10 < x < 0.50`: `PARTIALLY_ASSUMED` (material assumption share; edge inspection advised)
+    - `>= 0.50`: `STRESS_UPPER_BOUND` (majority rests on `share=1.0, buffer=0` worst-case priors)
+    """
+    share = max(0.0, min(1.0, float(default_param_impact_share)))
+    if share <= filing_grounded_max:
+        return "FILING_GROUNDED"
+    if share >= stress_upper_min:
+        return "STRESS_UPPER_BOUND"
+    return "PARTIALLY_ASSUMED"
 
 
 # ==============================================================================
@@ -244,8 +271,29 @@ class ExecutionTelemetry(BaseModel):
     defaulted_parameter_edge_count: int = 0
 
 
+class ReportCoverage(BaseModel):
+    """Structured coverage, truncation, and 3-segment provenance grading metadata (ADR-00037)."""
+
+    data_status: CoverageDataStatus = "ok"
+    edges_total: int = Field(default=0, ge=0)
+    edges_shown: int = Field(default=0, ge=0)
+    truncated: bool = False
+    dropped_impact_share: float = Field(default=0.0, ge=0.0, le=1.0)
+    unanchored_excluded: int = Field(default=0, ge=0)
+    legacy_unchunked_evidence: int = Field(default=0, ge=0)
+    default_param_impact_share: float = Field(default=0.0, ge=0.0, le=1.0)
+    provenance_tier: ProvenanceTier = "FILING_GROUNDED"
+
+    @model_validator(mode="after")
+    def _enforce_truncation_invariant(self) -> "ReportCoverage":
+        """ADR-00037 Invariant #3: Truncation is never silent when `edges_total > edges_shown`."""
+        if self.edges_total > self.edges_shown:
+            self.truncated = True
+        return self
+
+
 class OperationalContagionReport(BaseModel):
-    """Unified machine-readable schema for YarnBall Operational Contagion Intelligence (ADR-00011)."""
+    """Unified machine-readable schema for YarnBall Operational Contagion Intelligence (ADR-00011 / ADR-00037)."""
 
     report_id: str
     event_id: str
@@ -268,10 +316,23 @@ class OperationalContagionReport(BaseModel):
     operational_synthesis: str
     telemetry: ExecutionTelemetry = Field(default_factory=ExecutionTelemetry)
     model_mode: ModelExecutionMode = ModelExecutionMode.LIVE_LLM
+    coverage: ReportCoverage = Field(default_factory=ReportCoverage)
+
+    @model_validator(mode="after")
+    def _enforce_coverage_degraded_invariant(self) -> "OperationalContagionReport":
+        """ADR-00037 Invariant #2: `data_status='ok'` is impossible while any store or model is degraded."""
+        if self.model_mode == ModelExecutionMode.DEGRADED_UNREACHABLE:
+            if "coverage" in self.model_fields_set and self.coverage.data_status == "ok":
+                raise ValueError(
+                    "ADR-00037 Invariant #2 violation: coverage.data_status='ok' is forbidden when report is degraded."
+                )
+            if self.coverage.data_status == "ok":
+                self.coverage = self.coverage.model_copy(update={"data_status": "degraded"})
+        return self
 
 
 class ContagionTimeSeriesEventRecord(BaseModel):
-    """Flattened 1NF operational contagion event row for time-series relational joins (ADR-00013)."""
+    """Flattened 1NF operational contagion event row for time-series relational joins (ADR-00013 / ADR-00037)."""
 
     report_id: str
     event_id: str
@@ -299,6 +360,14 @@ class ContagionTimeSeriesEventRecord(BaseModel):
     is_acyclic_dag: bool = True
     spectral_radius: float = Field(default=0.0, ge=0.0)
     model_mode: str = ModelExecutionMode.LIVE_LLM.value
+    data_status: str = "ok"
+    provenance_tier: str = "FILING_GROUNDED"
+    default_param_impact_share: float = Field(default=0.0, ge=0.0, le=1.0)
+    truncated: bool = False
+    edges_total: int = Field(default=0, ge=0)
+    edges_shown: int = Field(default=0, ge=0)
+    unanchored_excluded: int = Field(default=0, ge=0)
+    legacy_unchunked_evidence: int = Field(default=0, ge=0)
 
 
 # ==============================================================================
@@ -445,6 +514,14 @@ def format_operational_contagion_report(report: OperationalContagionReport) -> s
             f"{t.extracted_parameter_edge_count} extracted, "
             f"{t.defaulted_parameter_edge_count} default bounds"
         )
+    cov = report.coverage
+    lines.append(
+        f"{'Coverage & Provenance:':<30}"
+        f"status={cov.data_status}, tier={cov.provenance_tier}, "
+        f"edges={cov.edges_shown}/{cov.edges_total}"
+        f"{' (TRUNCATED)' if cov.truncated else ''}, "
+        f"default_impact_share={cov.default_param_impact_share:.1%}"
+    )
     lines.append("=" * 80)
 
     return "\n".join(lines)
@@ -644,13 +721,84 @@ def build_operational_contagion_report(
         defaulted_parameter_edge_count=defaulted_edge_count,
     )
 
-    # 6. Model synthesis and think trace
+    # 6. Model synthesis, think trace & structured ReportCoverage (ADR-00037)
     think_trace = getattr(result, "contagion_think_trace", None)
     operational_synthesis = getattr(result, "contagion_verdict", "") or "No operational synthesis generated."
     mode_enum = (
         model_mode
         if isinstance(model_mode, ModelExecutionMode)
         else ModelExecutionMode(str(model_mode))
+    )
+
+    edges_total_val = int(getattr(result, "edges_total", 0) or len(raw_edges))
+    if edges_total_val < len(raw_edges):
+        edges_total_val = len(raw_edges)
+    raw_edges_shown = getattr(result, "edges_shown", None)
+    if isinstance(raw_edges_shown, int) and raw_edges_shown > 0:
+        edges_shown_val = min(raw_edges_shown, edges_total_val)
+    else:
+        edges_shown_val = min(len(raw_edges), 25)
+    truncated_val = bool(getattr(result, "truncated", False)) or (edges_total_val > edges_shown_val)
+    dropped_impact_share_val = max(
+        0.0, min(1.0, float(getattr(result, "dropped_impact_share", 0.0) or 0.0))
+    )
+    unanchored_excluded_val = max(0, int(getattr(result, "unanchored_excluded", 0) or 0))
+
+    raw_legacy = getattr(result, "legacy_unchunked_evidence", None)
+    if isinstance(raw_legacy, int) and raw_legacy > 0:
+        legacy_unchunked_val = raw_legacy
+    else:
+        legacy_unchunked_val = 0
+        for r in raw_edges:
+            raw_p = r.get("properties")
+            r_props: Dict[str, Any] = raw_p if isinstance(raw_p, dict) else {}
+            ev_st = str(r.get("evidence_status") or r_props.get("evidence_status") or "").strip().lower()
+            cids = r.get("evidence_chunk_ids") or r_props.get("evidence_chunk_ids")
+            if ev_st == "legacy_unchunked" or not cids:
+                legacy_unchunked_val += 1
+
+    # Compute share of propagated impact resting on DEFAULT_CONSERVATIVE_BOUND (share=1.0, buffer=0)
+    total_lost_cap = sum(max(0.0, float(i.lost_capacity_days)) for i in impacts)
+    total_contraction = sum(max(0.0, float(i.capacity_contraction_pct)) for i in impacts)
+    if total_lost_cap > 0.0:
+        default_impact_num = sum(
+            max(0.0, float(i.lost_capacity_days))
+            for i in impacts
+            if i.param_provenance == ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND
+        )
+        default_param_impact_share = round(min(1.0, default_impact_num / total_lost_cap), 6)
+    elif total_contraction > 0.0:
+        default_impact_num = sum(
+            max(0.0, float(i.capacity_contraction_pct))
+            for i in impacts
+            if i.param_provenance == ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND
+        )
+        default_param_impact_share = round(min(1.0, default_impact_num / total_contraction), 6)
+    elif active_edges:
+        default_param_impact_share = round(defaulted_edge_count / float(len(active_edges)), 6)
+    else:
+        default_param_impact_share = 0.0
+
+    provenance_tier = classify_provenance_tier(default_param_impact_share)
+    is_degraded = bool(getattr(result, "degraded", False)) or mode_enum == ModelExecutionMode.DEGRADED_UNREACHABLE
+    data_status: CoverageDataStatus
+    if is_degraded:
+        data_status = "degraded"
+    elif edges_total_val == 0:
+        data_status = "no_coverage"
+    else:
+        data_status = "ok"
+
+    coverage = ReportCoverage(
+        data_status=data_status,
+        edges_total=edges_total_val,
+        edges_shown=edges_shown_val,
+        truncated=truncated_val,
+        dropped_impact_share=dropped_impact_share_val,
+        unanchored_excluded=unanchored_excluded_val,
+        legacy_unchunked_evidence=legacy_unchunked_val,
+        default_param_impact_share=default_param_impact_share,
+        provenance_tier=provenance_tier,
     )
 
     return OperationalContagionReport(
@@ -675,6 +823,7 @@ def build_operational_contagion_report(
         operational_synthesis=operational_synthesis,
         telemetry=telemetry,
         model_mode=mode_enum,
+        coverage=coverage,
     )
 
 
@@ -756,6 +905,14 @@ def flatten_report_to_timeseries_records(
         "is_acyclic_dag": report.is_acyclic_dag,
         "spectral_radius": report.spectral_radius,
         "model_mode": mode_val,
+        "data_status": report.coverage.data_status,
+        "provenance_tier": report.coverage.provenance_tier,
+        "default_param_impact_share": report.coverage.default_param_impact_share,
+        "truncated": report.coverage.truncated,
+        "edges_total": report.coverage.edges_total,
+        "edges_shown": report.coverage.edges_shown,
+        "unanchored_excluded": report.coverage.unanchored_excluded,
+        "legacy_unchunked_evidence": report.coverage.legacy_unchunked_evidence,
     }
 
     if not report.network_impacts:

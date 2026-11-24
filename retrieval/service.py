@@ -46,6 +46,8 @@ class SearchRequest(BaseModel):
     target_ticker: Optional[str] = None
     shock_origin: Optional[str] = None
     shock_magnitude_pct: Optional[float] = None
+    route: Literal["auto", "local", "global", "hybrid"] = "auto"
+    universe_id: str = "sp500_pit"
 
 
 class ReportRequest(SearchRequest):
@@ -135,6 +137,8 @@ async def search(req: SearchRequest) -> Dict[str, Any]:
             target_ticker=req.target_ticker,
             shock_origin=req.shock_origin,
             shock_magnitude_pct=req.shock_magnitude_pct,
+            route=req.route,
+            universe_id=req.universe_id,
         )
     except _embedder.InvalidEmbeddingError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -185,6 +189,8 @@ async def report(req: ReportRequest) -> OperationalContagionReport:
             initial_shocks={origin: req.shock_magnitude_pct},
             initial_durations={origin: req.shock_duration_days},
             initial_onsets={origin: 0.0},
+            route=req.route,
+            universe_id=req.universe_id,
         )
     except _embedder.InvalidEmbeddingError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

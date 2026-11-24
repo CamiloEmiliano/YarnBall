@@ -15,11 +15,13 @@ Invariants enforced (ADR-00033 / ADR-00034):
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
     List,
+    Literal,
     Mapping,
     Optional,
     Protocol,
@@ -33,6 +35,7 @@ import knowledge_graph.memgraph_driver as _memgraph_driver
 from knowledge_graph.errors import GraphStoreUnavailableError, StoreUnavailableError
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail
 from retrieval.offline_store import InMemorySubgraphStore, _normalize_edge_record
+from retrieval.routing import ResolvedRoute, RouteMode, classify_query_route
 from retrieval.temporal import DEFAULT_TEMPORAL_FILTER, PiTContext, TemporalQueryFilter, validate_hops
 
 if TYPE_CHECKING:
@@ -385,18 +388,79 @@ def query_bi(
     initial_shocks: Optional[Dict[str, float]] = None,
     initial_durations: Optional[Dict[str, float]] = None,
     initial_onsets: Optional[Dict[str, float]] = None,
+    route: RouteMode = "auto",
+    universe_id: str = "sp500_pit",
+    communities_parquet_path: Optional[Path | str] = None,
+    community_reports: Optional[Sequence[Any]] = None,
+    linker: Optional[Any] = None,
 ) -> "PipelineResult":
-    """Single public Business Intelligence read entry point (ADR-00034).
+    """Single public Business Intelligence read entry point (ADR-00034 / ADR-00037).
 
-    Coordinates optional hybrid dense seeding (`HybridSeeder`), guarded Text-to-Cypher,
-    Point-in-Time graph execution (`SubgraphStorePort`), deterministic cascade propagation
-    (`SparseNetworkCascadeEngine`), hop-ordered verbalization, and `YarnBallModelClient`
-    contagion synthesis.
+    Supports deterministic rules-first routing across:
+    - `local`: ego traversal, deterministic cascade propagation, and impact-ranked verbalization.
+    - `global`: Point-in-Time map-reduce over cached `community_reports` (`as_of <= ctx.as_of`).
+    - `hybrid`: `local` cascade augmented with top-matching PiT community summaries.
     """
     if not isinstance(ctx, PiTContext):
         raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
 
+    from knowledge_graph.communities import search_community_reports_global
     from retrieval.pipeline import AnalystQuery, GraphRAGPipelineOrchestrator, PipelineResult
+
+    resolved_route, route_meta = classify_query_route(question, route=route, linker=linker)
+
+    def _degraded_outcome(exc: Exception, active_route: ResolvedRoute) -> PipelineResult:
+        logger.error("query_bi returning explicit degraded outcome due to store outage: %s", exc)
+        return PipelineResult(
+            query=question,
+            as_of_date=ctx.as_of_iso,
+            route_used=active_route,
+            cypher_query=None,
+            is_valid_query=False,
+            degraded=True,
+            degraded_reasons=[f"store_unavailable: {exc}"],
+            refusal_reason=str(exc),
+            retrieved_subgraph=[],
+            seed_hits=[],
+            articles=[],
+            verbalized_subgraph=f"DEGRADED: Backing store unavailable ({exc}). Exposure cannot be evaluated.",
+            contagion_verdict=f"DEGRADED: Backing store unavailable ({exc}). Exposure cannot be determined.",
+            contagion_think_trace=None,
+            latency_breakdown_ms={},
+            total_latency_ms=0.0,
+        )
+
+    if resolved_route == "global":
+        try:
+            global_res = search_community_reports_global(
+                question,
+                ctx=ctx,
+                universe_id=universe_id,
+                communities=community_reports,
+                communities_parquet_path=communities_parquet_path,
+                model_client=model_client,
+            )
+            return PipelineResult(
+                query=question,
+                as_of_date=ctx.as_of_iso,
+                route_used="global",
+                cypher_query=None,
+                is_valid_query=True,
+                degraded=False,
+                degraded_reasons=[],
+                refusal_reason=None,
+                retrieved_subgraph=[],
+                seed_hits=[],
+                articles=[],
+                community_reports=list(global_res.get("communities", [])),
+                verbalized_subgraph=str(global_res.get("verbalized_context") or ""),
+                contagion_verdict=str(global_res.get("synthesis") or ""),
+                contagion_think_trace=global_res.get("think_trace"),
+                latency_breakdown_ms={},
+                total_latency_ms=0.0,
+            )
+        except StoreUnavailableError as exc:
+            return _degraded_outcome(exc, "global")
 
     validated_hops = validate_hops(hops)
     active_store: SubgraphStorePort = store if store is not None else MemgraphSubgraphStore()
@@ -423,31 +487,42 @@ def query_bi(
         initial_onsets=initial_onsets,
     )
     try:
-        return orchestrator.run(analyst_query)
+        result = orchestrator.run(analyst_query)
     except StoreUnavailableError as exc:
-        logger.error("query_bi returning explicit degraded outcome due to store outage: %s", exc)
-        return PipelineResult(
-            query=question,
-            as_of_date=ctx.as_of_iso,
-            cypher_query=None,
-            is_valid_query=False,
-            degraded=True,
-            degraded_reasons=[f"store_unavailable: {exc}"],
-            refusal_reason=str(exc),
-            retrieved_subgraph=[],
-            seed_hits=[],
-            articles=[],
-            verbalized_subgraph=f"DEGRADED: Backing store unavailable ({exc}). Exposure cannot be evaluated.",
-            contagion_verdict=f"DEGRADED: Backing store unavailable ({exc}). Exposure cannot be determined.",
-            contagion_think_trace=None,
-            latency_breakdown_ms={},
-            total_latency_ms=0.0,
-        )
+        return _degraded_outcome(exc, resolved_route)
+
+    result.route_used = resolved_route
+
+    if resolved_route == "hybrid" and not result.degraded:
+        try:
+            hybrid_comm = search_community_reports_global(
+                question,
+                ctx=ctx,
+                universe_id=universe_id,
+                top_k=3,
+                communities=community_reports,
+                communities_parquet_path=communities_parquet_path,
+                model_client=None,
+            )
+            comm_list = list(hybrid_comm.get("communities", []))
+            if comm_list:
+                result.community_reports = comm_list
+                comm_ctx = str(hybrid_comm.get("verbalized_context") or "").strip()
+                if comm_ctx:
+                    result.verbalized_subgraph = f"{result.verbalized_subgraph}\n\n{comm_ctx}"
+        except StoreUnavailableError as exc:
+            result.degraded = True
+            result.degraded_reasons = [*result.degraded_reasons, f"community_store_unavailable: {exc}"]
+
+    return result
 
 
 __all__ = [
     "MemgraphSubgraphStore",
+    "ResolvedRoute",
+    "RouteMode",
     "SubgraphStorePort",
+    "classify_query_route",
     "query_bi",
     "query_subgraph_ego",
 ]

@@ -175,6 +175,9 @@ def build_and_export_kg_snapshot(
     resolve_entities: bool = True,
     offline: bool = False,
     memgraph_driver: Optional[Any] = None,
+    communities_as_of: Optional[str] = None,
+    universe_id: str = "sp500_pit",
+    summarize_communities_llm: bool = False,
 ) -> Dict[str, Any]:
     """Ingest local SEC filing bundles + optional news events and export a Parquet snapshot."""
     sec_root = Path(sec_filings_dir)
@@ -331,6 +334,33 @@ def build_and_export_kg_snapshot(
         except Exception as exc:
             logger.warning("EntityResolver post-export step skipped: %s", exc)
 
+    communities_meta: Optional[Dict[str, Any]] = None
+    if communities_as_of and (snap_root / snap_id / "edges.parquet").is_file():
+        from knowledge_graph.communities import (
+            build_communities,
+            export_communities_parquet,
+            summarize_communities,
+        )
+
+        snap_dir = snap_root / snap_id
+        built_comms = build_communities(
+            communities_as_of,
+            universe_id=universe_id,
+            snapshot_dir=snap_dir,
+        )
+        summarized_comms = summarize_communities(
+            built_comms,
+            chunks_parquet_path=(snap_dir / "chunks.parquet") if (snap_dir / "chunks.parquet").is_file() else None,
+            use_llm=summarize_communities_llm,
+        )
+        comm_path = export_communities_parquet(summarized_comms, snap_dir / "communities.parquet")
+        communities_meta = {
+            "as_of": communities_as_of,
+            "universe_id": universe_id,
+            "community_count": len(summarized_comms),
+            "path": str(comm_path),
+        }
+
     return {
         "snapshot_id": snap_id,
         "snapshot_dir": str(snap_root / snap_id),
@@ -340,6 +370,7 @@ def build_and_export_kg_snapshot(
         "news_ingested": news_ingested,
         "export": export_meta,
         "resolved": resolved_summary,
+        "communities": communities_meta,
     }
 
 
@@ -353,6 +384,9 @@ def main() -> None:
     parser.add_argument("--extract-llm", action="store_true")
     parser.add_argument("--no-resolve", action="store_true")
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--communities-as-of", default=None, help="Materialize PiT communities.parquet as of YYYY-MM-DD (ADR-00037)")
+    parser.add_argument("--universe-id", default="sp500_pit")
+    parser.add_argument("--summarize-communities-llm", action="store_true")
     args = parser.parse_args()
 
     result = build_and_export_kg_snapshot(
@@ -364,6 +398,9 @@ def main() -> None:
         extract_llm=args.extract_llm,
         resolve_entities=not args.no_resolve,
         offline=args.offline,
+        communities_as_of=args.communities_as_of,
+        universe_id=args.universe_id,
+        summarize_communities_llm=args.summarize_communities_llm,
     )
     print(json.dumps(result, indent=2, default=str))
 

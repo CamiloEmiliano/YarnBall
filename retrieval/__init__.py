@@ -11,7 +11,10 @@ Submodules:
 
 from .facade import (
     MemgraphSubgraphStore,
+    ResolvedRoute,
+    RouteMode,
     SubgraphStorePort,
+    classify_query_route,
     query_bi,
     query_subgraph_ego,
 )
@@ -50,10 +53,12 @@ from .reporting import (
     OperationalContagionReport,
     OperationalDisruptionCategory,
     OperationalScope,
+    ReportCoverage,
     SECForm8KItem,
     TopologicalEdgeDescriptor,
     build_operational_contagion_report,
     classify_contagion_verdict,
+    classify_provenance_tier,
     flatten_report_to_timeseries_records,
     format_operational_contagion_report,
     validate_verbatim_citations,
@@ -61,7 +66,10 @@ from .reporting import (
 
 __all__ = [
     "MemgraphSubgraphStore",
+    "ResolvedRoute",
+    "RouteMode",
     "SubgraphStorePort",
+    "classify_query_route",
     "query_bi",
     "query_subgraph_ego",
     "HybridSeeder",
@@ -94,10 +102,12 @@ __all__ = [
     "OperationalContagionReport",
     "OperationalDisruptionCategory",
     "OperationalScope",
+    "ReportCoverage",
     "SECForm8KItem",
     "TopologicalEdgeDescriptor",
     "build_operational_contagion_report",
     "classify_contagion_verdict",
+    "classify_provenance_tier",
     "flatten_report_to_timeseries_records",
     "format_operational_contagion_report",
     "validate_verbatim_citations",

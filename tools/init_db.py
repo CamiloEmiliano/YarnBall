@@ -345,6 +345,23 @@ def create_queue_table(db_name: str = "financial_rag"):
         CREATE INDEX IF NOT EXISTS idx_kg_edges_target ON kg_edges (target_id);
         CREATE INDEX IF NOT EXISTS idx_kg_edges_validity ON kg_edges (valid_from, valid_to);
         CREATE INDEX IF NOT EXISTS idx_kg_edges_current ON kg_edges (is_current);
+        CREATE TABLE IF NOT EXISTS community_reports (
+            universe_id TEXT NOT NULL,
+            as_of DATE NOT NULL,
+            level INTEGER NOT NULL,
+            community_id TEXT NOT NULL,
+            member_ids TEXT[] NOT NULL DEFAULT '{{}}',
+            summary TEXT NOT NULL DEFAULT '',
+            key_edges JSONB NOT NULL DEFAULT '[]'::jsonb,
+            evidence_chunk_ids TEXT[] NOT NULL DEFAULT '{{}}',
+            embedding vector({emb_dim}),
+            created_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (universe_id, as_of, level, community_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_community_reports_lookup
+            ON community_reports (universe_id, as_of DESC, level);
+        CREATE INDEX IF NOT EXISTS idx_community_reports_embedding_hnsw
+            ON community_reports USING hnsw (embedding vector_cosine_ops);
     """)
     cur.execute("SELECT embedder_model, embedding_dim FROM embedding_schema_metadata WHERE id = 1;")
     existing_meta = cur.fetchone()

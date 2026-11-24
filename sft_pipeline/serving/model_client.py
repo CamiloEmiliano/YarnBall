@@ -35,6 +35,7 @@ TASK_MAX_NEW_TOKENS: Dict[str, int] = {
     "TEXT_TO_CYPHER": 256,
     "CONTAGION_REASONING": 768,
     "GROUNDED_SYNTHESIS": 512,
+    "COMMUNITY_REPORT": 512,
     "PORTFOLIO_RECOMMENDATION": 512,
     # Shorthand aliases
     "A": 512,

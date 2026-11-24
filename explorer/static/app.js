@@ -448,6 +448,64 @@
 
     clearNode(els.dagHealthBadges);
     const telem = report.telemetry || {};
+    const cov = report.coverage || null;
+
+    if (cov) {
+      const tier = cov.provenance_tier || "FILING_GROUNDED";
+      const defPct = (Number(cov.default_param_impact_share || 0) * 100).toFixed(1);
+      const tierPill = makeEl("span", "pill", tier + " (" + defPct + "% default)");
+      const tierColor =
+        tier === "FILING_GROUNDED"
+          ? "var(--success)"
+          : tier === "PARTIALLY_ASSUMED"
+            ? "var(--warning)"
+            : "var(--error)";
+      tierPill.style.borderColor = tierColor;
+      tierPill.style.color = tierColor;
+      els.dagHealthBadges.appendChild(tierPill);
+
+      if (cov.data_status === "degraded") {
+        const degPill = makeEl("span", "pill", "Degraded");
+        degPill.style.borderColor = "var(--error)";
+        degPill.style.color = "var(--error)";
+        els.dagHealthBadges.appendChild(degPill);
+      } else if (cov.data_status === "no_coverage") {
+        const ncPill = makeEl("span", "pill", "No coverage");
+        ncPill.style.borderColor = "var(--warning)";
+        ncPill.style.color = "var(--warning)";
+        els.dagHealthBadges.appendChild(ncPill);
+      }
+
+      if (cov.truncated) {
+        const dropPct = (Number(cov.dropped_impact_share || 0) * 100).toFixed(1);
+        const truncPill = makeEl(
+          "span",
+          "pill",
+          "Truncated (" +
+            String(cov.edges_shown || 0) +
+            "/" +
+            String(cov.edges_total || 0) +
+            ", dropped=" +
+            dropPct +
+            "%)"
+        );
+        truncPill.style.borderColor = "var(--warning)";
+        truncPill.style.color = "var(--warning)";
+        els.dagHealthBadges.appendChild(truncPill);
+      }
+
+      if (Number(cov.unanchored_excluded || 0) > 0) {
+        els.dagHealthBadges.appendChild(
+          makeEl("span", "pill", "unanchored_excluded=" + String(cov.unanchored_excluded))
+        );
+      }
+      if (Number(cov.legacy_unchunked_evidence || 0) > 0) {
+        els.dagHealthBadges.appendChild(
+          makeEl("span", "pill", "legacy_evidence=" + String(cov.legacy_unchunked_evidence))
+        );
+      }
+    }
+
     [
       "is_acyclic_dag=" + String(report.is_acyclic_dag),
       "spectral_radius=" + Number(report.spectral_radius || 0).toFixed(3),

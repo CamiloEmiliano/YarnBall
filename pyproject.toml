@@ -23,6 +23,11 @@ retrieval = [
     "fastapi>=0.110.0",
     "uvicorn>=0.30.0",
     "kafka-python>=2.0.2",
+    "networkx>=3.0",
+]
+communities = [
+    "graspologic>=3.3.0",
+    "networkx>=3.0",
 ]
 ingestion = [
     "edgartools>=3.0.0",
