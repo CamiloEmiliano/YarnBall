@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00033
 - **Filename**: `ADR-00033-bitemporal-pit-contract-for-read-paths--.md`
 - **Date**: 2026-11-22 08:48 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `retrieval` / `knowledge_graph` / `tools`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`bcb33bd`](../../retrieval/temporal.py), [`bcb33bd`](../../retrieval/hybrid.py), [`bcb33bd`](../../retrieval/offline_store.py), [`bcb33bd`](../../knowledge_graph/embedding_store.py), [`bcb33bd`](../../ingestion/sec/harvester.py), [`bcb33bd`](../../tools/init_db.py), [`bcb33bd`](../../tests/retrieval/test_pit_invariants.py)
 
 ---
 
