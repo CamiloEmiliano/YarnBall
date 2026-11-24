@@ -40,21 +40,30 @@
 
 ## 4. Decision Outcome
 
-1. **Wire in the segmenter**:
-   - `EdgarWorker` ([`ingestion/sec/harvester.py`](../../ingestion/sec/harvester.py)) segments each section with `FinancialSectionSegmenter`.
+1. **Wire in the segmenter (`max_tokens=800`, `overlap_tokens=120`)**:
+   - `EdgarWorker` ([`ingestion/sec/harvester.py`](../../ingestion/sec/harvester.py)) segments each section with `FinancialSectionSegmenter(max_tokens=800, overlap_tokens=120)`, sized to stay comfortably within `yarnball-qwen:7b`'s 512-token extraction output cap and produce tight ~1-page audit citations.
    - `extract_entities` segments news articles longer than the token budget.
    - `select_salient_sec_context` becomes a **chunk ranker** used to order and prioritize extraction, never a filter that drops text.
-2. **Storage (Postgres text store + thin Memgraph pointers)**:
-   - Postgres: `document_chunks(chunk_id TEXT PRIMARY KEY, doc_id, source_type, cik, section, char_start, char_end, text, valid_from, known_at, embedding vector(EMBEDDING_DIM))` plus `chunk_entity_links(chunk_id, node_id, valid_from)` created in [`tools/init_db.py`](../../tools/init_db.py).
+2. **High-accuracy financial embedder & hybrid lexical index** ([`embedding/embedder.py`](../../embedding/embedder.py), [`tools/init_db.py`](../../tools/init_db.py)):
+   - Upgrade the default embedder from `all-mpnet-base-v2` (384-token ceiling, symmetric 2021 pretraining) to **`Qwen3-Embedding-0.6B`** (`qwen3-embedding:0.6b`, Apache 2.0, **32K context**, native **`EMBEDDING_DIM=1024`**—preserving full dimensionality within `pgvector` HNSW's 2,000-dim limit without truncation loss).
+   - Add explicit asymmetric entry points `embed_query(text)` (instruction-prefixed for financial/supply-chain retrieval) and `embed_documents(texts)` in [`embedding/embedder.py`](../../embedding/embedder.py).
+   - Serve via **Ollama `/api/embed`** pinned to CPU (`options: {"num_gpu": 0}`) during live serving so `yarnball-qwen:7b` retains 100% of 8 GB VRAM with zero model eviction, and run GPU-accelerated Phase-2 batch embedding offline (after unloading `yarnball-qwen:7b` via `keep_alive: 0`).
+   - Add a Postgres `GIN` `tsvector` full-text index alongside `embedding vector(1024)` on `document_chunks` so chunk retrieval combines dense semantic similarity with exact lexical matching (tickers, CIKs, SEC Item codes, fab names) via Reciprocal Rank Fusion (RRF).
+3. **Storage (Postgres text store + thin Memgraph pointers)**:
+   - Postgres: `document_chunks(chunk_id TEXT PRIMARY KEY, doc_id, source_type, cik, section, char_start, char_end, text, tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', text)) STORED, valid_from, known_at, embedding vector(EMBEDDING_DIM))` plus `chunk_entity_links(chunk_id, node_id, valid_from)` created in [`tools/init_db.py`](../../tools/init_db.py).
    - Durable KG ledger (`kg_edges`, [`ADR-00036`](ADR-00036-fail-fast-infra-and-deployable-topology-.md)) and Memgraph typed edges carry compact `evidence_chunk_ids: list[str]` pointers—**no `(:Chunk)` or raw prose nodes are stored in Memgraph RAM**.
    - `chunk_id` format is deterministic: `<accession_or_source_hash>#<section_slug>:c<ordinal>`.
-3. **Per-chunk extraction**: run `run_structured_extraction` per chunk, then `validate_graph_payload(strict=True, source_text=chunk.text)`, then a cross-chunk merge that dedupes on `(src, predicate, dst)`, unions `evidence_chunk_ids`, and resolves `ParameterProvenance` by highest-confidence chunk.
-4. **Contract changes**:
+4. **Per-chunk extraction & targeted gleaning (`ENABLE_TARGETED_GLEANING=1`)**:
+   - Run Pass 1 via `run_structured_extraction` per chunk followed by `validate_graph_payload(strict=True, source_text=chunk.text)`.
+   - **Targeted 1-pass gleaning (`should_glean_chunk`)**: run at most one follow-up `EXTRACT_SEC_GRAPH` (`temperature=0.0`) pass when `chunk.section_name` is a high-signal section (`Item 1 - Business`, `Item 1A - Risk Factors`, or Form 8-K `Item 1.01` / `1.02` / `2.01` / `8.01`), `not resp.runaway_detected`, and **either** Pass 1 produced $\ge 1$ valid relation **or** `resp.generated_tokens >= int(0.85 * 512)` (near the 512-token output cap).
+   - Pass 2 receives `chunk.full_prompt_text` plus a compact `(src, predicate, dst)` summary of Pass-1 triples with an explicit empty-JSON stop condition, runs through the identical `validate_graph_payload(strict=True, source_text=chunk.text)` gate, quarantines Pass-2 failures (`GLEANING_PARSE_FAILED`) non-destructively without discarding Pass 1, tags rescued triples with `extraction_pass=2`, and logs `gleaning_new_edges_count`.
+   - Cross-chunk merge dedupes on `(src, predicate, dst)`, unions `evidence_chunk_ids`, and resolves `ParameterProvenance` by highest-confidence chunk.
+5. **Contract changes**:
    - `ExtractionGraphPayload` gains `chunk_id`.
    - `ParameterProvenance` ([`contagion/parameters.py`](../../contagion/parameters.py)) gains `evidence_chunk_ids`.
    - `SnapshotManager` exports `chunks.parquet` next to `nodes.parquet` and `edges.parquet` for zero-DB offline Workbench citation lookup.
-5. **Citation handles**: `HopOrderedSubgraphVerbalizer` emits `[E<n> ← <chunk_id>]` per edge and fetches passage snippets in one batched Postgres (or offline `chunks.parquet`) lookup for the clamped edges only. `GroundedSynthesizer` ([`ADR-00034`](ADR-00034-single-bi-read-facade-and-pipeline-merge.md)) must cite them, and outputs with uncited claims go to `RuntimeRejectionQueue`.
-6. **Migration**: existing edges get `evidence_chunk_ids = []` and `evidence_status = "legacy_unchunked"`, which shows up in report coverage ([`ADR-00037`](ADR-00037-pit-community-layer-and-impact-ranking--.md)). Full-corpus re-extraction runs as a resumable batch job under `tools/` (priority calibrated later via [`ADR-00038`](ADR-00038-event-study-backtest-and-signal-decay---.md)).
+6. **Citation handles**: `HopOrderedSubgraphVerbalizer` emits `[E<n> ← <chunk_id>]` per edge and fetches passage snippets in one batched Postgres (or offline `chunks.parquet`) lookup for the clamped edges only. `GroundedSynthesizer` ([`ADR-00034`](ADR-00034-single-bi-read-facade-and-pipeline-merge.md)) must cite them, and outputs with uncited claims go to `RuntimeRejectionQueue`.
+7. **Migration & incremental re-extraction**: bump `embedding_schema_metadata` to `qwen3-embedding:0.6b` (`EMBEDDING_DIM=1024`) and re-embed `node_embeddings` / `financial_news_queue` cleanly before populating `document_chunks`. Existing edges get `evidence_chunk_ids = []` and `evidence_status = "legacy_unchunked"`, which shows up in report coverage ([`ADR-00037`](ADR-00037-pit-community-layer-and-impact-ranking--.md)). Re-extraction runs incrementally via a resumable batch job under `tools/` starting with **active Point-in-Time S&P 500 constituents** ([`universe/sp500.py`](../../universe/sp500.py)), with broader expansion calibrated later via [`ADR-00038`](ADR-00038-event-study-backtest-and-signal-decay---.md).
 
 ---
 
@@ -84,6 +93,6 @@
 
 ## 7. Open Questions for Review
 
-1. **Chunk size**: keep `<=1500` tokens, or shrink (for example 800) for the 7B model's extraction precision, at higher call count?
-2. **Gleaning**: allow one "anything missed?" re-prompt per chunk (canonical GraphRAG) despite the added cost?
-3. **Re-extraction scope**: re-extract the full 2018–2025 corpus, or only the active S&P 500 constituents at each snapshot date?
+1. ~~**Chunk size & embedder**~~ **Resolved (2026-11-23)**: default `max_tokens=800` (`overlap_tokens=120`) for extraction precision within the 512-token output cap, paired with upgrading the embedder to **`Qwen3-Embedding-0.6B`** (`qwen3-embedding:0.6b`, 32K context, native 1024 dims, CPU-pinned via Ollama `num_gpu: 0` during live queries / GPU Phase-2 batch offline) plus Postgres `tsvector` hybrid RRF (see Sections 4.1–4.2).
+2. ~~**Gleaning**~~ **Resolved (2026-11-23)**: enable targeted 1-pass gleaning (`ENABLE_TARGETED_GLEANING=1`) gated to high-signal sections (10-K Item 1/1A and 8-K disruption items) when Pass 1 either extracted $\ge 1$ relation or reached $\ge 85\%$ of the 512-token output cap, preserving Pass 1 non-destructively on Pass-2 failure (see Section 4.4).
+3. ~~**Re-extraction scope**~~ **Resolved (2026-11-23)**: run incrementally via a resumable batch job starting with active Point-in-Time S&P 500 constituents (`universe/sp500.py`), flagging untouched legacy edges as `legacy_unchunked` (see Section 4.7).
