@@ -17,6 +17,7 @@ RUNTIME_DIRS = (
     "knowledge_graph",
     "ingestion",
     "retrieval",
+    "synthesis",
     "explorer",
     "contagion",
     "streaming",

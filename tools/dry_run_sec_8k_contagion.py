@@ -32,11 +32,10 @@ from ingestion.sec.disruption_gating import (
     normalize_staged_8k_payload,
     select_primary_sec_8k_item,
 )
+from retrieval.facade import query_bi
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail
 from retrieval.offline_store import InMemorySubgraphStore
 from retrieval.pipeline import (
-    AnalystQuery,
-    GraphRAGPipelineOrchestrator,
     HopOrderedSubgraphVerbalizer,
     PipelineResult,
 )
@@ -357,24 +356,20 @@ def run_sec_8k_dry_run(
         else:
             execution_mode = ModelExecutionMode.LIVE_LLM
 
-    # 4. Configure Pipeline Orchestrator
-    orchestrator = GraphRAGPipelineOrchestrator(
-        model_client=active_client,
-        schema_guardrail=CypherASTWhitelistGuardrail(),
-        temporal_filter=TemporalQueryFilter(),
-        verbalizer=HopOrderedSubgraphVerbalizer(),
-        graph_driver=graph_driver,
-        cascade_engine=SparseNetworkCascadeEngine(),
-    )
-
-    # 5. Construct Analyst Query
+    # 4. Execute Consolidated BI Read Facade (ADR-00034)
     query_text = (
         f"Assess operational supply-chain contagion resulting from {disrupted_ticker} "
         f"disruption reported in Form 8-K {sec_item} on {filing_date}."
     )
-    analyst_query = AnalystQuery(
-        query=query_text,
+    pipeline_result = query_bi(
+        query_text,
         ctx=PiTContext.from_date(filing_date, mode="historical"),
+        store=graph_driver,
+        model_client=active_client,
+        schema_guardrail=CypherASTWhitelistGuardrail(),
+        temporal_filter=TemporalQueryFilter(),
+        verbalizer=HopOrderedSubgraphVerbalizer(),
+        cascade_engine=SparseNetworkCascadeEngine(),
         target_ticker=primary_target,
         shock_origin=shock_origin,
         shock_magnitude_pct=shock_magnitude_pct,
@@ -382,9 +377,6 @@ def run_sec_8k_dry_run(
         initial_durations={shock_origin: duration_days},
         initial_onsets={shock_origin: 0.0},
     )
-
-    # 6. Execute End-to-End Orchestrator Flow
-    pipeline_result = orchestrator.run(analyst_query)
 
     # 7. Generate Validated OperationalContagionReport (ADR-00011 / ADR-00013)
     report_id = f"REP-{filing_date.replace('-', '')}-{disrupted_ticker}-001"

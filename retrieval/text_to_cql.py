@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Optional, Dict, Any, List, Tuple, Set
 from pathlib import Path
 
 if TYPE_CHECKING:
+    from retrieval.facade import SubgraphStorePort
     from sft_pipeline.serving.model_client import YarnBallModelClient
 
 # Load environment variables
@@ -25,7 +26,6 @@ try:
 except ImportError:
     pass
 
-from knowledge_graph.memgraph_driver import get_memgraph_driver
 from retrieval.guardrails.schema_guardrail import (
     CypherASTWhitelistGuardrail,
     DEFAULT_FINANCE_SCHEMA,
@@ -128,42 +128,18 @@ class TextToCQL:
     # ----------------------------------------------------------------------
     # 1. Dynamic Schema Extraction
     # ----------------------------------------------------------------------
-    def get_active_schema(self) -> Dict[str, Any]:
-        """Extract active node labels, relationship types, and properties from Memgraph."""
-        labels: Set[str] = set(DEFAULT_ALLOWED_LABELS)
-        rel_types: Set[str] = set(DEFAULT_ALLOWED_REL_TYPES)
-        properties: Set[str] = {"id", "ticker", "name", "sector", "aliases", "source_hash"}
+    def get_active_schema(
+        self,
+        store: Optional["SubgraphStorePort"] = None,
+    ) -> Dict[str, Any]:
+        """Extract active node labels, relationship types, and properties via `MemgraphSubgraphStore`."""
+        from retrieval.facade import MemgraphSubgraphStore
 
-        driver = get_memgraph_driver()
-        try:
-            with driver.session() as session:
-                # Query distinct node labels
-                try:
-                    res_lbl = session.run("MATCH (n) RETURN DISTINCT labels(n) AS lbls LIMIT 100")
-                    for r in res_lbl:
-                        for l in r.get("lbls", []):
-                            if l:
-                                labels.add(l)
-                except Exception:
-                    pass
-
-                # Query distinct relationship types
-                try:
-                    res_rel = session.run("MATCH ()-[r]->() RETURN DISTINCT type(r) AS rel LIMIT 100")
-                    for r in res_rel:
-                        rel = r.get("rel")
-                        if rel:
-                            rel_types.add(rel)
-                except Exception:
-                    pass
-        except Exception as exc:
-            logger.debug("Could not query active schema from Memgraph: %s. Using default schema.", exc)
-
-        return {
-            "labels": sorted(list(labels)),
-            "relationship_types": sorted(list(rel_types)),
-            "properties": sorted(list(properties)),
-        }
+        active_store = store if isinstance(store, MemgraphSubgraphStore) else MemgraphSubgraphStore()
+        return active_store.introspect_schema(
+            default_labels=sorted(DEFAULT_ALLOWED_LABELS),
+            default_rel_types=sorted(DEFAULT_ALLOWED_REL_TYPES),
+        )
 
     # ----------------------------------------------------------------------
     # 2. Prompt Compilation & Ollama Query Generation
@@ -265,22 +241,16 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
         ctx: PiTContext,
         max_retries: int = 3,
         schema: Optional[Dict[str, Any]] = None,
+        store: Optional["SubgraphStorePort"] = None,
     ) -> Dict[str, Any]:
-        """Translate question to Cypher, validate guardrails, inject PiT filter, and execute (ADR-00033).
-
-        Args:
-            question: Natural language question.
-            ctx: Mandatory Point-in-Time execution context.
-            max_retries: Max self-correction attempts.
-            schema: Optional schema dictionary (extracted automatically if None).
-
-        Returns:
-            Dictionary with execution results, final Cypher statement, latency, and status.
-        """
+        """Translate question to Cypher, validate guardrails, inject PiT filter, and execute via `SubgraphStorePort`."""
         if not isinstance(ctx, PiTContext):
             raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
 
-        active_schema = schema or self.get_active_schema()
+        from retrieval.facade import MemgraphSubgraphStore
+
+        active_store: SubgraphStorePort = store if store is not None else MemgraphSubgraphStore()
+        active_schema = schema or self.get_active_schema(store=active_store)
         system_prompt = self._build_system_prompt(active_schema)
 
         current_prompt = question
@@ -289,7 +259,6 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
         retries_used = 0
         records: List[Dict[str, Any]] = []
 
-        driver = get_memgraph_driver()
         start_time = time.perf_counter()
 
         for attempt in range(max_retries):
@@ -321,13 +290,15 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
             temporal_cypher = self.temporal_filter.inject_active_coalescence(bounded_cypher, ctx)
             last_cypher = temporal_cypher
 
-            # 4. Execute Query in Memgraph
+            # 4. Execute Query through SubgraphStorePort (ADR-00034 Invariant #1)
             try:
-                with driver.session() as session:
-                    res = session.run(temporal_cypher, as_of_date=ctx.as_of_iso)
-                    records = [dict(r) for r in res]
-                    last_error = None
-                    break  # Success!
+                records = active_store.execute_guarded(
+                    bounded_cypher,
+                    {"as_of_date": ctx.as_of_iso},
+                    ctx,
+                )
+                last_error = None
+                break  # Success!
             except Exception as exc:
                 last_error = f"Memgraph Execution Error: {str(exc)}"
                 logger.warning("Attempt %d Memgraph execution failed: %s", attempt + 1, last_error)

@@ -29,15 +29,17 @@ def insert_test_embeddings():
             embedding VECTOR(768) NOT NULL,
             source_hash TEXT,
             known_at TIMESTAMPTZ,
+            is_unanchored BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMPTZ DEFAULT now(),
             PRIMARY KEY (node_id, valid_from)
         );
     """
     sql = """
-        INSERT INTO node_embeddings (node_id, valid_from, valid_to, entity_type, embedding, source_hash)
-        VALUES (%s, %s::date, NULL, %s, %s, %s)
+        INSERT INTO node_embeddings (node_id, valid_from, valid_to, entity_type, embedding, source_hash, is_unanchored)
+        VALUES (%s, %s::date, NULL, %s, %s, %s, FALSE)
         ON CONFLICT (node_id, valid_from) DO UPDATE
-        SET embedding = EXCLUDED.embedding;
+        SET embedding = EXCLUDED.embedding,
+            is_unanchored = FALSE;
     """
     dummy_vec = [1.0] + [0.0] * 767
     with conn_ctx as conn:
@@ -61,19 +63,17 @@ def insert_test_embeddings():
 
 
 def test_search_endpoint(insert_test_embeddings):
-    # Mock embed_texts to return a non-zero unit vector (ADR-00020)
+    # Mock embed_texts to return a non-zero unit vector (ADR-00020) and check consolidated /search response (ADR-00034)
     with patch('embedding.embedder.embed_texts', return_value=[[1.0] + [0.0] * 767]):
         response = client.post("/search", json={"query": "any text", "as_of": "2024-06-01", "k": 2})
     assert response.status_code == 200
     payload = response.json()
-    # Should return a list with enriched nodes for each of the two test IDs
-    assert isinstance(payload, list)
-    returned_ids = {entry["root_id"] for entry in payload}
+    assert isinstance(payload, dict)
+    assert payload["as_of_date"] == "2024-06-01"
+    returned_ids = {entry["node_id"] for entry in payload["seed_hits"]}
     assert returned_ids == {"TestNode1", "TestNode2"}
-    for entry in payload:
-        # The enrichment returns at least the node itself in "nodes"
-        assert "nodes" in entry
-        assert any(node.get("id") == entry["root_id"] for node in entry["nodes"])
+    assert "retrieved_subgraph" in payload
+    assert "verbalized_subgraph" in payload
 
 
 def test_search_rejects_zero_vector_adr00020():

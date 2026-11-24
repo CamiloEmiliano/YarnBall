@@ -23,13 +23,22 @@ INDEX_ROW_RE = re.compile(
 )
 HASH_LINK_RE = re.compile(r"\[`([0-9a-f]{7,40})`\]\(([^)]+)\)")
 
-# Historical decommissioned paths intentionally linked in ADR-00016
+# Historical decommissioned paths intentionally linked in ADRs (ADR-00016, ADR-00034)
 DECOMMISSIONED_ADR_LINKS: Dict[str, Tuple[str, ...]] = {
     "ADR-00016-decommission-legacy-chainlit-ui-frontend.md": (
         "interactive/",
         "tests/interactive/",
         "chainlit.md",
-    )
+    ),
+    "index.md": (
+        "retrieval/shock_propagation.py",
+    ),
+    "ADR-00031-iterative-predicate-convergence-protocol.md": (
+        "retrieval/shock_propagation.py",
+    ),
+    "ADR-00034-single-bi-read-facade-and-pipeline-merge.md": (
+        "retrieval/shock_propagation.py",
+    ),
 }
 
 

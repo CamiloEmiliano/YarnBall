@@ -364,7 +364,6 @@ def test_full_platform_lifecycle_e2e(tmp_path: Path, monkeypatch) -> None:
             initial_shocks={"CRUS": 1.0},
             initial_durations={"CRUS": 60.0},
             initial_onsets={"CRUS": 0.0},
-            portfolio_context={"holdings": ["AAPL", "NXPI"]},
         )
     )
 
@@ -378,13 +377,11 @@ def test_full_platform_lifecycle_e2e(tmp_path: Path, monkeypatch) -> None:
     assert pipeline_result.contagion_think_trace is not None
     assert "45-day inventory buffer" in pipeline_result.contagion_think_trace
 
-    # Invariant: Portfolio recommendation present with balanced options overlay
-    assert pipeline_result.hedging_recommendation is not None
-    assert "BUY AAPL $175 PUT" in pipeline_result.hedging_recommendation.upper()
-    assert "BUY NXPI $220 CALL" in pipeline_result.hedging_recommendation.upper()
+    # Invariant: Domain 1 isolation (ADR-00010 / ADR-00011 / ADR-00034)
+    assert not hasattr(pipeline_result, "hedging_recommendation")
 
-    # Invariant: Latency breakdown tracked across all stages
+    # Invariant: Latency breakdown tracked across all Domain 1 stages
     assert "task_c_cypher_ms" in pipeline_result.latency_breakdown_ms
     assert "graph_execution_ms" in pipeline_result.latency_breakdown_ms
     assert "task_d_contagion_ms" in pipeline_result.latency_breakdown_ms
-    assert "task_e_hedging_ms" in pipeline_result.latency_breakdown_ms
+    assert "task_e_hedging_ms" not in pipeline_result.latency_breakdown_ms

@@ -10,8 +10,10 @@ import pytest
 
 import embedding.embedder as embedder
 from ingestion.sec.harvester import EdgarWorker
-from retrieval.hybrid import HybridRetriever
+from retrieval.facade import InMemorySubgraphStore, query_bi
+from retrieval.hybrid import HybridSeeder
 from retrieval.temporal import PiTContext
+from sft_pipeline.serving.model_client import ModelResponse, YarnBallModelClient
 from streaming.consumer import run_consumer
 from tools import init_db
 
@@ -106,50 +108,74 @@ def test_search_dense_passages_enforces_pit_cutoff_and_links_news_entities() -> 
     def _record_execute(sql: str, params: Any = None) -> None:
         executed_queries.append((sql, params))
 
+    def _fetchall_for_last() -> List[Tuple[Any, ...]]:
+        last_sql = executed_queries[-1][0] if executed_queries else ""
+        if "FROM node_embeddings" in last_sql:
+            return []
+        if "FROM financial_news_queue" in last_sql and "embedding IS NOT NULL" in last_sql:
+            return [
+                (
+                    "hash_euv_1",
+                    "EUV Lithography Export Curb",
+                    "https://example.com/euv",
+                    "2024-06-15 12:00:00+00:00",
+                    "Export controls restrict extreme ultraviolet lithography systems.",
+                    "Reuters",
+                    0.93,
+                )
+            ]
+        if "FROM node_embedding_sources" in last_sql:
+            return [("ASML",)]
+        return []
+
     mock_cursor.execute.side_effect = _record_execute
-    mock_cursor.fetchall.return_value = [
-        (
-            "hash_euv_1",
-            "EUV Lithography Export Curb",
-            "https://example.com/euv",
-            "2024-06-15 12:00:00+00:00",
-            "Export controls restrict extreme ultraviolet lithography systems.",
-            "Reuters",
-            0.93,
-        )
-    ]
+    mock_cursor.fetchall.side_effect = _fetchall_for_last
     mock_conn.cursor.return_value = mock_cursor
 
-    mock_cql = MagicMock()
-    mock_cql.execute_query.return_value = {"records": []}
-    retriever = HybridRetriever(text_to_cql_engine=mock_cql, top_k_dense=4)
-
-    mock_memgraph_session = MagicMock()
-    mock_memgraph_session.run.side_effect = [
-        [{"entity_id": "ASML"}],
+    seeder = HybridSeeder(text_to_cql_engine=MagicMock(), top_k_dense=4)
+    store = InMemorySubgraphStore(
         [
             {
                 "source": "ASML",
-                "rel_type": "SUPPLIES_TO",
                 "target": "TSMC",
-                "props": {},
+                "rel_type": "SUPPLIES_TO",
+                "valid_from": "2020-01-02",
                 "source_hash": "hash_euv_1",
             }
-        ],
-    ]
-    mock_driver = MagicMock()
-    mock_driver.session.return_value.__enter__.return_value = mock_memgraph_session
+        ]
+    )
+
+    class _StubClient(YarnBallModelClient):
+        def generate(self, prompt: str, task: str = "CONTAGION_REASONING", **kwargs: Any) -> ModelResponse:
+            out = "MATCH (s:Company {ticker: 'ASML'})-[r:SUPPLIES_TO]->(t:Company) RETURN s, r, t" if task == "TEXT_TO_CYPHER" else "ASML supplies TSMC."
+            return ModelResponse(
+                raw_text=out,
+                think_trace=None,
+                final_output=out,
+                task=task,
+                latency_sec=0.01,
+                prefill_ms=1.0,
+                tokens_per_sec=100.0,
+                prompt_tokens=10,
+                generated_tokens=10,
+            )
 
     ctx = PiTContext(as_of=date(2024, 7, 1), mode="historical")
     with patch("retrieval.hybrid.pg_connection", return_value=mock_conn), \
-         patch("retrieval.hybrid.get_memgraph_driver", return_value=mock_driver), \
          patch("embedding.embedder.embed_texts", return_value=[[0.6, 0.8]]):
-        res = retriever.retrieve("EUV lithography export restriction", ctx=ctx)
+        res = query_bi(
+            "EUV lithography export restriction",
+            ctx=ctx,
+            store=store,
+            seeder=seeder,
+            model_client=_StubClient(),
+        )
 
-    assert len(res["dense_passages"]) == 1
-    assert res["dense_passages"][0]["source_hash"] == "hash_euv_1"
-    assert "ASML" in [t["source"] for t in res["subgraph_triples"]]
-    assert "hash_euv_1" in res["source_hashes"]
+    assert len(res.seed_hits) == 1
+    assert res.seed_hits[0]["node_id"] == "ASML"
+    assert res.seed_hits[0]["origin"] == "dense_passage"
+    assert "ASML" in [e["source"] for e in res.retrieved_subgraph]
+    assert any(a.get("source_hash") == "hash_euv_1" for a in res.articles)
 
     passage_sql, passage_params = next(
         (sql, params) for sql, params in executed_queries if "FROM financial_news_queue" in sql and "embedding IS NOT NULL" in sql

@@ -1,43 +1,42 @@
-"""End-to-End GraphRAG Pipeline Orchestrator.
+"""End-to-End GraphRAG Pipeline Orchestrator (ADR-00033 / ADR-00034).
 
-Implements the multi-stage operational GraphRAG execution pipeline:
-1. Query Ingestion & Context Preparation (AnalystQuery)
-2. Task C: Text-to-Cypher generation via YarnBallModelClient
-3. Schema & AST Guardrail Verification via CypherASTWhitelistGuardrail
-   - Trips route directly to RuntimeRejectionQueue and short-circuit to '(none)'
-4. Temporal State Coalescence Injection via TemporalQueryFilter
-5. Graph Execution against Memgraph / Neo4j driver
-6. Hop-Ordered Subgraph Verbalizer:
-   - Formats edges sorted ascending by hop distance (k=1 -> k=2 -> k=3)
-   - Directional path arrows: Source -> TARGET
-   - Clutter Ceiling: Caps at Top-E <= 25 edges (prevents Phase 5 TT-01 clutter drop)
-7. Task D: Contagion Synthesis with prefix forcing (<think>\n)
-8. Task E: Portfolio Hedging Recommendation with market telemetry
+Implements the consolidated operational Domain 1 GraphRAG execution pipeline:
+1. Query Ingestion & Context Preparation (`AnalystQuery` with mandatory `PiTContext`)
+2. Optional Hybrid Point-in-Time Seeding (`HybridSeeder`: SCD2 dense entities + news passages)
+3. Task C: Text-to-Cypher generation via `YarnBallModelClient`
+4. Schema & AST Guardrail Verification via `CypherASTWhitelistGuardrail`
+   - Trips route directly to `RuntimeRejectionQueue` and short-circuit to '(none)'
+5. Temporal Interval Enforcement via `TemporalQueryFilter` (ADR-00033)
+6. Unified Graph Execution via `SubgraphStorePort` (`MemgraphSubgraphStore` / `InMemorySubgraphStore`)
+7. Deterministic Cascade Diffusion (`SparseNetworkCascadeEngine`) & Hop-Ordered Subgraph Verbalizer
+   - Sorts edges ascending by hop distance (`k=1 -> k=2 -> k=3`)
+   - Enforces Top-E <= 25 clutter ceiling
+8. Task D: Contagion Reasoning Synthesis via `YarnBallModelClient` with prefix forcing (`<think>\n`)
 9. Telemetry & Latency Breakdown logging
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from pydantic import BaseModel, Field, model_validator
 
 from contagion import (
     CascadeEdge,
     CascadeGraph,
-    CascadeNode,
     ConvergentShockSummary,
     SparseNetworkCascadeEngine,
 )
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail, ValidationResult
-from retrieval.temporal import PiTContext, TemporalQueryFilter
+from retrieval.temporal import PiTContext, TemporalQueryFilter, validate_hops
 from sft_pipeline.rejection_queue import ErrorStage, RuntimeRejectionQueue
 from sft_pipeline.serving.model_client import ModelResponse, YarnBallModelClient
+
+if TYPE_CHECKING:
+    from retrieval.facade import SubgraphStorePort
+    from retrieval.hybrid import HybridSeeder
 
 logger = logging.getLogger("retrieval.pipeline")
 
@@ -45,15 +44,13 @@ MAX_SUBGRAPH_EDGES = 25
 
 
 class AnalystQuery(BaseModel):
-    """Input query specification for the GraphRAG pipeline requiring `PiTContext` (ADR-00033)."""
+    """Domain 1 operational BI query specification requiring explicit `PiTContext` (ADR-00033 / ADR-00034)."""
 
     query: str
     ctx: PiTContext
-    portfolio_context: Optional[Dict[str, Any]] = None
     target_ticker: Optional[str] = None
     shock_origin: Optional[str] = None
     shock_magnitude_pct: Optional[float] = None
-    market_telemetry: Optional[Dict[str, Any]] = None
     initial_shocks: Optional[Dict[str, float]] = None
     initial_durations: Optional[Dict[str, float]] = None
     initial_onsets: Optional[Dict[str, float]] = None
@@ -90,7 +87,7 @@ class AnalystQuery(BaseModel):
 
 
 class PipelineResult(BaseModel):
-    """Unified response object from the end-to-end GraphRAG pipeline."""
+    """Unified Domain 1 response object from the consolidated BI GraphRAG pipeline (ADR-00034)."""
 
     query: str
     as_of_date: str
@@ -98,12 +95,12 @@ class PipelineResult(BaseModel):
     is_valid_query: bool
     refusal_reason: Optional[str] = None
     retrieved_subgraph: List[Dict[str, Any]] = Field(default_factory=list)
+    seed_hits: List[Dict[str, Any]] = Field(default_factory=list)
+    articles: List[Dict[str, Any]] = Field(default_factory=list)
     unanchored_excluded: int = 0
     verbalized_subgraph: str
     contagion_verdict: str
     contagion_think_trace: Optional[str] = None
-    hedging_recommendation: Optional[str] = None
-    hedging_think_trace: Optional[str] = None
     latency_breakdown_ms: Dict[str, float] = Field(default_factory=dict)
     total_latency_ms: float
     convergent_shock_summary: Optional[ConvergentShockSummary] = None
@@ -252,10 +249,11 @@ class HopOrderedSubgraphVerbalizer:
 
 
 class GraphRAGPipelineOrchestrator:
-    """Coordinated end-to-end GraphRAG pipeline engine.
+    """Coordinated end-to-end Domain 1 BI GraphRAG pipeline engine (ADR-00034).
 
-    Wires Stage 6.1 (Guardrail), Stage 6.3 (Temporal), Stage 6.4 (ModelClient),
-    and Stage 6.6 (RejectionQueue) into a coherent, verifiable operational agent.
+    Wires `HybridSeeder` (optional), `CypherASTWhitelistGuardrail`, `TemporalQueryFilter`,
+    `SubgraphStorePort`, `SparseNetworkCascadeEngine`, `HopOrderedSubgraphVerbalizer`,
+    `YarnBallModelClient`, and `RuntimeRejectionQueue` into one auditable execution path.
     """
 
     def __init__(
@@ -265,16 +263,36 @@ class GraphRAGPipelineOrchestrator:
         temporal_filter: Optional[TemporalQueryFilter] = None,
         rejection_queue: Optional[RuntimeRejectionQueue] = None,
         graph_driver: Optional[Any] = None,
+        store: Optional["SubgraphStorePort"] = None,
+        seeder: Optional["HybridSeeder"] = None,
         verbalizer: Optional[HopOrderedSubgraphVerbalizer] = None,
         cascade_engine: Optional[SparseNetworkCascadeEngine] = None,
+        seed_hops: int = 2,
     ):
+        from retrieval.facade import MemgraphSubgraphStore, SubgraphStorePort
+
         self.model_client = model_client or YarnBallModelClient()
         self.schema_guardrail = schema_guardrail or CypherASTWhitelistGuardrail()
         self.temporal_filter = temporal_filter or TemporalQueryFilter()
         self.rejection_queue = rejection_queue or RuntimeRejectionQueue()
         self.verbalizer = verbalizer or HopOrderedSubgraphVerbalizer()
-        self.graph_driver = graph_driver
         self.cascade_engine = cascade_engine or SparseNetworkCascadeEngine()
+        self.seeder = seeder
+        self.seed_hops = validate_hops(seed_hops)
+
+        self.graph_driver = graph_driver
+        self.store: Optional[SubgraphStorePort] = None
+        if store is not None:
+            self.store = store
+        elif graph_driver is not None:
+            if isinstance(graph_driver, SubgraphStorePort):
+                self.store = graph_driver
+            elif hasattr(graph_driver, "session"):
+                self.store = MemgraphSubgraphStore(
+                    driver=graph_driver,
+                    temporal_filter=self.temporal_filter,
+                    schema_guardrail=self.schema_guardrail,
+                )
 
     def execute_graph_query(
         self,
@@ -282,53 +300,35 @@ class GraphRAGPipelineOrchestrator:
         ctx: PiTContext,
         params: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """Execute validated and ADR-00033 temporalized Cypher against the graph driver."""
+        """Execute validated and ADR-00033 temporalized Cypher via `SubgraphStorePort`."""
         if not isinstance(ctx, PiTContext):
             raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
-        if self.graph_driver is None:
-            logger.debug("No graph driver provided; returning empty subgraph.")
+        if self.store is None and self.graph_driver is None:
+            logger.debug("No subgraph store or graph driver provided; returning empty subgraph.")
             return []
 
-        scoped_cypher = self.temporal_filter.inject_active_coalescence(cypher, ctx)
         query_params = dict(params or {})
         query_params.setdefault("as_of_date", ctx.as_of_iso)
-        results: List[Dict[str, Any]] = []
 
         try:
-            # Check if driver is callable or has session() method
-            if hasattr(self.graph_driver, "session"):
-                with self.graph_driver.session() as session:
-                    records = session.run(scoped_cypher, **query_params)
-                    for record in records:
-                        if hasattr(record, "data"):
-                            results.append(record.data())
-                        elif isinstance(record, dict):
-                            results.append(record)
-                        else:
-                            # Attempt dict conversion
-                            try:
-                                results.append(dict(record))
-                            except Exception:
-                                results.append({"raw": str(record)})
-            elif callable(self.graph_driver):
+            if self.store is not None:
+                return self.store.execute_guarded(cypher, query_params, ctx)
+            if callable(self.graph_driver):
+                scoped_cypher = self.temporal_filter.inject_active_coalescence(cypher, ctx)
                 raw = self.graph_driver(scoped_cypher, query_params)
-                if isinstance(raw, list):
-                    results = raw
-                else:
-                    results = [raw]
-            else:
-                logger.warning("Unrecognized graph_driver interface: %s", type(self.graph_driver))
+                return raw if isinstance(raw, list) else [raw]
+            logger.warning("Unrecognized graph_driver interface: %s", type(self.graph_driver))
+            return []
         except Exception as exc:
-            logger.error("Graph driver execution error: %s", exc)
+            logger.error("Graph store execution error: %s", exc)
             self.rejection_queue.record_failure(
                 task_id="retrieval_driver_error",
-                prompt=scoped_cypher,
+                prompt=cypher,
                 completion=str(exc),
                 error_stage=ErrorStage.SYNTAX_MALFORMED,
                 error_message=f"Graph execution failed: {exc}",
             )
-
-        return results
+            return []
 
     def _normalize_graph_records_to_edges(
         self, records: List[Dict[str, Any]]
@@ -337,12 +337,10 @@ class GraphRAGPipelineOrchestrator:
         edges: List[Dict[str, Any]] = []
 
         for r in records:
-            # Check standard expected edge structure
             if "source" in r and "target" in r:
                 edges.append(r)
                 continue
 
-            # Check if record has path or node/rel structure
             if "r" in r and isinstance(r["r"], dict):
                 rel = r["r"]
                 source = r.get("s", {}).get("ticker") or r.get("source") or "UNKNOWN"
@@ -359,10 +357,47 @@ class GraphRAGPipelineOrchestrator:
             elif "edges" in r and isinstance(r["edges"], list):
                 edges.extend(r["edges"])
             else:
-                # Flat fallback
                 edges.append(r)
 
         return edges
+
+    @staticmethod
+    def _merge_edges(
+        primary_edges: List[Dict[str, Any]],
+        seeded_edges: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Deduplicate edges across guarded Cypher and hybrid seed traversal, keeping min hop."""
+        if not seeded_edges:
+            return primary_edges
+        if not primary_edges:
+            return seeded_edges
+
+        merged: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
+        passthrough: List[Dict[str, Any]] = []
+
+        for edge in [*primary_edges, *seeded_edges]:
+            if "source" not in edge or "target" not in edge:
+                passthrough.append(edge)
+                continue
+            src = str(edge.get("source", ""))
+            rel = str(edge.get("rel_type", edge.get("type", "SUPPLIES_TO")))
+            tgt = str(edge.get("target", ""))
+            grp = str(edge.get("input_group") or edge.get("nature") or "default")
+            key = (src, rel, tgt, grp)
+            if key not in merged or int(edge.get("hop", 1) or 1) < int(merged[key].get("hop", 1) or 1):
+                merged[key] = edge
+
+        ordered = sorted(
+            merged.values(),
+            key=lambda e: (
+                int(e.get("hop", 1) or 1),
+                str(e.get("source", "")),
+                str(e.get("target", "")),
+                str(e.get("rel_type", "")),
+                str(e.get("input_group") or e.get("nature") or ""),
+            ),
+        )
+        return [*ordered, *passthrough]
 
     def _build_cascade_graph(self, normalized_edges: List[Dict[str, Any]]) -> CascadeGraph:
         """Constructs a CascadeGraph from normalized database records (ADR-00026)."""
@@ -394,9 +429,29 @@ class GraphRAGPipelineOrchestrator:
         return graph
 
     def run(self, analyst_query: AnalystQuery) -> PipelineResult:
-        """Run the full end-to-end GraphRAG operational pipeline."""
+        """Run the consolidated Domain 1 GraphRAG operational pipeline."""
         start_time = time.perf_counter()
         latencies: Dict[str, float] = {}
+
+        # -------------------------------------------------------------
+        # STEP 0 (Optional): Hybrid Point-in-Time Seeding (ADR-00034)
+        # -------------------------------------------------------------
+        seed_hits_payload: List[Dict[str, Any]] = []
+        seed_ids: List[str] = []
+        articles: List[Dict[str, Any]] = []
+        if self.seeder is not None:
+            t_seed = time.perf_counter()
+            seed_bundle = self.seeder.seed_with_context(
+                analyst_query.query,
+                ctx=analyst_query.ctx,
+                store=self.store,
+                include_cql=False,
+            )
+            hits = seed_bundle.get("hits", [])
+            seed_hits_payload = [h.to_dict() if hasattr(h, "to_dict") else dict(h) for h in hits]
+            seed_ids = [str(h["node_id"]) for h in seed_hits_payload if h.get("node_id")]
+            articles = list(seed_bundle.get("articles", []))
+            latencies["hybrid_seeding_ms"] = (time.perf_counter() - t_seed) * 1000.0
 
         # -------------------------------------------------------------
         # STEP 1: Text-to-Cypher Generation (Task C)
@@ -405,7 +460,7 @@ class GraphRAGPipelineOrchestrator:
         cypher_prompt = (
             f"Generate an openCypher query to retrieve supply-chain relationships for:\n"
             f"Query: {analyst_query.query}\n"
-            f"As-of Date: {analyst_query.as_of_date or 'CURRENT'}"
+            f"As-of Date: {analyst_query.as_of_date}"
         )
         cypher_resp: ModelResponse = self.model_client.generate(
             prompt=cypher_prompt,
@@ -420,69 +475,104 @@ class GraphRAGPipelineOrchestrator:
         # STEP 2: Deterministic Schema & AST Guardrail (Stage 6.1)
         # -------------------------------------------------------------
         t0 = time.perf_counter()
-        validation: ValidationResult = self.schema_guardrail.validate(generated_cypher)
-        latencies["guardrail_validation_ms"] = (time.perf_counter() - t0) * 1000.0
+        skip_cypher_execution = False
+        sanitized_cypher = ""
+        temporalized_cypher: Optional[str] = None
 
-        if not validation.is_valid:
-            # Query violates AST schema whitelist or requests unanswerable field
-            logger.info(
-                "Cypher AST validation tripped: %s. Short-circuiting with '(none)'.",
-                validation.error_summary,
+        if cypher_resp.error and seed_ids:
+            # Model server unavailable, but hybrid dense seeding succeeded: fall through to guarded traversal.
+            logger.warning(
+                "Task C model unavailable (%s); continuing with %d hybrid seed(s).",
+                cypher_resp.error,
+                len(seed_ids),
             )
+            skip_cypher_execution = True
+            latencies["guardrail_validation_ms"] = (time.perf_counter() - t0) * 1000.0
+        else:
+            validation: ValidationResult = self.schema_guardrail.validate(generated_cypher)
+            latencies["guardrail_validation_ms"] = (time.perf_counter() - t0) * 1000.0
 
-            # Log tripped sample to Stage 6.6 Rejection Queue
-            self.rejection_queue.record_failure(
-                task_id=f"pipeline_guardrail_{int(time.time())}",
-                prompt=analyst_query.query,
-                completion=generated_cypher,
-                error_stage=ErrorStage.SCHEMA_AST_VIOLATION,
-                error_message=validation.error_summary or "Schema AST violation",
-                metadata={
-                    "violations": [v.message for v in validation.violations],
-                    "as_of_date": analyst_query.as_of_date,
-                },
-            )
+            if not validation.is_valid:
+                logger.info(
+                    "Cypher AST validation tripped: %s. Short-circuiting with '(none)'.",
+                    validation.error_summary,
+                )
+                self.rejection_queue.record_failure(
+                    task_id=f"pipeline_guardrail_{int(time.time())}",
+                    prompt=analyst_query.query,
+                    completion=generated_cypher,
+                    error_stage=ErrorStage.SCHEMA_AST_VIOLATION,
+                    error_message=validation.error_summary or "Schema AST violation",
+                    metadata={
+                        "violations": [v.message for v in validation.violations],
+                        "as_of_date": analyst_query.as_of_date,
+                    },
+                )
 
-            total_ms = (time.perf_counter() - start_time) * 1000.0
-            return PipelineResult(
-                query=analyst_query.query,
-                as_of_date=analyst_query.as_of_date,
-                cypher_query=generated_cypher,
-                is_valid_query=False,
-                refusal_reason=validation.error_summary,
-                retrieved_subgraph=[],
-                verbalized_subgraph="No subgraph retrieved. Query refused due to schema violation.",
-                contagion_verdict="(none)",
-                contagion_think_trace=None,
-                hedging_recommendation=None,
-                hedging_think_trace=None,
-                latency_breakdown_ms=latencies,
-                total_latency_ms=total_ms,
-            )
+                total_ms = (time.perf_counter() - start_time) * 1000.0
+                return PipelineResult(
+                    query=analyst_query.query,
+                    as_of_date=analyst_query.as_of_date,
+                    cypher_query=generated_cypher,
+                    is_valid_query=False,
+                    refusal_reason=validation.error_summary,
+                    retrieved_subgraph=[],
+                    seed_hits=seed_hits_payload,
+                    articles=articles,
+                    verbalized_subgraph="No subgraph retrieved. Query refused due to schema violation.",
+                    contagion_verdict="(none)",
+                    contagion_think_trace=None,
+                    latency_breakdown_ms=latencies,
+                    total_latency_ms=total_ms,
+                )
 
-        sanitized_cypher = validation.sanitized_query or generated_cypher
+            sanitized_cypher = validation.sanitized_query or generated_cypher
 
         # -------------------------------------------------------------
-        # STEP 3: Temporal Coalescence Injection (Stage 6.3 / ADR-00033)
+        # STEP 3: Temporal Interval Injection (Stage 6.3 / ADR-00033)
         # -------------------------------------------------------------
         t0 = time.perf_counter()
-        temporalized_cypher = self.temporal_filter.inject_active_coalescence(
-            cypher=sanitized_cypher,
-            ctx=analyst_query.ctx,
-        )
+        if not skip_cypher_execution:
+            temporalized_cypher = self.temporal_filter.inject_active_coalescence(
+                cypher=sanitized_cypher,
+                ctx=analyst_query.ctx,
+            )
         latencies["temporal_transform_ms"] = (time.perf_counter() - t0) * 1000.0
 
         # -------------------------------------------------------------
-        # STEP 4: Graph Database Execution
+        # STEP 4: Unified SubgraphStorePort Execution & Seed Traversal
         # -------------------------------------------------------------
         t0 = time.perf_counter()
-        raw_records = self.execute_graph_query(
-            temporalized_cypher,
-            ctx=analyst_query.ctx,
-            params={"as_of_date": analyst_query.ctx.as_of_iso},
+        raw_records: List[Dict[str, Any]] = []
+        if not skip_cypher_execution:
+            raw_records = self.execute_graph_query(
+                sanitized_cypher,
+                ctx=analyst_query.ctx,
+                params={"as_of_date": analyst_query.ctx.as_of_iso},
+            )
+        unanchored_excluded = int(
+            getattr(self.store, "last_unanchored_excluded", 0)
+            or getattr(self.graph_driver, "last_unanchored_excluded", 0)
+            or 0
         )
-        unanchored_excluded = int(getattr(self.graph_driver, "last_unanchored_excluded", 0) or 0)
-        normalized_edges = self._normalize_graph_records_to_edges(raw_records)
+        cypher_edges = self._normalize_graph_records_to_edges(raw_records)
+
+        seeded_edges: List[Dict[str, Any]] = []
+        if seed_ids and self.store is not None:
+            try:
+                seeded_edges = self.store.traverse(
+                    seed_ids,
+                    hops=self.seed_hops,
+                    ctx=analyst_query.ctx,
+                )
+                unanchored_excluded = max(
+                    unanchored_excluded,
+                    int(getattr(self.store, "last_unanchored_excluded", 0) or 0),
+                )
+            except Exception as exc:
+                logger.warning("SubgraphStorePort seed traversal failed: %s", exc)
+
+        normalized_edges = self._merge_edges(cypher_edges, seeded_edges)
         latencies["graph_execution_ms"] = (time.perf_counter() - t0) * 1000.0
 
         # -------------------------------------------------------------
@@ -490,7 +580,6 @@ class GraphRAGPipelineOrchestrator:
         # -------------------------------------------------------------
         t0 = time.perf_counter()
 
-        # Build initial shock parameters
         initial_shocks: Dict[str, float] = {}
         if analyst_query.initial_shocks:
             initial_shocks.update(analyst_query.initial_shocks)
@@ -517,7 +606,6 @@ class GraphRAGPipelineOrchestrator:
                 if analyst_query.target_ticker and analyst_query.target_ticker in cascade_summaries:
                     target_summary = cascade_summaries[analyst_query.target_ticker]
                 elif cascade_summaries:
-                    # Select primary downstream target (max shock not in initial shock seeds)
                     non_seeds = {
                         nid: s for nid, s in cascade_summaries.items() if nid not in initial_shocks
                     }
@@ -554,33 +642,6 @@ class GraphRAGPipelineOrchestrator:
         )
         latencies["task_d_contagion_ms"] = (time.perf_counter() - t0) * 1000.0
 
-        # -------------------------------------------------------------
-        # STEP 7: Portfolio Recommendation & Hedging (Task E)
-        # -------------------------------------------------------------
-        t0 = time.perf_counter()
-        hedging_resp: Optional[ModelResponse] = None
-        if analyst_query.portfolio_context or analyst_query.market_telemetry:
-            shock_summary_line = ""
-            if target_summary:
-                shock_summary_line = (
-                    f"Deterministic Cascade Verdict: {target_summary.verdict} "
-                    f"({target_summary.peak_shock_pct:.2f}% capacity loss, "
-                    f"{target_summary.downtime_days:.1f} days downtime).\n"
-                )
-            hedging_prompt = (
-                f"Contagion Assessment:\n{contagion_resp.final_output}\n\n"
-                f"{shock_summary_line}"
-                f"Portfolio Context: {analyst_query.portfolio_context}\n"
-                f"Market Telemetry: {analyst_query.market_telemetry}\n\n"
-                f"Recommend specific portfolio rebalancing, option collars, or hedge ratios."
-            )
-            hedging_resp = self.model_client.generate(
-                prompt=hedging_prompt,
-                task="PORTFOLIO_RECOMMENDATION",
-                temperature=0.1,
-            )
-        latencies["task_e_hedging_ms"] = (time.perf_counter() - t0) * 1000.0
-
         total_ms = (time.perf_counter() - start_time) * 1000.0
 
         return PipelineResult(
@@ -590,12 +651,12 @@ class GraphRAGPipelineOrchestrator:
             is_valid_query=True,
             refusal_reason=None,
             retrieved_subgraph=normalized_edges,
+            seed_hits=seed_hits_payload,
+            articles=articles,
             unanchored_excluded=unanchored_excluded,
             verbalized_subgraph=verbalized_context,
             contagion_verdict=contagion_resp.final_output,
             contagion_think_trace=contagion_resp.think_trace,
-            hedging_recommendation=hedging_resp.final_output if hedging_resp else None,
-            hedging_think_trace=hedging_resp.think_trace if hedging_resp else None,
             latency_breakdown_ms=latencies,
             total_latency_ms=total_ms,
             convergent_shock_summary=target_summary,

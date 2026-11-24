@@ -11,7 +11,7 @@ import pytest
 
 import embedding.embedder as embedder
 from knowledge_graph.embedding_store import format_node_embedding_text, store_node_embeddings
-from retrieval.hybrid import HybridRetriever
+from retrieval.hybrid import HybridSeeder
 from retrieval.service import app as retrieval_app
 from retrieval.temporal import PiTContext
 from tools.utils import store_embedding
@@ -142,22 +142,24 @@ def test_all_pgvector_sql_paths_pass_serialized_vector_literal() -> None:
         store_embedding("hash_news", [0.25, 0.75])
     assert utils_conn.executed[0][1] == ("[0.25,0.75]", "hash_news")
 
-    # 2. HybridRetriever.search_dense_entities
+    # 2. HybridSeeder.search_dense_entities
     hybrid_conn = _RecordingConnection(rows=[("Apple Inc.", "Company", "hash1", 0.91)])
-    retriever = HybridRetriever(text_to_cql_engine=MagicMock())
+    seeder = HybridSeeder(text_to_cql_engine=MagicMock())
     ctx = PiTContext(as_of=date(2024, 7, 1), mode="historical")
     with patch("retrieval.hybrid.pg_connection", return_value=hybrid_conn), \
          patch("embedding.embedder.embed_texts", return_value=[[0.6, 0.8]]):
-        res = retriever.search_dense_entities("foundry", ctx=ctx, top_k=3)
+        res = seeder.search_dense_entities("foundry", ctx=ctx, top_k=3)
     assert len(res) == 1
     assert hybrid_conn.executed[0][1] == ("[0.6,0.8]", "2024-07-01", "2024-07-01", "[0.6,0.8]", 3)
 
-    # 3. retrieval.service POST /search
-    svc_conn = _RecordingConnection(rows=[("TSM",)])
+    # 3. retrieval.service POST /search (delegating via query_bi -> HybridSeeder)
+    svc_conn = _RecordingConnection(rows=[("TSM", "Company", "hash_tsm", 0.92)])
     client = TestClient(retrieval_app)
-    with patch("retrieval.service.pg_connection", return_value=svc_conn), \
+    with patch("retrieval.hybrid.pg_connection", return_value=svc_conn), \
          patch("embedding.embedder.embed_texts", return_value=[[0.6, 0.8]]), \
-         patch("retrieval.service.enrich_nodes", return_value=[{"root_id": "TSM", "nodes": [{"id": "TSM"}]}]):
+         patch("retrieval.facade.MemgraphSubgraphStore.traverse", return_value=[]), \
+         patch("retrieval.facade.MemgraphSubgraphStore.execute_guarded", return_value=[]), \
+         patch("sft_pipeline.serving.model_client.YarnBallModelClient.generate", return_value=MagicMock(final_output="MATCH (c:Company) RETURN c LIMIT 1", think_trace=None, error=None)):
         resp = client.post("/search", json={"query": "TSM", "as_of": "2024-07-01", "k": 1})
     assert resp.status_code == 200
-    assert svc_conn.executed[0][1] == ("2024-07-01", "2024-07-01", "[0.6,0.8]", 1)
+    assert svc_conn.executed[0][1] == ("[0.6,0.8]", "2024-07-01", "2024-07-01", "[0.6,0.8]", 1)

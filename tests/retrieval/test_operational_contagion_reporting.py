@@ -546,6 +546,41 @@ class TestDomainIsolationInvariant:
             overlap = field_tokens.intersection(disallowed_tokens)
             assert not overlap, f"Forbidden trading term(s) {overlap} in field '{field}'"
 
+    def test_retrieval_package_ast_forbids_portfolio_and_hedging_identifiers(self):
+        """ADR-00034 Invariant #3: Portfolio/hedging identifiers must never appear under retrieval/."""
+        import ast
+        from pathlib import Path
+
+        retrieval_dir = Path(__file__).resolve().parents[2] / "retrieval"
+        forbidden = {
+            "PORTFOLIO_RECOMMENDATION",
+            "portfolio_context",
+            "market_telemetry",
+            "hedging_recommendation",
+            "hedging_think_trace",
+        }
+        violations = []
+        for py_path in sorted(retrieval_dir.rglob("*.py")):
+            rel = str(py_path.relative_to(retrieval_dir.parent))
+            source = py_path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Name) and node.id in forbidden:
+                    violations.append(f"{rel}:{node.lineno} Name '{node.id}'")
+                elif isinstance(node, ast.Attribute) and node.attr in forbidden:
+                    violations.append(f"{rel}:{node.lineno} Attribute '{node.attr}'")
+                elif isinstance(node, ast.arg) and node.arg in forbidden:
+                    violations.append(f"{rel}:{node.lineno} arg '{node.arg}'")
+                elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    for tok in forbidden:
+                        if tok in node.value:
+                            violations.append(f"{rel}:{node.lineno} str '{tok}'")
+            for tok in forbidden:
+                if tok in source and not any(tok in v and rel in v for v in violations):
+                    violations.append(f"{rel} raw source token '{tok}'")
+
+        assert violations == [], f"ADR-00034 Domain Isolation violations under retrieval/: {violations}"
+
 
 class TestTimeSeriesJoinFlattener:
     """Verifies ADR-00013 1NF time-series join schema, calendar projections, and provenance."""

@@ -1,34 +1,45 @@
-# tests/test_hybrid_retriever.py
-# -*- coding: utf-8 -*-
-"""Unit tests for the HybridRetriever and GroundedSynthesizer modules."""
+"""Unit tests for `HybridSeeder`, `query_bi`, `GroundedSynthesizer`, and deprecated `HybridGraphRAGEngine` shim (ADR-00034)."""
+
+from __future__ import annotations
 
 from datetime import date
-import pytest
+from pathlib import Path
+from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
+import pytest
 
-from retrieval import HybridRetriever, PiTContext, TextToCQL
+from retrieval import (
+    HybridSeeder,
+    InMemorySubgraphStore,
+    PiTContext,
+    SeedHit,
+    TextToCQL,
+    query_bi,
+)
+from sft_pipeline.rejection_queue import RuntimeRejectionQueue
+from sft_pipeline.serving.model_client import ModelResponse, YarnBallModelClient
 from synthesis import GroundedSynthesizer, HybridGraphRAGEngine
 
 DEFAULT_CTX = PiTContext(as_of=date(2026, 5, 1), mode="historical")
 
 
 @pytest.fixture
-def hybrid_retriever():
-    """Provides a HybridRetriever with a mock TextToCQL engine."""
+def hybrid_seeder() -> HybridSeeder:
+    """Provides a HybridSeeder with a mock TextToCQL engine."""
     mock_cql = MagicMock(spec=TextToCQL)
     mock_cql.execute_query.return_value = {
         "status": "SUCCESS",
         "cypher": "MATCH (c:Company {id: 'Apple'}) RETURN c.id",
         "records": [{"c.id": "Apple Inc."}],
     }
-    return HybridRetriever(text_to_cql_engine=mock_cql, top_k_dense=3, subgraph_hops=1)
+    return HybridSeeder(text_to_cql_engine=mock_cql, top_k_dense=3)
 
 
 # ----------------------------------------------------------------------
 # 1. Dense Semantic Entity Search Tests
 # ----------------------------------------------------------------------
-def test_search_dense_entities_returns_formatted_results(hybrid_retriever):
-    """Test dense vector similarity search query execution."""
+def test_search_dense_entities_returns_formatted_results(hybrid_seeder: HybridSeeder) -> None:
+    """Test dense vector similarity search query execution over SCD Type 2 node_embeddings."""
     mock_rows = [
         ("Apple Inc.", "Company", "hash_aapl", 0.95),
         ("TSMC", "Company", "hash_tsmc", 0.88),
@@ -42,8 +53,7 @@ def test_search_dense_entities_returns_formatted_results(hybrid_retriever):
 
     with patch("retrieval.hybrid.pg_connection", return_value=mock_conn), \
          patch("embedding.embedder.embed_texts", return_value=[[0.1] * 768]):
-
-        results = hybrid_retriever.search_dense_entities("Apple chip supplier", ctx=DEFAULT_CTX, top_k=2)
+        results = hybrid_seeder.search_dense_entities("Apple chip supplier", ctx=DEFAULT_CTX, top_k=2)
 
         assert len(results) == 2
         assert results[0]["node_id"] == "Apple Inc."
@@ -51,54 +61,69 @@ def test_search_dense_entities_returns_formatted_results(hybrid_retriever):
         assert results[0]["similarity"] == 0.95
 
 
-def test_search_dense_entities_handles_offline_fallback(hybrid_retriever):
+def test_search_dense_entities_handles_offline_fallback(hybrid_seeder: HybridSeeder) -> None:
     """Test that dense search handles database connection errors gracefully."""
     with patch("retrieval.hybrid.pg_connection", side_effect=Exception("DB down")), \
          patch("embedding.embedder.embed_texts", return_value=[[0.1] * 768]):
-
-        results = hybrid_retriever.search_dense_entities("test query", ctx=DEFAULT_CTX)
+        results = hybrid_seeder.search_dense_entities("test query", ctx=DEFAULT_CTX)
         assert results == []
 
 
 # ----------------------------------------------------------------------
-# 2. Subgraph Expansion Tests
+# 2. Durable Postgres Passage-to-Entity Lineage & SeedHit Ranking
 # ----------------------------------------------------------------------
-def test_expand_subgraph_queries_memgraph_triples(hybrid_retriever):
-    """Test expanding seed entities in Memgraph to retrieve connecting triples."""
-    mock_records = [
-        {
-            "source": "Apple Inc.",
-            "rel_type": "PARTNERED_WITH",
-            "target": "TSMC",
-            "props": {"context": "A18 chip production"},
-            "source_hash": "hash_a18",
-        }
-    ]
+def test_expand_passage_entities_queries_durable_postgres_lineage(hybrid_seeder: HybridSeeder) -> None:
+    """ADR-00034: expand_passage_entities resolves via PostgreSQL node_embedding_sources (no Memgraph)."""
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [("AAPL",), ("TSM",)]
+    mock_conn.cursor.return_value = mock_cursor
 
-    mock_session = MagicMock()
-    mock_session.run.return_value = mock_records
-    mock_driver = MagicMock()
-    mock_driver.session.return_value.__enter__.return_value = mock_session
+    assert not hasattr(hybrid_seeder, "expand_subgraph")
 
-    with patch("retrieval.hybrid.get_memgraph_driver", return_value=mock_driver):
-        triples = hybrid_retriever.expand_subgraph(["Apple Inc."], ctx=DEFAULT_CTX)
+    with patch("retrieval.hybrid.pg_connection", return_value=mock_conn):
+        entities = hybrid_seeder.expand_passage_entities(["hash_news_1"], ctx=DEFAULT_CTX)
 
-        assert len(triples) == 1
-        assert triples[0]["source"] == "Apple Inc."
-        assert triples[0]["relation"] == "PARTNERED_WITH"
-        assert triples[0]["target"] == "TSMC"
-        assert triples[0]["source_hash"] == "hash_a18"
+    assert entities == ["AAPL", "TSM"]
+    sql_executed, params = mock_cursor.execute.call_args[0]
+    assert "FROM node_embedding_sources" in sql_executed
+    assert "COALESCE(nes.source_published_at, fnq.published_at) <= %s::timestamptz" in sql_executed
+    assert params == (["hash_news_1"], DEFAULT_CTX.cutoff_utc_iso, 20)
 
 
-def test_expand_subgraph_empty_seeds(hybrid_retriever):
-    """Test that empty seed list returns empty list immediately."""
-    assert hybrid_retriever.expand_subgraph([], ctx=DEFAULT_CTX) == []
+def test_hybrid_seeder_returns_ranked_seed_hits(hybrid_seeder: HybridSeeder) -> None:
+    """HybridSeeder.seed returns ranked SeedHit(node_id, score, origin) records."""
+    with patch.object(
+        hybrid_seeder,
+        "search_dense_entities",
+        return_value=[{"node_id": "TSM", "entity_type": "Company", "source_hash": "h1", "similarity": 0.94}],
+    ), patch.object(
+        hybrid_seeder,
+        "search_dense_passages",
+        return_value=[{"source_hash": "h2", "title": "TSMC news", "url": "https://ex.com", "similarity": 0.90}],
+    ), patch.object(
+        hybrid_seeder,
+        "expand_passage_entities",
+        return_value=["AAPL"],
+    ), patch.object(
+        hybrid_seeder,
+        "fetch_article_context",
+        return_value=[],
+    ):
+        hits = hybrid_seeder.seed("TSMC wafer supply to Apple", ctx=DEFAULT_CTX)
+
+    assert len(hits) == 2
+    assert isinstance(hits[0], SeedHit)
+    assert hits[0].node_id == "TSM" and hits[0].origin == "dense_entity"
+    assert hits[1].node_id == "AAPL" and hits[1].origin == "dense_passage"
+    assert hits[0].score > hits[1].score
 
 
 # ----------------------------------------------------------------------
 # 3. Article Context Fetching Tests
 # ----------------------------------------------------------------------
-def test_fetch_article_context_from_postgres(hybrid_retriever):
+def test_fetch_article_context_from_postgres(hybrid_seeder: HybridSeeder) -> None:
     """Test querying financial_news_queue for article snippets by source_hash."""
     mock_rows = [
         (
@@ -118,7 +143,7 @@ def test_fetch_article_context_from_postgres(hybrid_retriever):
     mock_conn.cursor.return_value = mock_cursor
 
     with patch("retrieval.hybrid.pg_connection", return_value=mock_conn):
-        articles = hybrid_retriever.fetch_article_context(["hash123"], ctx=DEFAULT_CTX)
+        articles = hybrid_seeder.fetch_article_context(["hash123"], ctx=DEFAULT_CTX)
 
         assert len(articles) == 1
         assert articles[0]["title"] == "Apple and TSMC Deepen 2nm Partnership"
@@ -127,11 +152,12 @@ def test_fetch_article_context_from_postgres(hybrid_retriever):
 
 
 # ----------------------------------------------------------------------
-# 4. Grounded Synthesis & Negative Grounding Tests
+# 4. Grounded Synthesis & YarnBallModelClient Tests
 # ----------------------------------------------------------------------
-def test_synthesizer_negative_grounding_on_empty_context():
-    """Test that synthesizer refuses to answer when no graph or article context exists."""
-    synthesizer = GroundedSynthesizer()
+def test_synthesizer_negative_grounding_on_empty_context(tmp_path: Path) -> None:
+    """Test that synthesizer refuses to answer when no graph or article context exists and logs refusal."""
+    rej_queue = RuntimeRejectionQueue(base_dir=tmp_path / "rej")
+    synthesizer = GroundedSynthesizer(rejection_queue=rej_queue)
     empty_context = {
         "subgraph_triples": [],
         "cql_result": {"records": []},
@@ -143,9 +169,46 @@ def test_synthesizer_negative_grounding_on_empty_context():
     assert result["is_grounded"] is False
     assert "no verified relationships" in result["answer"].lower()
     assert result["citations"] == []
+    assert len(rej_queue.load_records()) == 1
 
 
-def test_synthesizer_extracts_citations():
+def test_synthesizer_routes_through_yarnball_model_client(tmp_path: Path) -> None:
+    """ADR-00034: GroundedSynthesizer routes through YarnBallModelClient (task=GROUNDED_SYNTHESIS)."""
+    seen_payloads: List[Dict[str, Any]] = []
+
+    def _fake_transport(payload: Dict[str, Any]) -> Dict[str, Any]:
+        seen_payloads.append(payload)
+        return {
+            "response": "TSMC manufactures silicon for Apple [Apple Contract](https://ft.com/apple)."
+        }
+
+    client = YarnBallModelClient(transport_fn=_fake_transport)
+    synthesizer = GroundedSynthesizer(
+        model_client=client,
+        rejection_queue=RuntimeRejectionQueue(base_dir=tmp_path / "rej"),
+    )
+    context = {
+        "subgraph_triples": [{"source": "TSM", "rel_type": "SUPPLIES_TO", "target": "AAPL"}],
+        "cql_result": {"records": []},
+        "articles": [
+            {
+                "title": "Apple Contract",
+                "url": "https://ft.com/apple",
+                "published_at": "2026-05-01",
+                "snippet": "TSMC fabricates custom silicon for Apple.",
+            }
+        ],
+    }
+
+    result = synthesizer.synthesize("Which foundry manufactures Apple chips?", context)
+    assert result["is_grounded"] is True
+    assert "TSMC" in result["answer"]
+    assert len(result["citations"]) == 1
+    assert len(seen_payloads) == 1
+    assert seen_payloads[0]["model"] == "yarnball-qwen:7b"
+
+
+def test_synthesizer_extracts_citations() -> None:
     """Test that citations are accurately extracted from generated answers."""
     synthesizer = GroundedSynthesizer()
     articles = [
@@ -166,33 +229,74 @@ def test_synthesizer_extracts_citations():
 
 
 # ----------------------------------------------------------------------
-# 5. Full End-to-End Pipeline Tests
+# 5. Consolidated `query_bi` Facade & Deprecated Shim End-to-End Tests
 # ----------------------------------------------------------------------
-def test_hybrid_graphrag_engine_end_to_end():
-    """Test full HybridGraphRAGEngine question-to-answer execution."""
-    mock_retriever = MagicMock(spec=HybridRetriever)
-    mock_retriever.retrieve.return_value = {
-        "query": "Which foundry manufactures Apple chips?",
-        "cql_result": {"cypher": "MATCH (a:Company)-[:PRODUCES]-(t:Company)", "records": [{"t.id": "TSMC"}]},
-        "subgraph_triples": [{"source": "Apple Inc.", "relation": "PARTNERED_WITH", "target": "TSMC", "source_hash": "h1"}],
-        "articles": [{"title": "Apple Contract", "url": "https://ft.com/apple", "published_at": "2026-05-01", "snippet": "..."}],
-        "latency_ms": 12.5,
+def test_query_bi_and_deprecated_engine_shim_end_to_end() -> None:
+    """Verify `query_bi` coordinates HybridSeeder + SubgraphStorePort, and deprecated shim delegates to it."""
+    store = InMemorySubgraphStore(
+        [
+            {
+                "source": "TSM",
+                "target": "AAPL",
+                "rel_type": "SUPPLIES_TO",
+                "nature": "wafers",
+                "share": 0.40,
+                "buffer_days": 30.0,
+                "valid_from": "2020-01-02",
+            }
+        ]
+    )
+
+    class _MockClient(YarnBallModelClient):
+        def generate(self, prompt: str, task: str = "CONTAGION_REASONING", **kwargs: Any) -> ModelResponse:
+            if task == "TEXT_TO_CYPHER":
+                out = "MATCH (s:Company {ticker: 'TSM'})-[r:SUPPLIES_TO]->(t:Company) RETURN s, r, t"
+            else:
+                out = "TSM supplies wafers to AAPL with 30-day buffer mitigation."
+            return ModelResponse(
+                raw_text=out,
+                think_trace=None,
+                final_output=out,
+                task=task,
+                latency_sec=0.01,
+                prefill_ms=1.0,
+                tokens_per_sec=100.0,
+                prompt_tokens=10,
+                generated_tokens=10,
+            )
+
+    seeder = MagicMock(spec=HybridSeeder)
+    seeder.seed_with_context.return_value = {
+        "hits": [SeedHit(node_id="TSM", score=0.95, origin="dense_entity", source_hash="h1")],
+        "articles": [
+            {
+                "title": "Apple Contract",
+                "url": "https://ft.com/apple",
+                "published_at": "2026-05-01",
+                "snippet": "TSMC supplies Apple.",
+            }
+        ],
     }
 
-    mock_synthesizer = MagicMock(spec=GroundedSynthesizer)
-    mock_synthesizer.synthesize.return_value = {
-        "query": "Which foundry manufactures Apple chips?",
-        "answer": "TSMC manufactures custom silicon for Apple under an exclusive partnership [Apple Contract](https://ft.com/apple).",
-        "is_grounded": True,
-        "citations": [{"title": "Apple Contract", "url": "https://ft.com/apple"}],
-        "subgraph_triples": [{"source": "Apple Inc.", "relation": "PARTNERED_WITH", "target": "TSMC"}],
-        "cql_records": [{"t.id": "TSMC"}],
-    }
+    res = query_bi(
+        "Which foundry supplies Apple chips?",
+        ctx=DEFAULT_CTX,
+        store=store,
+        seeder=seeder,
+        model_client=_MockClient(),
+    )
+    assert res.is_valid_query is True
+    assert len(res.retrieved_subgraph) == 1
+    assert res.retrieved_subgraph[0]["source"] == "TSM"
+    assert res.retrieved_subgraph[0]["target"] == "AAPL"
+    assert len(res.seed_hits) == 1
+    assert res.seed_hits[0]["node_id"] == "TSM"
 
-    engine = HybridGraphRAGEngine(retriever=mock_retriever, synthesizer=mock_synthesizer)
-    response = engine.answer_query("Which foundry manufactures Apple chips?", ctx=DEFAULT_CTX)
+    with pytest.warns(DeprecationWarning):
+        shim = HybridGraphRAGEngine(store=store, seeder=seeder, model_client=_MockClient())
 
+    response = shim.answer_query("Which foundry supplies Apple chips?", ctx=DEFAULT_CTX)
     assert response["is_grounded"] is True
-    assert "TSMC" in response["answer"]
+    assert "TSM" in response["answer"]
     assert len(response["citations"]) == 1
-    assert response["cypher_query"] == "MATCH (a:Company)-[:PRODUCES]-(t:Company)"
+    assert len(response["subgraph_triples"]) == 1

@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 """Unit tests for the EvaluationHarness module."""
 
+from datetime import date
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from retrieval.temporal import PiTContext
 from synthesis import EvaluationHarness, BENCHMARK_QUERIES
 from knowledge_graph.snapshot_manager import SnapshotManager
 
@@ -113,6 +115,7 @@ def test_run_ab_benchmark_dry_run(tmp_path):
 
     report_path = tmp_path / "eval_report.md"
     summary = harness.run_ab_benchmark(
+        ctx=PiTContext(as_of=date(2024, 6, 1), mode="historical"),
         raw_snapshot_id="G_raw",
         resolved_snapshot_id="G_resolved",
         output_report_path=str(report_path),

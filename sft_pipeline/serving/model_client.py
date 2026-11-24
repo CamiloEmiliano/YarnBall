@@ -34,6 +34,7 @@ TASK_MAX_NEW_TOKENS: Dict[str, int] = {
     "EXTRACT_NEWS_EVENT": 512,
     "TEXT_TO_CYPHER": 256,
     "CONTAGION_REASONING": 768,
+    "GROUNDED_SYNTHESIS": 512,
     "PORTFOLIO_RECOMMENDATION": 512,
     # Shorthand aliases
     "A": 512,

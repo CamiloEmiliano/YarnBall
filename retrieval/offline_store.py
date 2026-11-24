@@ -36,12 +36,12 @@ _MUTATING_KEYWORD_RE = re.compile(
 )
 _STRING_LITERAL_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
 _ROOT_INLINE_TICKER_RE = re.compile(
-    r"\(\s*[A-Za-z_]\w*(?:\s*:\s*[A-Za-z_]\w*)?\s*\{\s*ticker\s*:\s*"
+    r"\(\s*[A-Za-z_]\w*(?:\s*:\s*[A-Za-z_]\w*)?\s*\{\s*(?:ticker|id)\s*:\s*"
     r"(?:['\"]([^'\"]+)['\"]|\$([A-Za-z_]\w*))\s*(?:,[^}]*)?\}\s*\)\s*-",
     re.IGNORECASE,
 )
 _WHERE_TICKER_RE = re.compile(
-    r"\bs\.ticker\s*=\s*(?:['\"]([^'\"]+)['\"]|\$([A-Za-z_]\w*))",
+    r"\b[A-Za-z_]\w*\.(?:ticker|id)\s*=\s*(?:['\"]([^'\"]+)['\"]|\$([A-Za-z_]\w*))",
     re.IGNORECASE,
 )
 _REL_PATTERN_RE = re.compile(
@@ -517,6 +517,111 @@ class InMemorySubgraphStore:
         )
         self.last_unanchored_excluded = unanchored_counter[0]
         return results
+
+    def traverse(
+        self,
+        seed_ids: Sequence[str],
+        hops: int,
+        ctx: PiTContext,
+        *,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Execute directed k-hop Point-in-Time BFS traversal implementing `SubgraphStorePort` (ADR-00034)."""
+        if not isinstance(ctx, PiTContext):
+            raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
+
+        capped_hops = validate_hops(hops, min_hops=1, max_hops=MAX_BFS_HOPS_CAP)
+        safe_limit = max(1, min(int(limit), 500))
+        cleaned_seeds = [str(s).strip() for s in seed_ids if str(s).strip()]
+        if not cleaned_seeds:
+            self.last_unanchored_excluded = 0
+            return []
+
+        eff_status = "ACTIVE_CURRENT" if ctx.mode == "live" else None
+        unanchored_counter = [0]
+        combined_edges: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
+
+        # Map original source_id strings (e.g. "n_tsm") to canonical ticker keys if present
+        id_to_canonical: Dict[str, str] = {}
+        for edge in self._edges_by_key.values():
+            src_id = edge.get("source_id")
+            tgt_id = edge.get("target_id")
+            if src_id:
+                id_to_canonical[str(src_id).strip().upper()] = edge["source"]
+            if tgt_id:
+                id_to_canonical[str(tgt_id).strip().upper()] = edge["target"]
+
+        seen_roots: Set[str] = set()
+        for raw_seed in cleaned_seeds:
+            seed_upper = raw_seed.upper()
+            root = id_to_canonical.get(seed_upper, seed_upper)
+            if root in seen_roots:
+                continue
+            seen_roots.add(root)
+            edges_from_seed, _ = self._bfs_traverse(
+                self._adj,
+                "target",
+                root,
+                capped_hops,
+                rel_types=None,
+                required_status=eff_status,
+                as_of_date=ctx.as_of_iso,
+                include_unanchored=ctx.include_unanchored,
+                unanchored_counter=unanchored_counter,
+            )
+            for e in edges_from_seed:
+                grp = str(e.get("input_group") or e.get("nature") or "default")
+                ekey = (e["source"], e["rel_type"], e["target"], grp)
+                if ekey not in combined_edges or int(e.get("hop", 1)) < int(combined_edges[ekey].get("hop", 1)):
+                    combined_edges[ekey] = e
+
+        self.last_unanchored_excluded = unanchored_counter[0]
+        ordered = sorted(
+            combined_edges.values(),
+            key=lambda e: (
+                int(e.get("hop", 1)),
+                str(e.get("source", "")),
+                str(e.get("target", "")),
+                str(e.get("rel_type", "")),
+                str(e.get("input_group") or e.get("nature") or ""),
+            ),
+        )
+        return ordered[:safe_limit]
+
+    def execute_guarded(
+        self,
+        cypher: str,
+        params: Optional[Mapping[str, Any]],
+        ctx: PiTContext,
+    ) -> List[Dict[str, Any]]:
+        """Validate read-only Cypher via AST whitelist, apply PiT filter, and evaluate (ADR-00034)."""
+        if not isinstance(ctx, PiTContext):
+            raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
+
+        from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail
+        from retrieval.temporal import DEFAULT_TEMPORAL_FILTER
+
+        guardrail = CypherASTWhitelistGuardrail()
+        validation = guardrail.validate(cypher)
+        if not validation.is_valid:
+            raise ValueError(f"Cypher guardrail violation: {validation.error_summary}")
+
+        sanitized = validation.sanitized_query or cypher
+        scoped_cypher = DEFAULT_TEMPORAL_FILTER.inject_active_coalescence(sanitized, ctx)
+        query_params: Dict[str, Any] = dict(params or {})
+        query_params.setdefault("as_of_date", ctx.as_of_iso)
+
+        rows = self.query_edges(scoped_cypher, params=query_params)
+        return sorted(
+            rows,
+            key=lambda e: (
+                int(e.get("hop", 1)),
+                str(e.get("source", "")),
+                str(e.get("target", "")),
+                str(e.get("rel_type", "")),
+                str(e.get("input_group") or e.get("nature") or ""),
+            ),
+        )
 
     def session(self) -> Any:
         """Returns a Neo4j/Memgraph-compatible session context manager."""

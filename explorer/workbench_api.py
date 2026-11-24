@@ -19,6 +19,7 @@ from ingestion.sec.disruption_gating import (
     assess_sec_8k_disruption,
     normalize_staged_8k_payload,
 )
+from retrieval.facade import query_subgraph_ego
 from retrieval.offline_store import InMemorySubgraphStore
 from retrieval.temporal import PiTContext
 from retrieval.reporting import (
@@ -700,7 +701,8 @@ def create_workbench_app(
             if rel_types
             else None
         )
-        ego = store.query_ego_subgraph(
+        ego = query_subgraph_ego(
+            store,
             ctx=ctx,
             ticker=ticker,
             max_hops=max_hops,

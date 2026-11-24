@@ -187,8 +187,6 @@ def test_pipeline_happy_path(temp_rejection_dir):
     query = AnalystQuery(
         query="If NVDA suffers a factory disruption, how does AAPL mitigate the shock?",
         as_of_date="2024-05-01",
-        portfolio_context={"AAPL": 150000},
-        market_telemetry={"volatility_z_score": 1.8},
     )
 
     result = orchestrator.run(query)
@@ -201,11 +199,11 @@ def test_pipeline_happy_path(temp_rejection_dir):
     assert "NVDA" in result.verbalized_subgraph
     assert "AAPL faces moderate disruption" in result.contagion_verdict
     assert result.contagion_think_trace == "Evaluating 45-day buffer vs shock magnitude."
-    assert "AAPL 30-day 95% put collars" in result.hedging_recommendation
+    assert not hasattr(result, "hedging_recommendation")
     assert result.total_latency_ms > 0
     assert "task_c_cypher_ms" in result.latency_breakdown_ms
     assert "task_d_contagion_ms" in result.latency_breakdown_ms
-    assert "task_e_hedging_ms" in result.latency_breakdown_ms
+    assert all(c["task"] != "PORTFOLIO_RECOMMENDATION" for c in model.call_history)
 
     # Verify rejection queue has 0 rejections
     assert len(rej_queue.load_records()) == 0

@@ -190,8 +190,6 @@ def test_e2e_nl_to_cypher_rag_pipeline_flow(tmp_path: Path):
     query = AnalystQuery(
         query="If TSM halts wafer production, what is the contagion impact on NVDA and downstream MSFT?",
         as_of_date="2024-06-01",
-        portfolio_context={"NVDA": 250000, "MSFT": 400000},
-        market_telemetry={"volatility_z_score": 2.1, "car_30d": -0.045},
     )
 
     result = orchestrator.run(query)
@@ -214,17 +212,14 @@ def test_e2e_nl_to_cypher_rag_pipeline_flow(tmp_path: Path):
     assert "(TSM) -[:SUPPLIES_TO" in result.verbalized_subgraph
     assert "(NVDA) -[:SUPPLIES_TO" in result.verbalized_subgraph
 
-    # 4. Contagion Reasoning Synthesis (Task D)
+    # 4. Contagion Reasoning Synthesis (Task D) & ADR-00034 Domain 1 isolation
     assert result.contagion_think_trace is not None
     assert "60-day inventory buffer" in result.contagion_think_trace
     assert "34% operational impairment" in result.contagion_verdict
+    assert not hasattr(result, "hedging_recommendation")
+    assert all(p["task"] != "PORTFOLIO_RECOMMENDATION" for p in transport.prompts_received)
 
-    # 5. Portfolio Hedging Recommendation (Task E)
-    assert result.hedging_recommendation is not None
-    assert "bear put collar on NVDA" in result.hedging_recommendation
-    assert result.hedging_think_trace is not None
-
-    # 6. Rejection Queue Invariant
+    # 5. Rejection Queue Invariant
     assert len(rejection_queue.load_records()) == 0
 
 

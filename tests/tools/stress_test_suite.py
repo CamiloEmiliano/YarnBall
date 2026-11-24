@@ -32,7 +32,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from knowledge_graph.memgraph_driver import get_memgraph_driver
 from knowledge_graph.snapshot_manager import SnapshotManager
 from knowledge_graph.entity_resolver import EntityResolver
-from retrieval import HybridRetriever, PiTContext, TextToCQL
+from retrieval import HybridSeeder, MemgraphSubgraphStore, PiTContext, TextToCQL, query_bi
 from synthesis import GroundedSynthesizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -319,10 +319,11 @@ def stress_test_snapshots(
 def stress_test_concurrency(
     num_workers: int = 20, num_queries_per_worker: int = 5
 ) -> Dict[str, Any]:
-    """Test parallel query execution across Text-to-CQL and HybridRetriever."""
+    """Test parallel query execution across Text-to-CQL, HybridSeeder, and query_bi."""
     logger.info("=== [Stress Test] High-Concurrency Load (%d parallel threads) ===", num_workers)
     cql_engine = TextToCQL()
-    retriever = HybridRetriever(text_to_cql_engine=cql_engine)
+    seeder = HybridSeeder(text_to_cql_engine=cql_engine)
+    store = MemgraphSubgraphStore()
 
     test_queries = [
         "What companies supply Apple Inc.?",
@@ -345,8 +346,13 @@ def stress_test_concurrency(
             query = test_queries[(worker_id + q_idx) % len(test_queries)]
             t_start = time.perf_counter()
             try:
-                # 1. Test Text-to-CQL validation & execution
-                res = retriever.retrieve(query, ctx=PiTContext.from_date("2026-01-02", mode="live", include_unanchored=True))
+                # 1. Test consolidated query_bi validation & execution
+                _ = query_bi(
+                    query,
+                    ctx=PiTContext.from_date("2026-01-02", mode="live", include_unanchored=True),
+                    store=store,
+                    seeder=seeder,
+                )
                 elapsed = (time.perf_counter() - t_start) * 1000.0  # ms
                 worker_latencies.append(elapsed)
             except Exception as e:
@@ -463,10 +469,10 @@ def stress_test_security_fuzzing() -> Dict[str, Any]:
 # 5. Pathological Topologies (Cliques, Deep Chains, Cyclic Loops)
 # ==============================================================================
 def stress_test_pathological_topologies() -> Dict[str, Any]:
-    """Test retriever limits against dense cliques, deep loops, and cyclic graphs."""
+    """Test SubgraphStorePort limits against dense cliques, deep loops, and cyclic graphs."""
     logger.info("=== [Stress Test] Pathological Topologies Resilience ===")
     driver = get_memgraph_driver()
-    retriever = HybridRetriever(subgraph_hops=2)
+    store = MemgraphSubgraphStore(driver=driver)
 
     # 1. Clean slate & create pathological structures
     driver.execute_query("MATCH (n) DETACH DELETE n")
@@ -504,16 +510,16 @@ def stress_test_pathological_topologies() -> Dict[str, Any]:
     stress_ctx = PiTContext.from_date("2026-01-02", mode="live", include_unanchored=True)
     # Test 1: Query against Dense Clique (must not exceed LIMIT 50 and must complete in < 50ms)
     t0 = time.perf_counter()
-    clique_subgraph = retriever.expand_subgraph(seed_entity_ids=["Clique_0"], ctx=stress_ctx, hops=2)
+    clique_subgraph = store.traverse(["Clique_0"], hops=2, ctx=stress_ctx)
     clique_time = (time.perf_counter() - t0) * 1000.0
 
     # Test 2: Query against Deep Chain (must strictly enforce 2-hop horizon)
-    chain_subgraph = retriever.expand_subgraph(seed_entity_ids=["Chain_0"], ctx=stress_ctx, hops=2)
+    chain_subgraph = store.traverse(["Chain_0"], hops=2, ctx=stress_ctx)
     chain_targets = {t["target"] for t in chain_subgraph}
 
     # Test 3: Query against Cyclic Loop (must not hang or infinite loop)
     t_loop = time.perf_counter()
-    loop_subgraph = retriever.expand_subgraph(seed_entity_ids=["LoopA"], ctx=stress_ctx, hops=2)
+    loop_subgraph = store.traverse(["LoopA"], hops=2, ctx=stress_ctx)
     loop_time = (time.perf_counter() - t_loop) * 1000.0
 
     logger.info(
@@ -543,7 +549,7 @@ def stress_test_retrieval_accuracy() -> Dict[str, Any]:
     """Evaluate Path & Node Precision/Recall, EX-Acc, and Anti-Hallucination."""
     logger.info("=== [Topological Accuracy] Verifying Reality w.r.t Network ===")
     driver = get_memgraph_driver()
-    retriever = HybridRetriever(subgraph_hops=2)
+    store = MemgraphSubgraphStore(driver=driver)
     synthesizer = GroundedSynthesizer()
 
     # Reset with golden ground-truth topology
@@ -573,7 +579,7 @@ def stress_test_retrieval_accuracy() -> Dict[str, Any]:
     # Ground truth: ASML -> TSM -> AAPL
     # ----------------------------------------------------------------------
     acc_ctx = PiTContext.from_date("2026-01-02", mode="live", include_unanchored=True)
-    subgraph = retriever.expand_subgraph(seed_entity_ids=["AAPL"], ctx=acc_ctx, hops=2)
+    subgraph = store.traverse(["AAPL"], hops=2, ctx=acc_ctx)
     retrieved_sources = {t["source"] for t in subgraph}
     retrieved_targets = {t["target"] for t in subgraph}
     all_retrieved_entities = retrieved_sources.union(retrieved_targets)
@@ -615,7 +621,7 @@ def stress_test_retrieval_accuracy() -> Dict[str, Any]:
     # Test D: Negative Grounding & Abstention
     # Query disconnected entity (e.g. "NonExistentBioCorp")
     # ----------------------------------------------------------------------
-    empty_subgraph = retriever.expand_subgraph(seed_entity_ids=["NonExistentBioCorp"], ctx=acc_ctx, hops=2)
+    empty_subgraph = store.traverse(["NonExistentBioCorp"], hops=2, ctx=acc_ctx)
     synth_res = synthesizer.synthesize(
         "What is the relation to Apple?",
         {"subgraph_triples": empty_subgraph, "articles": []},

@@ -15,7 +15,8 @@ from pydantic import ValidationError
 from ingestion.sec.harvester import EdgarWorker
 from knowledge_graph.embedding_store import backfill_node_embedding_validity, store_node_embeddings
 from retrieval.enricher import enrich_nodes
-from retrieval.hybrid import HybridRetriever
+from retrieval.facade import MemgraphSubgraphStore
+from retrieval.hybrid import HybridSeeder
 from retrieval.offline_store import InMemorySubgraphStore
 from retrieval.pipeline import AnalystQuery, GraphRAGPipelineOrchestrator
 from retrieval.service import app as retrieval_app
@@ -35,7 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # Reviewed allowlist for Cypher execution without edge-level TemporalQueryFilter (Invariant #2):
 # Schema introspection reads only distinct label/rel-type names, never entity or edge facts.
 ALLOWED_UNGUARDED_SESSION_RUN: Set[Tuple[str, str]] = {
-    ("retrieval/text_to_cql.py", "get_active_schema"),
+    ("retrieval/facade.py", "introspect_schema"),
 }
 
 # Read-entrypoint parameters governed by Invariant #1 ("no Optional / defaulted ctx or as_of")
@@ -327,11 +328,11 @@ def test_scd_type2_node_embeddings_write_and_pit_read() -> None:
 
     # Historical dense entity search filters strictly on [valid_from, valid_to) AND excludes unanchored rows
     executed.clear()
-    retriever = HybridRetriever(text_to_cql_engine=MagicMock())
+    seeder = HybridSeeder(text_to_cql_engine=MagicMock())
     ctx_hist = PiTContext(as_of=date(2020, 6, 1), mode="historical")
     with patch("retrieval.hybrid.pg_connection", return_value=conn), \
          patch("embedding.embedder.embed_texts", return_value=[[0.6, 0.8]]):
-        res = retriever.search_dense_entities("Apple suppliers", ctx=ctx_hist, top_k=3)
+        res = seeder.search_dense_entities("Apple suppliers", ctx=ctx_hist, top_k=3)
 
     assert len(res) == 1
     sql_hist, params_hist = executed[0]
@@ -354,17 +355,16 @@ def test_validated_traversal_hops_and_directed_temporal_expansion() -> None:
             validate_hops(bad)
 
     ctx = PiTContext(as_of=date(2024, 5, 1), mode="historical")
-    retriever = HybridRetriever(text_to_cql_engine=MagicMock(), subgraph_hops=2)
-    with pytest.raises(ValueError):
-        retriever.expand_subgraph(["AAPL"], ctx=ctx, hops=15)
-
     mock_session = MagicMock()
     mock_session.run.return_value = []
     mock_driver = MagicMock()
     mock_driver.session.return_value.__enter__.return_value = mock_session
 
-    with patch("retrieval.hybrid.get_memgraph_driver", return_value=mock_driver):
-        retriever.expand_subgraph(["TSM"], ctx=ctx, hops=3, limit=25)
+    store = MemgraphSubgraphStore(driver=mock_driver)
+    with pytest.raises(ValueError):
+        store.traverse(["AAPL"], hops=15, ctx=ctx)
+
+    store.traverse(["TSM"], hops=3, ctx=ctx, limit=25)
 
     executed_cypher = mock_session.run.call_args[0][0]
     assert "[r*1..3]->" in executed_cypher
@@ -372,7 +372,7 @@ def test_validated_traversal_hops_and_directed_temporal_expansion() -> None:
     assert "ORDER BY hop ASC" in executed_cypher
     assert "LIMIT $limit" in executed_cypher
 
-    # enrich_nodes also validates hops and injects temporal predicate + LIMIT
+    # enrich_nodes also validates hops and injects temporal predicate + LIMIT via MemgraphSubgraphStore
     mock_session.reset_mock()
     with patch("knowledge_graph.memgraph_driver.get_memgraph_driver", return_value=mock_driver):
         with pytest.raises(ValueError):

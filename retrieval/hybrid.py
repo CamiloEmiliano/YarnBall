@@ -1,22 +1,26 @@
-"""
-Hybrid Retriever Engine (PostgreSQL pgvector + Memgraph Subgraph Traversal).
+"""Hybrid Point-in-Time Seeder Engine (PostgreSQL pgvector + Lineage) (ADR-00034).
 
-Executes deterministic Point-in-Time multi-modal retrieval (ADR-00021 / ADR-00022 / ADR-00033):
-1. Translates intent to Cypher and executes against Memgraph via TextToCQL with PiT filtering.
-2. Performs Point-in-Time dense semantic vector search over SCD Type 2 `node_embeddings`.
-3. Performs Point-in-Time dense passage search over `financial_news_queue.embedding`.
-4. Expands validated directed k-hop subgraph neighborhoods in Memgraph via TemporalQueryFilter.
-5. Retrieves original news provenance snippets bounded by `ctx.cutoff_utc`.
+Replaces the legacy `HybridRetriever` traversal path with a focused seeding engine:
+1. Performs Point-in-Time dense semantic entity search over SCD Type 2 `node_embeddings`.
+2. Performs Point-in-Time dense passage search over `financial_news_queue.embedding`.
+3. Resolves passage-to-entity links through durable PostgreSQL lineage
+   (`node_embedding_sources` / `financial_news_queue`), avoiding assumptions that
+   ephemeral Memgraph `:News` nodes remain resident beyond TTL (ADR-00036).
+4. Optionally runs a guarded `TextToCQL` seed query through `SubgraphStorePort`.
+5. Returns ranked `SeedHit(node_id, score, origin)` records to `GraphRAGPipelineOrchestrator`.
+
+All graph traversal occurs exclusively through `SubgraphStorePort.traverse` in
+`retrieval/facade.py` (`expand_subgraph` has been retired under ADR-00034).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 from pathlib import Path
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence, Set, Tuple
 
-# Load environment variables
 try:
     from dotenv import load_dotenv
 
@@ -25,27 +29,47 @@ except ImportError:
     pass
 
 from knowledge_graph.db import pg_connection
-from knowledge_graph.memgraph_driver import get_memgraph_driver
-from .temporal import PiTContext, TemporalQueryFilter, validate_hops
+from .temporal import PiTContext
 from .text_to_cql import TextToCQL
+
+if TYPE_CHECKING:
+    from .facade import SubgraphStorePort
 
 logger = logging.getLogger("retrieval.hybrid")
 
+SeedOrigin = Literal["dense_entity", "dense_passage", "text_to_cql"]
 
-class HybridRetriever:
-    """Combines Point-in-Time dense vector search with guarded multi-hop graph expansion."""
+
+@dataclass(frozen=True)
+class SeedHit:
+    """Ranked seed entity candidate returned by `HybridSeeder` (ADR-00034)."""
+
+    node_id: str
+    score: float
+    origin: SeedOrigin
+    entity_type: Optional[str] = None
+    source_hash: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_id": self.node_id,
+            "score": self.score,
+            "origin": self.origin,
+            "entity_type": self.entity_type,
+            "source_hash": self.source_hash,
+        }
+
+
+class HybridSeeder:
+    """Point-in-Time dense entity, passage, and guarded-CQL seeder feeding `query_bi`."""
 
     def __init__(
         self,
         text_to_cql_engine: Optional[TextToCQL] = None,
         top_k_dense: int = 5,
-        subgraph_hops: int = 1,
-        temporal_filter: Optional[TemporalQueryFilter] = None,
-    ):
+    ) -> None:
         self.text_to_cql = text_to_cql_engine or TextToCQL()
         self.top_k_dense = top_k_dense
-        self.subgraph_hops = validate_hops(subgraph_hops)
-        self.temporal_filter = temporal_filter or TemporalQueryFilter()
 
     def _embed_query_vector_literal(self, query: str) -> Optional[str]:
         from embedding.embedder import (
@@ -64,7 +88,7 @@ class HybridRetriever:
             logger.error("Dense query embedding unavailable or invalid for query '%s'", query[:80])
             raise
         except Exception as exc:
-            logger.debug("Embedding generation failed (%s); returning empty dense results", exc)
+            logger.warning("Embedding generation failed (%s); returning empty dense results", exc)
             return None
 
     # ----------------------------------------------------------------------
@@ -139,6 +163,9 @@ class HybridRetriever:
 
         return results
 
+    # ----------------------------------------------------------------------
+    # 2. Point-in-Time Dense Passage Search & Durable Postgres Lineage Bridge
+    # ----------------------------------------------------------------------
     def search_dense_passages(
         self,
         query: str,
@@ -194,112 +221,51 @@ class HybridRetriever:
 
     def expand_passage_entities(
         self,
-        source_hashes: List[str],
+        source_hashes: Sequence[str],
         ctx: PiTContext,
         limit: int = 20,
     ) -> List[str]:
-        """Resolve matched news source_hashes back to Memgraph :News-[:MENTIONS]->entity IDs."""
+        """Resolve matched passage `source_hashes` to entity IDs via durable PostgreSQL lineage (ADR-00034)."""
         if not isinstance(ctx, PiTContext):
             raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
 
-        valid_hashes = [h for h in source_hashes if h]
+        valid_hashes = [str(h).strip() for h in source_hashes if str(h).strip()]
         if not valid_hashes:
             return []
-        driver = get_memgraph_driver()
+
+        safe_limit = max(1, min(int(limit), 200))
+        sql = """
+            SELECT DISTINCT nes.node_id
+            FROM node_embedding_sources nes
+            LEFT JOIN financial_news_queue fnq
+              ON fnq.source_hash = nes.source_hash
+            WHERE nes.source_hash = ANY(%s)
+              AND COALESCE(nes.source_published_at, fnq.published_at) IS NOT NULL
+              AND COALESCE(nes.source_published_at, fnq.published_at) <= %s::timestamptz
+            ORDER BY nes.node_id ASC
+            LIMIT %s;
+        """
         entity_ids: List[str] = []
-        base_query = """
-            MATCH (n:News)-[:MENTIONS]->(e)
-            WHERE n.id IN $hashes
-            RETURN DISTINCT e.id AS entity_id
-            ORDER BY entity_id ASC
-            LIMIT $limit
-        """
-        query = self.temporal_filter.inject_news_cutoff(base_query, ctx, news_var="n")
         try:
-            with driver.session() as session:
-                res = session.run(query, hashes=valid_hashes, limit=limit)
-                for r in res:
-                    eid = r.get("entity_id")
-                    if eid:
-                        entity_ids.append(str(eid))
+            with pg_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(sql, (valid_hashes, ctx.cutoff_utc_iso, safe_limit))
+                for row in cur.fetchall():
+                    if row and row[0]:
+                        entity_ids.append(str(row[0]))
+                if hasattr(cur, "close"):
+                    cur.close()
         except Exception as exc:
-            logger.warning("Memgraph passage entity lookup failed: %s", exc)
+            logger.warning("PostgreSQL passage-to-entity lineage lookup failed: %s", exc)
+
         return entity_ids
-
-    # ----------------------------------------------------------------------
-    # 2. Multi-Hop Directed Point-in-Time Subgraph Expansion (Memgraph)
-    # ----------------------------------------------------------------------
-    def expand_subgraph(
-        self,
-        seed_entity_ids: List[str],
-        ctx: PiTContext,
-        hops: Optional[int] = None,
-        limit: int = 50,
-    ) -> List[Dict[str, Any]]:
-        """Expand seed entities along directed 1..hops paths filtered by `ctx` (ADR-00033)."""
-        if not isinstance(ctx, PiTContext):
-            raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
-
-        if not seed_entity_ids:
-            return []
-
-        h = validate_hops(self.subgraph_hops if hops is None else hops)
-        safe_limit = max(1, min(int(limit), 500))
-        driver = get_memgraph_driver()
-        triples: List[Dict[str, Any]] = []
-
-        base_query = f"""
-            MATCH p = (seed)-[r*1..{h}]->(end_node)
-            WHERE seed.id IN $seeds
-            WITH relationships(p) AS path_rels, length(p) AS hop_dist
-            UNWIND path_rels AS rel
-            RETURN DISTINCT startNode(rel).id AS source,
-                   type(rel) AS rel_type,
-                   endNode(rel).id AS target,
-                   properties(rel) AS props,
-                   rel.source_hash AS source_hash,
-                   min(hop_dist) AS hop
-            ORDER BY hop ASC, source ASC, rel_type ASC, target ASC
-            LIMIT $limit
-        """
-        query = self.temporal_filter.inject_active_coalescence(base_query, ctx)
-
-        try:
-            with driver.session() as session:
-                res = session.run(
-                    query,
-                    seeds=seed_entity_ids,
-                    limit=safe_limit,
-                    as_of_date=ctx.as_of_iso,
-                )
-                for r in res:
-                    source = r.get("source")
-                    target = r.get("target")
-                    rel_type = r.get("rel_type")
-                    if source and target and rel_type:
-                        props = r.get("props", {}) or {}
-                        sh = r.get("source_hash") or props.get("source_hash")
-                        triples.append(
-                            {
-                                "source": source,
-                                "relation": rel_type,
-                                "target": target,
-                                "properties": props,
-                                "source_hash": sh or None,
-                                "hop": int(r.get("hop", 1) or 1),
-                            }
-                        )
-        except Exception as exc:
-            logger.warning("Memgraph subgraph expansion failed: %s", exc)
-
-        return triples
 
     # ----------------------------------------------------------------------
     # 3. Point-in-Time Article Context Enrichment (financial_news_queue)
     # ----------------------------------------------------------------------
     def fetch_article_context(
         self,
-        source_hashes: List[str],
+        source_hashes: Sequence[str],
         ctx: PiTContext,
         max_articles: int = 5,
     ) -> List[Dict[str, Any]]:
@@ -307,7 +273,7 @@ class HybridRetriever:
         if not isinstance(ctx, PiTContext):
             raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
 
-        valid_hashes = [h for h in source_hashes if h]
+        valid_hashes = [str(h).strip() for h in source_hashes if str(h).strip()]
         if not valid_hashes:
             return []
 
@@ -349,80 +315,146 @@ class HybridRetriever:
         return articles
 
     # ----------------------------------------------------------------------
-    # 4. End-to-End Hybrid Retrieval
+    # 4. Ranked Hybrid Seed Generation (ADR-00034)
     # ----------------------------------------------------------------------
-    def retrieve(
+    def seed_with_context(
         self,
         query: str,
         ctx: PiTContext,
+        *,
+        store: Optional["SubgraphStorePort"] = None,
+        max_seeds: int = 8,
+        include_cql: bool = False,
     ) -> Dict[str, Any]:
-        """Execute dual-index Point-in-Time hybrid retrieval strictly as of `ctx` (ADR-00033)."""
+        """Collect ranked `SeedHit` candidates and supporting article provenance strictly as of `ctx`."""
         if not isinstance(ctx, PiTContext):
             raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
 
         start_time = time.perf_counter()
 
-        # 1. Execute Guarded & Temporalized Text-to-CQL
-        cql_res = self.text_to_cql.execute_query(query, ctx=ctx)
-        structured_records = cql_res.get("records", [])
+        cql_res: Dict[str, Any] = {"cypher": "", "records": [], "status": "SKIPPED"}
+        if include_cql:
+            cql_res = self.text_to_cql.execute_query(query, ctx=ctx, store=store)
+        structured_records = cql_res.get("records", []) or []
 
-        # 2. Dual-Index Point-in-Time Dense Search (Versioned Nodes + Financial News Passages)
         dense_entities = self.search_dense_entities(query, ctx=ctx)
         dense_passages = self.search_dense_passages(query, ctx=ctx)
 
-        seed_ids = [e["node_id"] for e in dense_entities]
-        passage_hashes = [p["source_hash"] for p in dense_passages if p.get("source_hash")]
-        seed_ids.extend(self.expand_passage_entities(passage_hashes, ctx=ctx))
+        passage_hashes = [str(p["source_hash"]) for p in dense_passages if p.get("source_hash")]
+        passage_entity_ids = self.expand_passage_entities(passage_hashes, ctx=ctx)
+        top_passage_score = (
+            max(float(p.get("similarity", 0.85)) for p in dense_passages) * 0.90
+            if dense_passages
+            else 0.75
+        )
+        top_passage_hash = passage_hashes[0] if passage_hashes else None
 
-        # Extract entity IDs returned from Cypher results to expand if needed
-        for r in structured_records:
-            for val in r.values():
-                if isinstance(val, str) and len(val) < 64:
-                    seed_ids.append(val)
+        best_by_node: Dict[str, SeedHit] = {}
 
-        unique_seeds = list(dict.fromkeys(seed_ids))[:8]
+        def _register_hit(hit: SeedHit) -> None:
+            nid = hit.node_id.strip()
+            if not nid:
+                return
+            existing = best_by_node.get(nid)
+            if existing is None or hit.score > existing.score:
+                best_by_node[nid] = hit
 
-        # 3. Directed, Hop-Validated, Temporalized Subgraph Expansion
-        subgraph_triples = self.expand_subgraph(unique_seeds, ctx=ctx)
+        for ent in dense_entities:
+            nid = str(ent.get("node_id") or "").strip()
+            if nid:
+                _register_hit(
+                    SeedHit(
+                        node_id=nid,
+                        score=float(ent.get("similarity", 1.0)),
+                        origin="dense_entity",
+                        entity_type=ent.get("entity_type"),
+                        source_hash=ent.get("source_hash"),
+                    )
+                )
 
-        # 4. Collect all unique source_hash values
+        for eid in passage_entity_ids:
+            _register_hit(
+                SeedHit(
+                    node_id=eid,
+                    score=round(top_passage_score, 6),
+                    origin="dense_passage",
+                    source_hash=top_passage_hash,
+                )
+            )
+
+        for rec in structured_records:
+            if not isinstance(rec, dict):
+                continue
+            for key, val in rec.items():
+                if key in ("source_hash", "rel_type", "relation", "status", "valid_from", "valid_to"):
+                    continue
+                if isinstance(val, str) and 0 < len(val.strip()) < 64:
+                    _register_hit(
+                        SeedHit(
+                            node_id=val.strip(),
+                            score=0.80,
+                            origin="text_to_cql",
+                            source_hash=rec.get("source_hash"),
+                        )
+                    )
+
+        ranked_hits = sorted(
+            best_by_node.values(),
+            key=lambda h: (-h.score, h.node_id),
+        )[: max(1, int(max_seeds))]
+
         all_hashes: Set[str] = set()
         for e in dense_entities:
             if e.get("source_hash"):
-                all_hashes.add(e["source_hash"])
+                all_hashes.add(str(e["source_hash"]))
         for p in dense_passages:
             if p.get("source_hash"):
-                all_hashes.add(p["source_hash"])
-        for t in subgraph_triples:
-            if t.get("source_hash"):
-                all_hashes.add(t["source_hash"])
+                all_hashes.add(str(p["source_hash"]))
         for r in structured_records:
-            if "source_hash" in r and r["source_hash"]:
-                all_hashes.add(r["source_hash"])
+            if isinstance(r, dict) and r.get("source_hash"):
+                all_hashes.add(str(r["source_hash"]))
 
-        # 5. Merge article context from PostgreSQL and dense passages without duplicates
         fetched_articles = self.fetch_article_context(list(all_hashes), ctx=ctx, max_articles=5)
-        seen_article_hashes: Set[str] = {
-            str(a["source_hash"]) for a in fetched_articles if a.get("source_hash")
-        }
+        seen_hashes: Set[str] = {str(a["source_hash"]) for a in fetched_articles if a.get("source_hash")}
         articles = list(fetched_articles)
         for p in dense_passages:
             sh = str(p.get("source_hash") or "")
-            if sh and sh not in seen_article_hashes and len(articles) < 5:
-                seen_article_hashes.add(sh)
+            if sh and sh not in seen_hashes and len(articles) < 5:
+                seen_hashes.add(sh)
                 articles.append(p)
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
-
         return {
             "query": query,
             "as_of": ctx.as_of_iso,
             "pit_mode": ctx.mode,
+            "hits": ranked_hits,
             "cql_result": cql_res,
             "dense_entities": dense_entities,
             "dense_passages": dense_passages,
-            "subgraph_triples": subgraph_triples,
             "articles": articles,
-            "source_hashes": list(all_hashes),
+            "source_hashes": sorted(all_hashes),
             "latency_ms": round(latency_ms, 2),
         }
+
+    def seed(
+        self,
+        query: str,
+        ctx: PiTContext,
+        *,
+        store: Optional["SubgraphStorePort"] = None,
+        max_seeds: int = 8,
+        include_cql: bool = False,
+    ) -> List[SeedHit]:
+        """Return ranked `SeedHit(node_id, score, origin)` values strictly as of `ctx` (ADR-00034)."""
+        bundle = self.seed_with_context(
+            query,
+            ctx=ctx,
+            store=store,
+            max_seeds=max_seeds,
+            include_cql=include_cql,
+        )
+        return list(bundle["hits"])
+
+
+__all__ = ["HybridSeeder", "SeedHit", "SeedOrigin"]

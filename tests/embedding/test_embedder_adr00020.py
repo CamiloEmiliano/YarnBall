@@ -14,7 +14,7 @@ import pytest
 
 import embedding.embedder as embedder
 from knowledge_graph.embedding_store import store_node_embeddings
-from retrieval.hybrid import HybridRetriever
+from retrieval.hybrid import HybridSeeder
 from retrieval.service import app as retrieval_app
 from retrieval.temporal import PiTContext
 from streaming.consumer import process_streaming_event, run_consumer
@@ -121,16 +121,16 @@ def test_hybrid_retriever_raises_on_zero_or_unavailable_embedder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _simulate_missing_sentence_transformers(monkeypatch)
-    retriever = HybridRetriever(text_to_cql_engine=MagicMock())
+    seeder = HybridSeeder(text_to_cql_engine=MagicMock())
     ctx = PiTContext(as_of=date(2024, 5, 1), mode="historical")
 
     with pytest.raises(embedder.EmbedderUnavailableError):
-        retriever.search_dense_entities("lithography disruption", ctx=ctx)
+        seeder.search_dense_entities("lithography disruption", ctx=ctx)
 
     with patch("embedding.embedder.embed_texts", return_value=[[0.0] * 768]):
         with patch("retrieval.hybrid.pg_connection") as mock_pg:
             with pytest.raises(embedder.InvalidEmbeddingError):
-                retriever.search_dense_entities("lithography disruption", ctx=ctx)
+                seeder.search_dense_entities("lithography disruption", ctx=ctx)
             mock_pg.assert_not_called()
 
 

@@ -18,7 +18,7 @@ import logging
 import argparse
 import time
 from typing import Optional, Dict, Any, List, Tuple
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 # Ensure project root is in sys.path
@@ -27,7 +27,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from knowledge_graph.snapshot_manager import SnapshotManager
-from knowledge_graph.memgraph_driver import get_memgraph_driver
+from retrieval.facade import MemgraphSubgraphStore, SubgraphStorePort
+from retrieval.temporal import PiTContext
 
 logger = logging.getLogger(__name__)
 
@@ -338,25 +339,34 @@ class EvaluationHarness:
         self,
         snapshot_manager: Optional[SnapshotManager] = None,
         queries: Optional[List[Dict[str, Any]]] = None,
+        store: Optional[SubgraphStorePort] = None,
     ):
         self.snapshot_mgr = snapshot_manager or SnapshotManager()
         self.queries = queries or BENCHMARK_QUERIES
+        self.store: SubgraphStorePort = store or MemgraphSubgraphStore()
 
     # ----------------------------------------------------------------------
     # 1. Execute Benchmark on a Graph Snapshot
     # ----------------------------------------------------------------------
     def evaluate_snapshot(
-        self, snapshot_id: str, dry_run: bool = False
+        self,
+        snapshot_id: str,
+        ctx: PiTContext,
+        dry_run: bool = False,
     ) -> Dict[str, Any]:
-        """Run all 25 benchmark queries on the given snapshot in Memgraph.
+        """Run all 25 benchmark queries on the given snapshot via `SubgraphStorePort` (ADR-00034).
 
         Args:
             snapshot_id: Snapshot to evaluate ('G_raw' or 'G_resolved').
+            ctx: Mandatory Point-in-Time execution context.
             dry_run: If True, skips live Memgraph execution and returns mock results.
 
         Returns:
             Dictionary of metrics and per-query evaluation records.
         """
+        if not isinstance(ctx, PiTContext):
+            raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
+
         logger.info("Evaluating benchmark suite on snapshot '%s'...", snapshot_id)
 
         # Get snapshot metadata
@@ -375,7 +385,6 @@ class EvaluationHarness:
                     exc,
                 )
 
-        driver = get_memgraph_driver()
         query_results: List[Dict[str, Any]] = []
         total_paths = 0
         successful_executions = 0
@@ -400,15 +409,13 @@ class EvaluationHarness:
                 latency_ms = 5.0
             else:
                 try:
-                    with driver.session() as session:
-                        res = session.run(cypher)
-                        records = list(res)
-                        paths_returned = len(records)
-                        successful_executions += 1
-                        if paths_returned > 0:
-                            non_empty_returns += 1
-                            records_data = [dict(r) for r in records[:5]]
-                        total_paths += paths_returned
+                    records = self.store.execute_guarded(cypher, None, ctx)
+                    paths_returned = len(records)
+                    successful_executions += 1
+                    if paths_returned > 0:
+                        non_empty_returns += 1
+                        records_data = [dict(r) for r in records[:5]]
+                    total_paths += paths_returned
                 except Exception as exc:
                     status = "ERROR"
                     error_msg = str(exc)
@@ -596,14 +603,15 @@ class EvaluationHarness:
     # ----------------------------------------------------------------------
     def run_ab_benchmark(
         self,
+        ctx: PiTContext,
         raw_snapshot_id: str = "G_raw",
         resolved_snapshot_id: str = "G_resolved",
         output_report_path: Optional[str] = "eval_report_G_raw_vs_G_resolved.md",
         dry_run: bool = False,
     ) -> Dict[str, Any]:
-        """Execute full A/B evaluation loop between two snapshots."""
-        raw_eval = self.evaluate_snapshot(raw_snapshot_id, dry_run=dry_run)
-        res_eval = self.evaluate_snapshot(resolved_snapshot_id, dry_run=dry_run)
+        """Execute full A/B evaluation loop between two snapshots as of `ctx`."""
+        raw_eval = self.evaluate_snapshot(raw_snapshot_id, ctx=ctx, dry_run=dry_run)
+        res_eval = self.evaluate_snapshot(resolved_snapshot_id, ctx=ctx, dry_run=dry_run)
 
         ab_diff = self.compute_ab_diff(raw_eval, res_eval)
         self.generate_markdown_report(ab_diff, output_path=output_report_path)
@@ -617,13 +625,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="YarnBall GraphRAG A/B Evaluation Harness")
     parser.add_argument("--raw", default="G_raw", help="Raw snapshot ID (default: G_raw)")
     parser.add_argument("--resolved", default="G_resolved", help="Resolved snapshot ID (default: G_resolved)")
+    parser.add_argument("--as-of", default=date.today().isoformat(), help="Point-in-Time as-of date (YYYY-MM-DD)")
     parser.add_argument("--output", default="eval_report_G_raw_vs_G_resolved.md", help="Markdown scorecard path")
     parser.add_argument("--dry-run", action="store_true", help="Simulate execution without live database")
 
     args = parser.parse_args()
 
     harness = EvaluationHarness()
+    cli_ctx = PiTContext.from_date(args.as_of, mode="historical")
     summary = harness.run_ab_benchmark(
+        ctx=cli_ctx,
         raw_snapshot_id=args.raw,
         resolved_snapshot_id=args.resolved,
         output_report_path=args.output,

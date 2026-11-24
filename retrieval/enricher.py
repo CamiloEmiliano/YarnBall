@@ -1,16 +1,17 @@
 """
-Graph Neighborhood Enrichment Module (ADR-00033).
+Graph Neighborhood Enrichment Module (ADR-00033 / ADR-00034).
 
 Extracts bounded, Point-in-Time k-hop ego-networks for specified entity node IDs
-from Memgraph for node-detail display.
+strictly for node-detail display via `MemgraphSubgraphStore.fetch_node_details`
+(no longer used to construct LLM retrieval context under ADR-00034).
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-import knowledge_graph.memgraph_driver as memgraph_driver
-from .temporal import DEFAULT_TEMPORAL_FILTER, PiTContext, validate_hops
+from .facade import MemgraphSubgraphStore
+from .temporal import PiTContext, validate_hops
 
 
 def enrich_nodes(
@@ -18,11 +19,14 @@ def enrich_nodes(
     ctx: PiTContext,
     hops: int = 1,
     limit: int = 50,
+    *,
+    store: Optional[MemgraphSubgraphStore] = None,
 ) -> List[Dict[str, Any]]:
     """Pull each node plus its bounded, Point-in-Time `hops`-hop neighborhood for node-detail display.
 
-    Note (ADR-00033 Section 4.4): Traversal remains undirected strictly for node-detail display
-    and is bounded by validated `hops` (`int` in `[1, 10]`), `TemporalQueryFilter`, and `LIMIT`.
+    Note (ADR-00033 Section 4.4 / ADR-00034 Section 4.5): Traversal remains undirected strictly
+    for node-detail display, delegates Memgraph execution to `MemgraphSubgraphStore`, and is
+    never used to build LLM context.
     """
     if not isinstance(ctx, PiTContext):
         raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
@@ -31,34 +35,13 @@ def enrich_nodes(
 
     validated_hops = validate_hops(hops)
     safe_limit = max(1, min(int(limit), 500))
-    driver = memgraph_driver.get_memgraph_driver()
-
-    base_query = f"""
-        UNWIND $ids AS nid
-        MATCH (n {{id: nid}})
-        OPTIONAL MATCH (n)-[r*1..{validated_hops}]-(m)
-        RETURN nid,
-               collect(DISTINCT n) AS nodes,
-               collect(DISTINCT r) AS rels,
-               collect(DISTINCT m) AS neighbors
-        ORDER BY nid ASC
-        LIMIT $limit;
-    """
-    query = DEFAULT_TEMPORAL_FILTER.inject_active_coalescence(base_query, ctx)
-
-    with driver.session() as session:
-        result = session.run(query, ids=node_ids, limit=safe_limit, as_of_date=ctx.as_of_iso)
-        payload: List[Dict[str, Any]] = []
-        for record in result:
-            payload.append(
-                {
-                    "root_id": record["nid"],
-                    "nodes": [dict(r) for r in record["nodes"]],
-                    "relationships": [dict(r) for r in record["rels"]],
-                    "neighbors": [dict(r) for r in record["neighbors"]],
-                }
-            )
-        return payload
+    active_store = store or MemgraphSubgraphStore()
+    return active_store.fetch_node_details(
+        node_ids=node_ids,
+        ctx=ctx,
+        hops=validated_hops,
+        limit=safe_limit,
+    )
 
 
 def enrich_node(
@@ -66,6 +49,8 @@ def enrich_node(
     ctx: PiTContext,
     hops: int = 1,
     limit: int = 50,
+    *,
+    store: Optional[MemgraphSubgraphStore] = None,
 ) -> List[Dict[str, Any]]:
     """Convenience single-node wrapper around `enrich_nodes` requiring `PiTContext`."""
-    return enrich_nodes([node_id], ctx=ctx, hops=hops, limit=limit)
+    return enrich_nodes([node_id], ctx=ctx, hops=hops, limit=limit, store=store)

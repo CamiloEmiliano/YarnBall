@@ -154,7 +154,6 @@ class TestPipelineCascadeIntegration:
             shock_origin="s1, s2",
             shock_magnitude_pct=100.0,
             target_ticker="C",
-            portfolio_context={"holdings": ["C"], "nav_usd": 1000000},
         )
 
         result: PipelineResult = orchestrator.run(query)
@@ -171,16 +170,11 @@ class TestPipelineCascadeIntegration:
         assert "cascade_engine_ms" in result.latency_breakdown_ms
         assert result.latency_breakdown_ms["cascade_engine_ms"] >= 0.0
 
-        # 3. Model prompt checks (handshake verification)
-        # Task D prompt must contain the exact computed metrics
+        # 3. Model prompt checks (handshake verification; ADR-00034 Domain 1 isolation)
         task_d_call = next(c for c in mock_client.call_history if c["task"] == "CONTAGION_REASONING")
         assert "36.25% capacity loss" in task_d_call["prompt"]
         assert "DISRUPTIVE_SHOCK" in task_d_call["prompt"]
-
-        # Task E prompt must contain the deterministic shock verdict
-        task_e_call = next(c for c in mock_client.call_history if c["task"] == "PORTFOLIO_RECOMMENDATION")
-        assert "Deterministic Cascade Verdict: DISRUPTIVE_SHOCK" in task_e_call["prompt"]
-        assert "36.25% capacity loss" in task_e_call["prompt"]
+        assert all(c["task"] != "PORTFOLIO_RECOMMENDATION" for c in mock_client.call_history)
 
     def test_pipeline_inventory_buffer_absorption_handshake(self) -> None:
         """Verifies buffer absorption in the pipeline yields TOLERATED_BUFFERED and 5% friction."""

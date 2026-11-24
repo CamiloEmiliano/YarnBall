@@ -1,14 +1,21 @@
 """
-Deterministic & Symbolic Graph/Context Extraction Package.
+Deterministic & Symbolic Graph/Context Extraction Package (ADR-00033 / ADR-00034).
 
 Submodules:
-- `hybrid`: `HybridRetriever` (combining dense vector search + subgraph expansion + article context)
-- `text_to_cql`: `TextToCQL` (schema-aware Cypher translation & guarded execution)
-- `enricher`: `enrich_nodes`, `enrich_node` (k-hop ego-network traversals)
-- `service`: FastAPI microservice `/search`
+- `facade`: `query_bi`, `query_subgraph_ego`, `SubgraphStorePort`, `MemgraphSubgraphStore`
+- `hybrid`: `HybridSeeder`, `SeedHit` (PiT dense entity & passage seeding + Postgres lineage)
+- `text_to_cql`: `TextToCQL` (schema-aware Cypher translation routed through `SubgraphStorePort`)
+- `enricher`: `enrich_nodes`, `enrich_node` (node-detail ego display helper)
+- `service`: FastAPI microservice (`/search`, `/report`, `/health`)
 """
 
-from .hybrid import HybridRetriever
+from .facade import (
+    MemgraphSubgraphStore,
+    SubgraphStorePort,
+    query_bi,
+    query_subgraph_ego,
+)
+from .hybrid import HybridSeeder, SeedHit
 from .text_to_cql import TextToCQL
 from .enricher import enrich_node, enrich_nodes
 from .temporal import (
@@ -33,13 +40,6 @@ from .pipeline import (
     HopOrderedSubgraphVerbalizer,
     PipelineResult,
 )
-from .shock_propagation import (
-    PropagatedShock,
-    ShockVector,
-    build_shock_vector_from_metrics,
-    propagate_shock_across_edge,
-    traverse_multi_hop_contagion,
-)
 from .reporting import (
     ContagionSeverityVerdict,
     ContagionTimeSeriesEventRecord,
@@ -60,7 +60,12 @@ from .reporting import (
 )
 
 __all__ = [
-    "HybridRetriever",
+    "MemgraphSubgraphStore",
+    "SubgraphStorePort",
+    "query_bi",
+    "query_subgraph_ego",
+    "HybridSeeder",
+    "SeedHit",
     "TextToCQL",
     "enrich_node",
     "enrich_nodes",
@@ -80,11 +85,6 @@ __all__ = [
     "GraphRAGPipelineOrchestrator",
     "HopOrderedSubgraphVerbalizer",
     "PipelineResult",
-    "PropagatedShock",
-    "ShockVector",
-    "build_shock_vector_from_metrics",
-    "propagate_shock_across_edge",
-    "traverse_multi_hop_contagion",
     "ContagionSeverityVerdict",
     "ContagionTimeSeriesEventRecord",
     "DependencyDomain",
