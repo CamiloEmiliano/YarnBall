@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00037
 - **Filename**: `ADR-00037-pit-community-layer-and-impact-ranking--.md`
 - **Date**: 2026-11-22 08:48 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `knowledge_graph` / `retrieval` / `explorer` / `tools`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`3b9ce28`](../../knowledge_graph/communities.py), [`3b9ce28`](../../retrieval/routing.py), [`3b9ce28`](../../retrieval/facade.py), [`3b9ce28`](../../retrieval/pipeline.py), [`3b9ce28`](../../retrieval/reporting.py), [`3b9ce28`](../../retrieval/service.py), [`3b9ce28`](../../explorer/static/app.js), [`3b9ce28`](../../tools/build_kg_snapshot.py), [`3b9ce28`](../../tools/init_db.py), [`3b9ce28`](../../tests/retrieval/test_adr00037_communities_ranking_coverage.py)
 
 ---
 
