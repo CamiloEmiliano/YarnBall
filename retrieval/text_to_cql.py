@@ -30,6 +30,7 @@ from retrieval.guardrails.schema_guardrail import (
     CypherASTWhitelistGuardrail,
     DEFAULT_FINANCE_SCHEMA,
 )
+from retrieval.temporal import PiTContext, TemporalQueryFilter
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,7 @@ class TextToCQL:
             schema=DEFAULT_FINANCE_SCHEMA,
             max_limit=self.max_limit,
         )
+        self.temporal_filter = TemporalQueryFilter()
 
     # ----------------------------------------------------------------------
     # 1. Dynamic Schema Extraction
@@ -260,19 +262,24 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
     def execute_query(
         self,
         question: str,
+        ctx: PiTContext,
         max_retries: int = 3,
         schema: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Translate question to Cypher, validate guardrails, execute, and auto-correct.
+        """Translate question to Cypher, validate guardrails, inject PiT filter, and execute (ADR-00033).
 
         Args:
             question: Natural language question.
+            ctx: Mandatory Point-in-Time execution context.
             max_retries: Max self-correction attempts.
             schema: Optional schema dictionary (extracted automatically if None).
 
         Returns:
             Dictionary with execution results, final Cypher statement, latency, and status.
         """
+        if not isinstance(ctx, PiTContext):
+            raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
+
         active_schema = schema or self.get_active_schema()
         system_prompt = self._build_system_prompt(active_schema)
 
@@ -309,14 +316,15 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
                 )
                 continue
 
-            # 3. Enforce Resource Bounds (LIMIT 50)
+            # 3. Enforce Resource Bounds (LIMIT 50) & ADR-00033 Point-in-Time Filter
             bounded_cypher = self.enforce_limit(last_cypher)
-            last_cypher = bounded_cypher
+            temporal_cypher = self.temporal_filter.inject_active_coalescence(bounded_cypher, ctx)
+            last_cypher = temporal_cypher
 
             # 4. Execute Query in Memgraph
             try:
                 with driver.session() as session:
-                    res = session.run(bounded_cypher)
+                    res = session.run(temporal_cypher, as_of_date=ctx.as_of_iso)
                     records = [dict(r) for r in res]
                     last_error = None
                     break  # Success!
@@ -335,6 +343,8 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
 
         return {
             "question": question,
+            "as_of": ctx.as_of_iso,
+            "pit_mode": ctx.mode,
             "cypher": last_cypher,
             "status": status,
             "records": records,

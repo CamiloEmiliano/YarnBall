@@ -333,7 +333,7 @@ def test_sec_8k_dry_run_cli_with_snapshot_and_edges_manifest(offline_guardrail, 
                 "target_id": "MSFT",
                 "rel_type": "SUPPLIES_TO",
                 "source_hash": None,
-                "properties_json": json.dumps({"nature": "hgx_clusters", "share": 0.30, "buffer_days": 15.0}),
+                "properties_json": json.dumps({"nature": "hgx_clusters", "share": 0.30, "buffer_days": 15.0, "valid_from": "2020-01-02"}),
             },
             {
                 "source_id": "NVDA",
@@ -344,6 +344,7 @@ def test_sec_8k_dry_run_cli_with_snapshot_and_edges_manifest(offline_guardrail, 
                     "nature": "legacy_chips",
                     "share": 0.20,
                     "buffer_days": 10.0,
+                    "valid_from": "2020-01-02",
                     "valid_to": "2023-12-31",
                 }),
             },
@@ -366,7 +367,7 @@ def test_sec_8k_dry_run_cli_with_snapshot_and_edges_manifest(offline_guardrail, 
     # 2. CLI invocation with --edges-file manifest + --export-jsonl
     edges_file = tmp_path / "nvda_edges.jsonl"
     edges_file.write_text(
-        json.dumps({"source": "NVDA", "target": "META", "rel_type": "SUPPLIES_TO", "nature": "ai_gpus", "share": 0.25, "buffer_days": 10.0})
+        json.dumps({"source": "NVDA", "target": "META", "rel_type": "SUPPLIES_TO", "nature": "ai_gpus", "share": 0.25, "buffer_days": 10.0, "valid_from": "2020-01-02"})
         + "\n",
         encoding="utf-8",
     )

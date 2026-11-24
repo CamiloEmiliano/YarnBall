@@ -1,16 +1,18 @@
 """
-Financial Analysis Engine (Coordinator of Retrieval & Grounded Synthesis).
+Financial Analysis Engine (Coordinator of Point-in-Time Retrieval & Grounded Synthesis).
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+
 from retrieval.hybrid import HybridRetriever
+from retrieval.temporal import PiTContext
 from .synthesizer import GroundedSynthesizer
 
 
 class FinancialAnalysisEngine:
-    """Unified end-to-end interface coordinating Hybrid Retrieval and Grounded Synthesis."""
+    """Unified end-to-end interface coordinating Point-in-Time Retrieval and Grounded Synthesis."""
 
     def __init__(
         self,
@@ -20,13 +22,17 @@ class FinancialAnalysisEngine:
         self.retriever = retriever or HybridRetriever()
         self.synthesizer = synthesizer or GroundedSynthesizer()
 
-    def answer_query(self, query: str) -> Dict[str, Any]:
-        """Execute the full pipeline from natural language to grounded response."""
-        context = self.retriever.retrieve(query)
+    def answer_query(self, query: str, ctx: PiTContext) -> Dict[str, Any]:
+        """Execute the full pipeline from natural language to grounded response as of `ctx` (ADR-00033)."""
+        if not isinstance(ctx, PiTContext):
+            raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
+        context = self.retriever.retrieve(query, ctx=ctx)
         synthesis = self.synthesizer.synthesize(query, context)
 
         return {
             "query": query,
+            "as_of": ctx.as_of_iso,
+            "pit_mode": ctx.mode,
             "answer": synthesis["answer"],
             "is_grounded": synthesis["is_grounded"],
             "citations": synthesis["citations"],
@@ -36,9 +42,9 @@ class FinancialAnalysisEngine:
             "retrieval_latency_ms": context.get("latency_ms", 0.0),
         }
 
-    def query(self, query: str) -> Dict[str, Any]:
-        """Alias for answer_query."""
-        return self.answer_query(query)
+    def query(self, query: str, ctx: PiTContext) -> Dict[str, Any]:
+        """Alias for answer_query requiring explicit `PiTContext`."""
+        return self.answer_query(query, ctx=ctx)
 
 
 # Symmetrical and backward-compatible alias

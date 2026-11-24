@@ -88,7 +88,8 @@ def test_edgar_worker_stamps_sec_filing_source_type() -> None:
     )
     sub_edge = driver.edges[("Apple Operations Europe", "SUBSIDIARY_OF", "Apple Inc.")]
     assert sub_edge["props"]["source_type"] == "sec_filing"
-    assert sub_edge["props"]["valid_from"] == "2025-10-31"
+    # ADR-00033: date-only filing_date="2025-10-31" (Friday) with imputed known_at rolls conservatively to Mon 2025-11-03
+    assert sub_edge["props"]["valid_from"] == "2025-11-03"
     assert sub_edge["props"]["is_temporal_unanchored"] is False
 
 
@@ -126,7 +127,8 @@ def test_consumers_forward_published_at_and_news_source_type() -> None:
         )
     assert ok is True
     assert driver.edges[("Apple Inc.", "PARTNERED_WITH", "Sony")]["props"]["source_type"] == "news"
-    assert driver.edges[("Apple Inc.", "PARTNERED_WITH", "Sony")]["props"]["valid_from"] == "2026-09-05"
+    # ADR-00033: Sat 2026-09-05T12:00:00Z skips Sun + Mon Labor Day (2026-09-07) -> actionable Tue 2026-09-08
+    assert driver.edges[("Apple Inc.", "PARTNERED_WITH", "Sony")]["props"]["valid_from"] == "2026-09-08"
 
 
 def test_build_and_export_kg_snapshot_connects_sec_filings_and_news_for_workbench(tmp_path: Path) -> None:
@@ -207,7 +209,10 @@ def test_build_and_export_kg_snapshot_connects_sec_filings_and_news_for_workbenc
     cat = client.get("/api/catalog").json()
     assert [s["snapshot_id"] for s in cat["snapshots"]] == ["G_sec_test"]
 
-    sub = client.get("/api/subgraph", params={"snapshot_id": "G_sec_test", "ticker": "AAPL", "max_hops": 2}).json()
+    sub = client.get(
+        "/api/subgraph",
+        params={"snapshot_id": "G_sec_test", "ticker": "AAPL", "max_hops": 2, "as_of_date": "2026-06-01"},
+    ).json()
     source_types = {(e["rel_type"], e.get("source_type")) for e in sub["edges"]}
     assert ("SUPPLIES_TO", "sec_filing") in source_types
     assert ("SUBSIDIARY_OF", "sec_filing") in source_types

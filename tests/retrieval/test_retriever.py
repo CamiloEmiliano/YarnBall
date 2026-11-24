@@ -22,17 +22,21 @@ def insert_test_embeddings():
     create_sql = """
         CREATE EXTENSION IF NOT EXISTS vector;
         CREATE TABLE IF NOT EXISTS node_embeddings (
-            node_id TEXT PRIMARY KEY,
+            node_id TEXT NOT NULL,
+            valid_from DATE NOT NULL,
+            valid_to DATE NULL,
             entity_type TEXT,
             embedding VECTOR(768) NOT NULL,
             source_hash TEXT,
-            created_at TIMESTAMPTZ DEFAULT now()
+            known_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (node_id, valid_from)
         );
     """
     sql = """
-        INSERT INTO node_embeddings (node_id, entity_type, embedding, source_hash)
-        VALUES (%s, %s, %s, %s)
-        ON CONFLICT (node_id) DO UPDATE
+        INSERT INTO node_embeddings (node_id, valid_from, valid_to, entity_type, embedding, source_hash)
+        VALUES (%s, %s::date, NULL, %s, %s, %s)
+        ON CONFLICT (node_id, valid_from) DO UPDATE
         SET embedding = EXCLUDED.embedding;
     """
     dummy_vec = [1.0] + [0.0] * 767
@@ -42,8 +46,8 @@ def insert_test_embeddings():
         with conn.cursor() as cur:
             cur.execute(create_sql)
             cur.execute("DELETE FROM node_embeddings;")
-            cur.execute(sql, ("TestNode1", "Entity", dummy_vec, "test"))
-            cur.execute(sql, ("TestNode2", "Entity", dummy_vec, "test"))
+            cur.execute(sql, ("TestNode1", "2024-01-02", "Entity", dummy_vec, "test"))
+            cur.execute(sql, ("TestNode2", "2024-01-02", "Entity", dummy_vec, "test"))
         conn.commit()
     yield
     # Cleanup after tests
@@ -59,7 +63,7 @@ def insert_test_embeddings():
 def test_search_endpoint(insert_test_embeddings):
     # Mock embed_texts to return a non-zero unit vector (ADR-00020)
     with patch('embedding.embedder.embed_texts', return_value=[[1.0] + [0.0] * 767]):
-        response = client.post("/search", json={"query": "any text", "k": 2})
+        response = client.post("/search", json={"query": "any text", "as_of": "2024-06-01", "k": 2})
     assert response.status_code == 200
     payload = response.json()
     # Should return a list with enriched nodes for each of the two test IDs
@@ -74,7 +78,7 @@ def test_search_endpoint(insert_test_embeddings):
 
 def test_search_rejects_zero_vector_adr00020():
     with patch('embedding.embedder.embed_texts', return_value=[[0.0] * 768]):
-        response = client.post("/search", json={"query": "any text", "k": 2})
+        response = client.post("/search", json={"query": "any text", "as_of": "2024-06-01", "k": 2})
     assert response.status_code == 422
     assert "Zero-norm" in response.json()["detail"]
 

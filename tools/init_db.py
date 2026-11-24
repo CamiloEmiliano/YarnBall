@@ -230,19 +230,30 @@ def create_queue_table(db_name: str = "financial_rag"):
     """)
     logger.info("Created/checked table domain_status")
 
-    # Create the node_embeddings table & non-destructive mention provenance table (ADR-00021 / ADR-00022)
+    # Create SCD Type 2 versioned node_embeddings & provenance tables (ADR-00021 / ADR-00022 / ADR-00033)
     cur.execute(f"""
         CREATE TABLE IF NOT EXISTS node_embeddings (
-            node_id TEXT PRIMARY KEY,
+            node_id TEXT NOT NULL,
+            valid_from DATE NOT NULL,
+            valid_to DATE NULL,
             entity_type VARCHAR(64),
             embedding vector({emb_dim}),
             source_hash VARCHAR(64),
-            updated_at TIMESTAMPTZ DEFAULT now()
+            known_at TIMESTAMPTZ,
+            is_unanchored BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (node_id, valid_from)
         );
+        CREATE INDEX IF NOT EXISTS idx_node_embeddings_validity
+            ON node_embeddings (valid_from, valid_to);
+        CREATE INDEX IF NOT EXISTS idx_node_embeddings_live_hnsw
+            ON node_embeddings USING hnsw (embedding vector_cosine_ops)
+            WHERE valid_to IS NULL;
         CREATE TABLE IF NOT EXISTS node_embedding_sources (
             node_id TEXT NOT NULL,
             source_hash VARCHAR(64) NOT NULL,
             entity_type VARCHAR(64),
+            source_published_at TIMESTAMPTZ,
             first_seen_at TIMESTAMPTZ DEFAULT now(),
             PRIMARY KEY (node_id, source_hash)
         );

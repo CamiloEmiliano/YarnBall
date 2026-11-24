@@ -218,7 +218,7 @@ def test_subgraph_bidirectional_and_pit_queries(tmp_path):
     # Edge manifest query works as well
     resp_manifest = bundle.client.get(
         "/api/subgraph",
-        params={"edges_file": "data/manifests/custom_edges.json", "ticker": "CRUS", "direction": "downstream"},
+        params={"edges_file": "data/manifests/custom_edges.json", "ticker": "CRUS", "direction": "downstream", "as_of_date": "2024-10-01"},
     )
     assert resp_manifest.status_code == 200
     assert [(e["source"], e["target"]) for e in resp_manifest.json()["edges"]] == [("CRUS", "AAPL")]
@@ -322,11 +322,11 @@ def test_path_traversal_outside_allowlist_rejected_with_403(tmp_path):
     _, outside_file, bundle = _build_fixture_workspace(tmp_path)
 
     # 1. Traversal via `edges_file`
-    resp_edges = bundle.client.get("/api/subgraph", params={"edges_file": "../outside_secret.json"})
+    resp_edges = bundle.client.get("/api/subgraph", params={"edges_file": "../outside_secret.json", "as_of_date": "2024-10-01"})
     assert resp_edges.status_code == 403
 
     # 2. Traversal via `snapshot_id` escaping `data/snapshots` into sibling workspace folder
-    resp_snap = bundle.client.get("/api/subgraph", params={"snapshot_id": "../cohorts"})
+    resp_snap = bundle.client.get("/api/subgraph", params={"snapshot_id": "../cohorts", "as_of_date": "2024-10-01"})
     assert resp_snap.status_code == 403
 
     # 3. Traversal via `filing_path` (both relative traversal and absolute outside path)

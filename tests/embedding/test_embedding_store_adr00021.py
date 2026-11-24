@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, List, Tuple
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ import embedding.embedder as embedder
 from knowledge_graph.embedding_store import format_node_embedding_text, store_node_embeddings
 from retrieval.hybrid import HybridRetriever
 from retrieval.service import app as retrieval_app
+from retrieval.temporal import PiTContext
 from tools.utils import store_embedding
 
 
@@ -111,8 +113,8 @@ def test_store_node_embeddings_embeds_contextual_text_and_preserves_provenance()
 
     with patch("tools.init_db._connect_db", return_value=conn), \
          patch("embedding.embedder.embed_texts", side_effect=_fake_embed):
-        store_node_embeddings(nodes, source_hash="hash_first")
-        store_node_embeddings(nodes, source_hash="hash_second")
+        store_node_embeddings(nodes, source_hash="hash_first", valid_from="2024-01-02")
+        store_node_embeddings(nodes, source_hash="hash_second", valid_from="2024-06-03")
 
     assert len(captured_texts) == 2
     assert captured_texts[0].startswith("Apple Inc. | type=Company | ticker=AAPL | cik=0000320193")
@@ -121,11 +123,11 @@ def test_store_node_embeddings_embeds_contextual_text_and_preserves_provenance()
     source_inserts = [item for item in conn.executed if "INSERT INTO node_embedding_sources " in item[0]]
 
     assert len(node_upserts) == 2
-    assert node_upserts[0][1][2] == "[0.5,0.5]"
-    assert node_upserts[0][1][3] == "hash_first"
-    assert node_upserts[1][1][3] == "hash_second"
+    assert node_upserts[0][1][3] == "[0.5,0.5]"
+    assert node_upserts[0][1][4] == "hash_first"
+    assert node_upserts[1][1][4] == "hash_second"
 
-    assert [item[1] for item in source_inserts] == [
+    assert [item[1][:3] for item in source_inserts] == [
         ("Apple Inc.", "hash_first", "Company"),
         ("Apple Inc.", "hash_second", "Company"),
     ]
@@ -143,11 +145,12 @@ def test_all_pgvector_sql_paths_pass_serialized_vector_literal() -> None:
     # 2. HybridRetriever.search_dense_entities
     hybrid_conn = _RecordingConnection(rows=[("Apple Inc.", "Company", "hash1", 0.91)])
     retriever = HybridRetriever(text_to_cql_engine=MagicMock())
+    ctx = PiTContext(as_of=date(2024, 7, 1), mode="historical")
     with patch("retrieval.hybrid.pg_connection", return_value=hybrid_conn), \
          patch("embedding.embedder.embed_texts", return_value=[[0.6, 0.8]]):
-        res = retriever.search_dense_entities("foundry", top_k=3)
+        res = retriever.search_dense_entities("foundry", ctx=ctx, top_k=3)
     assert len(res) == 1
-    assert hybrid_conn.executed[0][1] == ("[0.6,0.8]", "[0.6,0.8]", 3)
+    assert hybrid_conn.executed[0][1] == ("[0.6,0.8]", "2024-07-01", "2024-07-01", "[0.6,0.8]", 3)
 
     # 3. retrieval.service POST /search
     svc_conn = _RecordingConnection(rows=[("TSM",)])
@@ -155,6 +158,6 @@ def test_all_pgvector_sql_paths_pass_serialized_vector_literal() -> None:
     with patch("retrieval.service.pg_connection", return_value=svc_conn), \
          patch("embedding.embedder.embed_texts", return_value=[[0.6, 0.8]]), \
          patch("retrieval.service.enrich_nodes", return_value=[{"root_id": "TSM", "nodes": [{"id": "TSM"}]}]):
-        resp = client.post("/search", json={"query": "TSM", "k": 1})
+        resp = client.post("/search", json={"query": "TSM", "as_of": "2024-07-01", "k": 1})
     assert resp.status_code == 200
-    assert svc_conn.executed[0][1] == ("[0.6,0.8]", 1)
+    assert svc_conn.executed[0][1] == ("2024-07-01", "2024-07-01", "[0.6,0.8]", 1)

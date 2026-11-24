@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 import json
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from retrieval.offline_store import (
     InMemorySubgraphStore,
     parse_cypher_subgraph_query,
 )
-from retrieval.temporal import TemporalQueryFilter
+from retrieval.temporal import PiTContext, TemporalQueryFilter
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -142,19 +143,29 @@ def test_pit_and_lifecycle_filtering_with_temporal_query_filter():
     tf = TemporalQueryFilter()
     base_cypher = "MATCH (s:Company {ticker: 'TSM'})-[r:SUPPLIES_TO*1..2]->(t:Company) RETURN s, r, t"
 
-    # As of 2021-05-01: only legacy AAPL contract is active & in-window (NVDA is future, QCOM is terminated)
-    c_2021 = tf.inject_active_coalescence(base_cypher, as_of_date="2021-05-01")
+    # Historical as of 2021-05-01: AAPL & QCOM are both in-window (ADR-00033 Invariant #4 keeps
+    # edges active at as_of regardless of later TERMINATED status; NVDA is future)
+    ctx_2021_hist = PiTContext(as_of=date(2021, 5, 1), mode="historical")
+    c_2021 = tf.inject_active_coalescence(base_cypher, ctx=ctx_2021_hist)
     with store.session() as session:
         res_2021 = session.run(c_2021, as_of_date="2021-05-01")
-        assert [r["target"] for r in res_2021] == ["AAPL"]
+        assert sorted(r["target"] for r in res_2021) == ["AAPL", "QCOM"]
 
-        # As of 2024-03-01: AAPL expired, NVDA active
-        c_2024 = tf.inject_active_coalescence(base_cypher, as_of_date="2024-03-01")
+        # Live mode as of 2021-05-01 enforces ACTIVE_CURRENT -> only AAPL
+        ctx_2021_live = PiTContext(as_of=date(2021, 5, 1), mode="live")
+        c_2021_live = tf.inject_active_coalescence(base_cypher, ctx=ctx_2021_live)
+        res_2021_live = session.run(c_2021_live, as_of_date="2021-05-01")
+        assert [r["target"] for r in res_2021_live] == ["AAPL"]
+
+        # Live mode as of 2024-03-01: AAPL expired, NVDA active, QCOM terminated
+        ctx_2024_live = PiTContext(as_of=date(2024, 3, 1), mode="live")
+        c_2024 = tf.inject_active_coalescence(base_cypher, ctx=ctx_2024_live)
         res_2024 = session.run(c_2024, as_of_date="2024-03-01")
         assert [r["target"] for r in res_2024] == ["NVDA"]
 
         # Audit filter inspects TERMINATED edges cleanly
-        c_audit = tf.inject_audit_filter(base_cypher, target_status="TERMINATED", as_of_date="2024-03-01")
+        ctx_2024_hist = PiTContext(as_of=date(2024, 3, 1), mode="historical")
+        c_audit = tf.inject_audit_filter(base_cypher, ctx=ctx_2024_hist, target_status="TERMINATED")
         res_audit = session.run(c_audit, as_of_date="2024-03-01")
         assert [r["target"] for r in res_audit] == ["QCOM"]
 
@@ -189,6 +200,7 @@ def test_from_parquet_snapshot_synthetic_and_repo_g_resolved(tmp_path):
                     "nature": "racks",
                     "exposure_pct": 25.0,
                     "buffer_days": 60.0,
+                    "valid_from": "2023-01-01",
                 }),
             },
         ],
@@ -295,7 +307,8 @@ def test_query_ego_subgraph_bidirectional_and_pit(tmp_path):
 
     assert store.list_tickers() == ["AAPL", "ASML", "MSFT", "TSM"]
 
-    both = store.query_ego_subgraph(ticker="TSM", max_hops=1, direction="both", as_of_date="2024-10-01")
+    ctx_2024_10 = PiTContext(as_of=date(2024, 10, 1), mode="historical")
+    both = store.query_ego_subgraph(ctx=ctx_2024_10, ticker="TSM", max_hops=1, direction="both")
     assert both["root_ticker"] == "TSM"
     assert [(e["source"], e["target"], e.get("traversal_direction")) for e in both["edges"]] == [
         ("ASML", "TSM", "upstream"),
@@ -305,15 +318,25 @@ def test_query_ego_subgraph_bidirectional_and_pit(tmp_path):
     assert roles == {"TSM": "ROOT", "ASML": "UPSTREAM", "AAPL": "DOWNSTREAM"}
 
     # Upstream only from AAPL at 2 hops covers TSM -> AAPL and ASML -> TSM
-    up = store.query_ego_subgraph(ticker="AAPL", max_hops=2, direction="upstream", as_of_date="2024-10-01")
+    up = store.query_ego_subgraph(ctx=ctx_2024_10, ticker="AAPL", max_hops=2, direction="upstream")
     assert [(e["source"], e["target"], e["hop"]) for e in up["edges"]] == [
         ("TSM", "AAPL", 1),
         ("ASML", "TSM", 2),
     ]
 
     # PiT cutoff before 2024-06-01 excludes AAPL -> MSFT edge
-    pit_early = store.query_ego_subgraph(ticker="AAPL", max_hops=1, direction="downstream", as_of_date="2024-01-15")
+    pit_early = store.query_ego_subgraph(
+        ctx=PiTContext(as_of=date(2024, 1, 15), mode="historical"),
+        ticker="AAPL",
+        max_hops=1,
+        direction="downstream",
+    )
     assert pit_early["edges"] == []
-    pit_late = store.query_ego_subgraph(ticker="AAPL", max_hops=1, direction="downstream", as_of_date="2024-07-01")
+    pit_late = store.query_ego_subgraph(
+        ctx=PiTContext(as_of=date(2024, 7, 1), mode="historical"),
+        ticker="AAPL",
+        max_hops=1,
+        direction="downstream",
+    )
     assert [(e["source"], e["target"]) for e in pit_late["edges"]] == [("AAPL", "MSFT")]
 

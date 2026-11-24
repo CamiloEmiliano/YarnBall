@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, List, Tuple
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,7 @@ import pytest
 import embedding.embedder as embedder
 from ingestion.sec.harvester import EdgarWorker
 from retrieval.hybrid import HybridRetriever
+from retrieval.temporal import PiTContext
 from streaming.consumer import run_consumer
 from tools import init_db
 
@@ -138,10 +140,11 @@ def test_search_dense_passages_enforces_pit_cutoff_and_links_news_entities() -> 
     mock_driver = MagicMock()
     mock_driver.session.return_value.__enter__.return_value = mock_memgraph_session
 
+    ctx = PiTContext(as_of=date(2024, 7, 1), mode="historical")
     with patch("retrieval.hybrid.pg_connection", return_value=mock_conn), \
          patch("retrieval.hybrid.get_memgraph_driver", return_value=mock_driver), \
          patch("embedding.embedder.embed_texts", return_value=[[0.6, 0.8]]):
-        res = retriever.retrieve("EUV lithography export restriction", as_of_date="2024-07-01")
+        res = retriever.retrieve("EUV lithography export restriction", ctx=ctx)
 
     assert len(res["dense_passages"]) == 1
     assert res["dense_passages"][0]["source_hash"] == "hash_euv_1"
@@ -151,8 +154,9 @@ def test_search_dense_passages_enforces_pit_cutoff_and_links_news_entities() -> 
     passage_sql, passage_params = next(
         (sql, params) for sql, params in executed_queries if "FROM financial_news_queue" in sql and "embedding IS NOT NULL" in sql
     )
-    assert "published_at IS NOT NULL AND published_at <= %s::timestamptz" in passage_sql
-    assert passage_params == ("[0.6,0.8]", "2024-07-01", "[0.6,0.8]", 4)
+    assert "published_at IS NOT NULL" in passage_sql
+    assert "published_at <= %s::timestamptz" in passage_sql
+    assert passage_params == ("[0.6,0.8]", ctx.cutoff_utc_iso, "[0.6,0.8]", 4)
 
 
 def test_configurable_embedding_dim_ddl_and_startup_mismatch_guard(

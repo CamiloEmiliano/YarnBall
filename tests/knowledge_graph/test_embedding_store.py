@@ -21,11 +21,15 @@ def pg_conn():
             """
             CREATE EXTENSION IF NOT EXISTS vector;
             CREATE TABLE IF NOT EXISTS node_embeddings (
-                node_id TEXT PRIMARY KEY,
+                node_id TEXT NOT NULL,
+                valid_from DATE NOT NULL,
+                valid_to DATE NULL,
                 entity_type TEXT,
                 embedding VECTOR(768) NOT NULL,
                 source_hash TEXT,
-                created_at TIMESTAMPTZ DEFAULT now()
+                known_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                PRIMARY KEY (node_id, valid_from)
             );
             """
         )

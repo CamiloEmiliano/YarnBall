@@ -150,6 +150,7 @@ class TestPipelineCascadeIntegration:
 
         query = AnalystQuery(
             query="Assess supply disruption from port blockade at s1 and s2 on Customer C.",
+            as_of_date="2024-05-01",
             shock_origin="s1, s2",
             shock_magnitude_pct=100.0,
             target_ticker="C",
@@ -199,6 +200,7 @@ class TestPipelineCascadeIntegration:
         # 50% shock for 60 days: 0.5 * 60 = 30 days <= 60 days buffer -> fully absorbed
         query = AnalystQuery(
             query="Assess disruption at s1 on C.",
+            as_of_date="2024-05-01",
             initial_shocks={"s1": 50.0},
             initial_durations={"s1": 60.0},
             target_ticker="C",

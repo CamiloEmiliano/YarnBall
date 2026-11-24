@@ -195,7 +195,8 @@ def test_pipeline_happy_path(temp_rejection_dir):
 
     assert result.is_valid_query is True
     assert result.refusal_reason is None
-    assert "coalesce(r.status, 'ACTIVE_CURRENT')" in result.cypher_query
+    assert "valid_from IS NOT NULL" in result.cypher_query
+    assert "2024-05-01" in result.cypher_query
     assert len(result.retrieved_subgraph) == 1
     assert "NVDA" in result.verbalized_subgraph
     assert "AAPL faces moderate disruption" in result.contagion_verdict
@@ -258,7 +259,10 @@ def test_pipeline_empty_subgraph_handling(temp_rejection_dir):
         rejection_queue=rej_queue,
     )
 
-    query = AnalystQuery(query="Are there any direct links between UnknownCorp and AcmeCorp?")
+    query = AnalystQuery(
+        query="Are there any direct links between UnknownCorp and AcmeCorp?",
+        as_of_date="2024-05-01",
+    )
     result = orchestrator.run(query)
 
     assert result.is_valid_query is True

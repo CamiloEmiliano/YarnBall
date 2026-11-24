@@ -89,7 +89,14 @@ class _InMemoryCypherSession:
                 if "fiscal_year" in params:
                     props["fiscal_year"] = params["fiscal_year"]
                 if "valid_from" in params:
-                    props["valid_from"] = params["valid_from"]
+                    if props.get("valid_from") is None:
+                        props["valid_from"] = params["valid_from"]
+                    if "last_affirmed_at" in set_clause and params["valid_from"] is not None:
+                        props["last_affirmed_at"] = params["valid_from"]
+                if "known_at" in params and props.get("known_at") is None:
+                    props["known_at"] = params["known_at"]
+                if "known_at_imputed" in params and props.get("known_at_imputed") is None:
+                    props["known_at_imputed"] = bool(params["known_at_imputed"])
                 if "form_type" in params:
                     props["form_type"] = params["form_type"]
                 if "section" in params:
@@ -106,8 +113,8 @@ class _InMemoryCypherSession:
                     props["source_type"] = "sec_filing"
                 if "is_temporal_unanchored" in params:
                     props["is_temporal_unanchored"] = bool(params["is_temporal_unanchored"])
-                elif "($valid_from IS NULL)" in set_clause:
-                    props["is_temporal_unanchored"] = params.get("valid_from") is None
+                elif "IS NULL" in set_clause and "is_temporal_unanchored" in set_clause:
+                    props["is_temporal_unanchored"] = props.get("valid_from") is None
                 if "is_current = true" in set_clause:
                     props["is_current"] = True
                 if "form_type = '10-K'" in set_clause:

@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from contagion import (
     CascadeEdge,
@@ -35,7 +35,7 @@ from contagion import (
     SparseNetworkCascadeEngine,
 )
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail, ValidationResult
-from retrieval.temporal import TemporalQueryFilter
+from retrieval.temporal import PiTContext, TemporalQueryFilter
 from sft_pipeline.rejection_queue import ErrorStage, RuntimeRejectionQueue
 from sft_pipeline.serving.model_client import ModelResponse, YarnBallModelClient
 
@@ -45,10 +45,10 @@ MAX_SUBGRAPH_EDGES = 25
 
 
 class AnalystQuery(BaseModel):
-    """Input query specification for the GraphRAG pipeline."""
+    """Input query specification for the GraphRAG pipeline requiring `PiTContext` (ADR-00033)."""
 
     query: str
-    as_of_date: Optional[str] = None
+    ctx: PiTContext
     portfolio_context: Optional[Dict[str, Any]] = None
     target_ticker: Optional[str] = None
     shock_origin: Optional[str] = None
@@ -58,16 +58,47 @@ class AnalystQuery(BaseModel):
     initial_durations: Optional[Dict[str, float]] = None
     initial_onsets: Optional[Dict[str, float]] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_pit_context(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        if payload.get("ctx") is None:
+            raw_date = payload.pop("as_of_date", None)
+            if raw_date is None or not str(raw_date).strip():
+                raise ValueError(
+                    "AnalystQuery requires explicit `ctx` (PiTContext) or non-empty `as_of_date` (ADR-00033)."
+                )
+            pit_mode = payload.pop("pit_mode", "historical")
+            include_unanchored = bool(payload.pop("include_unanchored", False))
+            payload["ctx"] = PiTContext.from_date(
+                raw_date,
+                mode=pit_mode,
+                include_unanchored=include_unanchored,
+            )
+        else:
+            payload.pop("as_of_date", None)
+            payload.pop("pit_mode", None)
+            payload.pop("include_unanchored", None)
+        return payload
+
+    @property
+    def as_of_date(self) -> str:
+        """Canonical ISO-8601 `as_of` date derived from `self.ctx`."""
+        return self.ctx.as_of_iso
+
 
 class PipelineResult(BaseModel):
     """Unified response object from the end-to-end GraphRAG pipeline."""
 
     query: str
-    as_of_date: Optional[str] = None
+    as_of_date: str
     cypher_query: Optional[str] = None
     is_valid_query: bool
     refusal_reason: Optional[str] = None
     retrieved_subgraph: List[Dict[str, Any]] = Field(default_factory=list)
+    unanchored_excluded: int = 0
     verbalized_subgraph: str
     contagion_verdict: str
     contagion_think_trace: Optional[str] = None
@@ -246,21 +277,28 @@ class GraphRAGPipelineOrchestrator:
         self.cascade_engine = cascade_engine or SparseNetworkCascadeEngine()
 
     def execute_graph_query(
-        self, cypher: str, params: Optional[Dict[str, Any]] = None
+        self,
+        cypher: str,
+        ctx: PiTContext,
+        params: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """Execute validated and temporalized Cypher against the graph driver."""
+        """Execute validated and ADR-00033 temporalized Cypher against the graph driver."""
+        if not isinstance(ctx, PiTContext):
+            raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
         if self.graph_driver is None:
             logger.debug("No graph driver provided; returning empty subgraph.")
             return []
 
-        params = params or {}
+        scoped_cypher = self.temporal_filter.inject_active_coalescence(cypher, ctx)
+        query_params = dict(params or {})
+        query_params.setdefault("as_of_date", ctx.as_of_iso)
         results: List[Dict[str, Any]] = []
 
         try:
             # Check if driver is callable or has session() method
             if hasattr(self.graph_driver, "session"):
                 with self.graph_driver.session() as session:
-                    records = session.run(cypher, **params)
+                    records = session.run(scoped_cypher, **query_params)
                     for record in records:
                         if hasattr(record, "data"):
                             results.append(record.data())
@@ -273,7 +311,7 @@ class GraphRAGPipelineOrchestrator:
                             except Exception:
                                 results.append({"raw": str(record)})
             elif callable(self.graph_driver):
-                raw = self.graph_driver(cypher, params)
+                raw = self.graph_driver(scoped_cypher, query_params)
                 if isinstance(raw, list):
                     results = raw
                 else:
@@ -284,7 +322,7 @@ class GraphRAGPipelineOrchestrator:
             logger.error("Graph driver execution error: %s", exc)
             self.rejection_queue.record_failure(
                 task_id="retrieval_driver_error",
-                prompt=cypher,
+                prompt=scoped_cypher,
                 completion=str(exc),
                 error_stage=ErrorStage.SYNTAX_MALFORMED,
                 error_message=f"Graph execution failed: {exc}",
@@ -425,12 +463,12 @@ class GraphRAGPipelineOrchestrator:
         sanitized_cypher = validation.sanitized_query or generated_cypher
 
         # -------------------------------------------------------------
-        # STEP 3: Temporal Coalescence Injection (Stage 6.3)
+        # STEP 3: Temporal Coalescence Injection (Stage 6.3 / ADR-00033)
         # -------------------------------------------------------------
         t0 = time.perf_counter()
         temporalized_cypher = self.temporal_filter.inject_active_coalescence(
             cypher=sanitized_cypher,
-            as_of_date=analyst_query.as_of_date,
+            ctx=analyst_query.ctx,
         )
         latencies["temporal_transform_ms"] = (time.perf_counter() - t0) * 1000.0
 
@@ -440,8 +478,10 @@ class GraphRAGPipelineOrchestrator:
         t0 = time.perf_counter()
         raw_records = self.execute_graph_query(
             temporalized_cypher,
-            params={"as_of_date": analyst_query.as_of_date} if analyst_query.as_of_date else {},
+            ctx=analyst_query.ctx,
+            params={"as_of_date": analyst_query.ctx.as_of_iso},
         )
+        unanchored_excluded = int(getattr(self.graph_driver, "last_unanchored_excluded", 0) or 0)
         normalized_edges = self._normalize_graph_records_to_edges(raw_records)
         latencies["graph_execution_ms"] = (time.perf_counter() - t0) * 1000.0
 
@@ -550,6 +590,7 @@ class GraphRAGPipelineOrchestrator:
             is_valid_query=True,
             refusal_reason=None,
             retrieved_subgraph=normalized_edges,
+            unanchored_excluded=unanchored_excluded,
             verbalized_subgraph=verbalized_context,
             contagion_verdict=contagion_resp.final_output,
             contagion_think_trace=contagion_resp.think_trace,

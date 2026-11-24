@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 import builtins
 import json
 import math
@@ -15,6 +16,7 @@ import embedding.embedder as embedder
 from knowledge_graph.embedding_store import store_node_embeddings
 from retrieval.hybrid import HybridRetriever
 from retrieval.service import app as retrieval_app
+from retrieval.temporal import PiTContext
 from streaming.consumer import process_streaming_event, run_consumer
 from tools.utils import store_embedding
 
@@ -120,14 +122,15 @@ def test_hybrid_retriever_raises_on_zero_or_unavailable_embedder(
 ) -> None:
     _simulate_missing_sentence_transformers(monkeypatch)
     retriever = HybridRetriever(text_to_cql_engine=MagicMock())
+    ctx = PiTContext(as_of=date(2024, 5, 1), mode="historical")
 
     with pytest.raises(embedder.EmbedderUnavailableError):
-        retriever.search_dense_entities("lithography disruption")
+        retriever.search_dense_entities("lithography disruption", ctx=ctx)
 
     with patch("embedding.embedder.embed_texts", return_value=[[0.0] * 768]):
         with patch("retrieval.hybrid.pg_connection") as mock_pg:
             with pytest.raises(embedder.InvalidEmbeddingError):
-                retriever.search_dense_entities("lithography disruption")
+                retriever.search_dense_entities("lithography disruption", ctx=ctx)
             mock_pg.assert_not_called()
 
 
@@ -139,7 +142,7 @@ def test_retrieval_service_health_and_search_error_codes(monkeypatch: pytest.Mon
     assert health_down.status_code == 503
     assert health_down.json()["ready"] is False
 
-    search_down = client.post("/search", json={"query": "TSMC fab", "k": 3})
+    search_down = client.post("/search", json={"query": "TSMC fab", "as_of": "2024-05-01", "k": 3})
     assert search_down.status_code == 503
 
     monkeypatch.setenv("YARNBALL_EMBEDDER_MOCK", "1")

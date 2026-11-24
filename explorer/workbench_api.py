@@ -20,6 +20,7 @@ from ingestion.sec.disruption_gating import (
     normalize_staged_8k_payload,
 )
 from retrieval.offline_store import InMemorySubgraphStore
+from retrieval.temporal import PiTContext
 from retrieval.reporting import (
     ContagionTimeSeriesEventRecord,
     OperationalContagionReport,
@@ -125,7 +126,9 @@ class SubgraphResponse(BaseModel):
     root_ticker: Optional[str] = None
     direction: str
     max_hops: int
-    as_of_date: Optional[str] = None
+    as_of_date: str
+    pit_mode: str = "historical"
+    unanchored_excluded: int = 0
     nodes: List[SubgraphNode] = Field(default_factory=list)
     edges: List[Dict[str, Any]] = Field(default_factory=list)
     available_tickers: List[str] = Field(default_factory=list)
@@ -660,16 +663,27 @@ def create_workbench_app(
 
     @fastapi_app.get("/api/subgraph", response_model=SubgraphResponse)
     def get_subgraph(
+        as_of_date: str = Query(...),
         snapshot_id: Optional[str] = Query(default=None),
         snapshot_dir: Optional[str] = Query(default=None),
         edges_file: Optional[str] = Query(default=None),
         ticker: Optional[str] = Query(default=None),
         max_hops: int = Query(default=2, ge=1, le=5),
         direction: Literal["both", "downstream", "upstream"] = Query(default="both"),
-        as_of_date: Optional[str] = Query(default=None),
+        pit_mode: Literal["historical", "live"] = Query(default="historical"),
+        include_unanchored: bool = Query(default=False),
         rel_types: Optional[str] = Query(default=None),
-        required_status: Optional[str] = Query(default="ACTIVE_CURRENT"),
+        required_status: Optional[str] = Query(default=None),
     ) -> SubgraphResponse:
+        try:
+            ctx = PiTContext.from_date(
+                as_of_date,
+                mode=pit_mode,
+                include_unanchored=include_unanchored,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
         source = _resolve_graph_source(
             snapshot_id=snapshot_id,
             snapshot_dir=snapshot_dir,
@@ -687,10 +701,10 @@ def create_workbench_app(
             else None
         )
         ego = store.query_ego_subgraph(
+            ctx=ctx,
             ticker=ticker,
             max_hops=max_hops,
             direction=direction,
-            as_of_date=as_of_date,
             rel_types=parsed_rels,
             required_status=required_status or None,
         )
@@ -700,7 +714,9 @@ def create_workbench_app(
             root_ticker=ego["root_ticker"],
             direction=direction,
             max_hops=max_hops,
-            as_of_date=as_of_date,
+            as_of_date=ctx.as_of_iso,
+            pit_mode=ctx.mode,
+            unanchored_excluded=int(ego.get("unanchored_excluded", 0)),
             nodes=[SubgraphNode(**node) for node in ego["nodes"]],
             edges=ego["edges"],
             available_tickers=ego["available_tickers"],

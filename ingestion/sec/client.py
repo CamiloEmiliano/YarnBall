@@ -91,11 +91,27 @@ class EdgarClient:
             logger.error(f"Error fetching 10-K for '{ticker_or_cik}': {e}")
             return None
 
+    @staticmethod
+    def _extract_acceptance_datetime(filing: Any) -> Optional[str]:
+        """Extract EDGAR acceptance_datetime timestamp from an edgartools filing if present."""
+        raw = getattr(filing, "acceptance_datetime", None)
+        if raw is None:
+            header = getattr(filing, "header", None)
+            if header is not None:
+                raw = getattr(header, "acceptance_datetime", None)
+        if raw is None:
+            return None
+        if hasattr(raw, "isoformat"):
+            return str(raw.isoformat())
+        text = str(raw).strip()
+        return text or None
+
     def extract_10k_sections(self, filing: Any) -> Dict[str, Any]:
         """Extract structured sections from a 10-K filing using edgartools TenK parser."""
         result: Dict[str, Any] = {
             "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
             "filing_date": str(getattr(filing, "filing_date", "")),
+            "acceptance_datetime": self._extract_acceptance_datetime(filing),
             "report_date": str(getattr(filing, "report_date", "")),
             "form": "10-K",
             "item_1_business": "",
@@ -211,6 +227,7 @@ class EdgarClient:
                 results.append({
                     "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
                     "filing_date": filing_date_str,
+                    "acceptance_datetime": self._extract_acceptance_datetime(filing),
                     "form": "8-K",
                     "items": getattr(filing, "items", []),
                     "text": filing.text()[:10000] if hasattr(filing, "text") else "",
@@ -241,6 +258,7 @@ class EdgarClient:
                 results.append({
                     "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
                     "filing_date": filing_date_str,
+                    "acceptance_datetime": self._extract_acceptance_datetime(filing),
                     "report_date": str(getattr(filing, "report_date", "")),
                     "form": "10-Q",
                     "text": filing.text()[:15000] if hasattr(filing, "text") else "",

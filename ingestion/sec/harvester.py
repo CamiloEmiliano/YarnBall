@@ -356,6 +356,7 @@ class EdgarWorker:
         sections = self.client.extract_10k_sections(filing)
         acc_num = sections.get("accession_number", "UNKNOWN")
         filing_date_str = sections.get("filing_date") or datetime.utcnow().strftime("%Y-%m-%d")
+        acceptance_dt_str = sections.get("acceptance_datetime")
         report_date_str = sections.get("report_date") or filing_date_str
 
         primary_entity = self.linker.link_entity(ticker=ticker_or_cik, name=getattr(filing, "company", ticker_or_cik))
@@ -388,6 +389,7 @@ class EdgarWorker:
                 subsidiaries=subs,
                 accession_number=acc_num,
                 filing_date=filing_date_str,
+                acceptance_datetime=acceptance_dt_str,
             )
             extracted_nodes.extend(sub_nodes)
             extracted_edges.extend(sub_edges)
@@ -430,6 +432,7 @@ class EdgarWorker:
                 form_type="10-K",
                 section=section_label,
                 source_text=section_text,
+                acceptance_datetime=acceptance_dt_str,
             )
             extracted_nodes.extend(n)
             extracted_edges.extend(e)
@@ -460,10 +463,19 @@ class EdgarWorker:
         subsidiaries: List[Dict[str, str]],
         accession_number: str,
         filing_date: str,
+        acceptance_datetime: Optional[str] = None,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """Persist Exhibit 21 subsidiaries to PostgreSQL sec_subsidiaries and Memgraph."""
+        from retrieval.temporal import actionable_session
+
         nodes = []
         edges = []
+        session_date, known_at_utc, known_at_imputed = actionable_session(
+            acceptance_datetime,
+            fallback_doc_date=filing_date or None,
+        )
+        valid_from_iso = session_date.isoformat() if session_date else None
+        known_at_iso = known_at_utc.isoformat() if known_at_utc else None
 
         if self.pg_conn and parent_cik:
             cur = self.pg_conn.cursor()
@@ -523,10 +535,13 @@ class EdgarWorker:
                     MATCH (s:Company {id: $sub_id})
                     MERGE (s)-[r:SUBSIDIARY_OF]->(p)
                     SET r.fiscal_year = $fiscal_year,
-                        r.valid_from = $valid_from,
+                        r.valid_from = coalesce(r.valid_from, $valid_from),
+                        r.known_at = coalesce(r.known_at, $known_at),
+                        r.known_at_imputed = coalesce(r.known_at_imputed, $known_at_imputed),
+                        r.last_affirmed_at = $valid_from,
                         r.is_current = true,
                         r.source_type = 'sec_filing',
-                        r.is_temporal_unanchored = ($valid_from IS NULL),
+                        r.is_temporal_unanchored = (coalesce(r.valid_from, $valid_from) IS NULL),
                         r.form_type = '10-K',
                         r.accession_number = $acc_num,
                         r.jurisdiction = $jurisdiction
@@ -534,7 +549,9 @@ class EdgarWorker:
                     parent_id=parent_name,
                     sub_id=sub_name,
                     fiscal_year=fiscal_year,
-                    valid_from=filing_date or None,
+                    valid_from=valid_from_iso,
+                    known_at=known_at_iso,
+                    known_at_imputed=known_at_imputed,
                     acc_num=accession_number,
                     jurisdiction=sub.get("jurisdiction", "Unknown"),
                 )
@@ -557,7 +574,12 @@ class EdgarWorker:
                         "properties": {"jurisdiction": sub.get("jurisdiction", "Unknown")},
                     }
                 )
-        self._emit_sec_node_embeddings(embed_nodes, source_hash=f"{accession_number}:Exhibit21")
+        self._emit_sec_node_embeddings(
+            embed_nodes,
+            source_hash=f"{accession_number}:Exhibit21",
+            valid_from=valid_from_iso,
+            known_at=known_at_iso,
+        )
 
         return nodes, edges
 
@@ -565,8 +587,10 @@ class EdgarWorker:
         self,
         nodes: List[Dict[str, Any]],
         source_hash: str,
+        valid_from: Optional[str] = None,
+        known_at: Optional[str] = None,
     ) -> None:
-        """Persist contextual pgvector embeddings for canonical SEC entities (ADR-00022)."""
+        """Persist contextual pgvector embeddings for canonical SEC entities (ADR-00022 / ADR-00033)."""
         if not nodes:
             return
         deduped: Dict[str, Dict[str, Any]] = {}
@@ -593,7 +617,15 @@ class EdgarWorker:
         from knowledge_graph.embedding_store import store_node_embeddings
 
         try:
-            store_node_embeddings(list(deduped.values()), source_hash=source_hash)
+            try:
+                store_node_embeddings(
+                    list(deduped.values()),
+                    source_hash=source_hash,
+                    valid_from=valid_from,
+                    known_at=known_at,
+                )
+            except TypeError:
+                store_node_embeddings(list(deduped.values()), source_hash=source_hash)
         except InvalidEmbeddingError:
             raise
         except Exception as exc:
@@ -609,8 +641,11 @@ class EdgarWorker:
         form_type: str,
         section: str,
         source_text: Optional[str] = None,
+        acceptance_datetime: Optional[str] = None,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """Link entities and persist structured relationships into Memgraph with temporal metadata."""
+        from retrieval.temporal import actionable_session
+
         nodes = graph_data.get("nodes", [])
         edges = graph_data.get("edges", [])
 
@@ -618,6 +653,12 @@ class EdgarWorker:
             return [], []
 
         fiscal_year = int(filing_date[:4]) if filing_date and len(filing_date) >= 4 else datetime.utcnow().year
+        session_date, known_at_utc, known_at_imputed = actionable_session(
+            acceptance_datetime,
+            fallback_doc_date=filing_date or None,
+        )
+        valid_from_iso = session_date.isoformat() if session_date else None
+        known_at_iso = known_at_utc.isoformat() if known_at_utc else None
 
         from ontology.validation import validate_graph_payload
 
@@ -703,10 +744,13 @@ class EdgarWorker:
                 MERGE (s)-[r:{rel_type}]->(t)
                 SET r += $props,
                     r.fiscal_year = $fiscal_year,
-                    r.valid_from = $valid_from,
+                    r.valid_from = coalesce(r.valid_from, $valid_from),
+                    r.known_at = coalesce(r.known_at, $known_at),
+                    r.known_at_imputed = coalesce(r.known_at_imputed, $known_at_imputed),
+                    r.last_affirmed_at = $valid_from,
                     r.is_current = true,
                     r.source_type = 'sec_filing',
-                    r.is_temporal_unanchored = ($valid_from IS NULL),
+                    r.is_temporal_unanchored = (coalesce(r.valid_from, $valid_from) IS NULL),
                     r.form_type = $form_type,
                     r.section = $section,
                     r.accession_number = $acc_num
@@ -717,7 +761,9 @@ class EdgarWorker:
                     target=target_id,
                     props=props,
                     fiscal_year=fiscal_year,
-                    valid_from=filing_date or None,
+                    valid_from=valid_from_iso,
+                    known_at=known_at_iso,
+                    known_at_imputed=known_at_imputed,
                     form_type=form_type,
                     section=section,
                     acc_num=accession_number,
@@ -732,9 +778,140 @@ class EdgarWorker:
             },
             *gated_nodes,
         ]
-        self._emit_sec_node_embeddings(embed_nodes, source_hash=f"{accession_number}:{section}")
+        self._emit_sec_node_embeddings(
+            embed_nodes,
+            source_hash=f"{accession_number}:{section}",
+            valid_from=valid_from_iso,
+            known_at=known_at_iso,
+        )
 
         return inserted_nodes, inserted_edges
+
+    def terminate_sec_relationship(
+        self,
+        *,
+        source_name: str,
+        target_name: str,
+        rel_type: str,
+        form_type: str,
+        accession_number: str,
+        filing_date: str,
+        acceptance_datetime: Optional[str] = None,
+        terminated_on: Optional[str] = None,
+        source_text: Optional[str] = None,
+        rejection_queue: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Close an active relationship exclusively via explicit Form 8-K termination (ADR-00033).
+
+        Enforces Invariants #7 & #8:
+        - Only Form 8-K / 8-K/A disclosures may set `valid_to` (never 10-K/10-Q/news).
+        - `valid_to` is always derived from `actionable_session(acceptance_datetime, filing_date)`,
+          never from the underlying `terminated_on` event date (preventing backward leakage).
+        - Counterparties are validated via `validate_graph_payload(strict=True, source_text=...)`.
+        """
+        clean_form = str(form_type or "").strip().upper()
+        if clean_form not in ("8-K", "8-K/A"):
+            raise ValueError(
+                f"ADR-00033 Invariant #8 violation: relationship termination requires Form 8-K/8-K/A, "
+                f"got form_type={form_type!r}."
+            )
+
+        from ontology.validation import validate_graph_payload
+        from retrieval.temporal import actionable_session
+
+        res_s = self.linker.link_entity(name=source_name)
+        res_t = self.linker.link_entity(name=target_name)
+        source_id = res_s["company_name"] if res_s else str(source_name).strip()
+        target_id = res_t["company_name"] if res_t else str(target_name).strip()
+        clean_rel = (
+            "".join(c for c in str(rel_type or "").strip().upper() if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH]
+            or "SUPPLIES_TO"
+        )
+
+        gated = validate_graph_payload(
+            {
+                "nodes": [
+                    {"id": source_id, "type": "Company", "properties": {}},
+                    {"id": target_id, "type": "Company", "properties": {}},
+                ],
+                "edges": [
+                    {"source": source_id, "target": target_id, "type": clean_rel, "properties": {}},
+                ],
+            },
+            source_id=f"{accession_number}:8K_TERMINATION",
+            rejection_queue=rejection_queue,
+            strict=True,
+            default_node_type="Company",
+            source_text=source_text,
+        )
+        if not gated.get("edges"):
+            logger.warning(
+                "Quarantined Form 8-K termination (%s -> %s [%s], acc=%s) via ontology gate.",
+                source_name,
+                target_name,
+                clean_rel,
+                accession_number,
+            )
+            return {
+                "terminated": False,
+                "reason": "quarantined_by_ontology_gate",
+                "source": source_id,
+                "target": target_id,
+                "rel_type": clean_rel,
+            }
+
+        gated_edge = gated["edges"][0]
+        src_canonical = gated_edge["source"]
+        tgt_canonical = gated_edge["target"]
+        rel_canonical = gated_edge["type"]
+
+        valid_to_date, known_at_utc, known_at_imputed = actionable_session(
+            acceptance_datetime,
+            fallback_doc_date=filing_date or None,
+        )
+        if valid_to_date is None:
+            raise ValueError(
+                f"Cannot compute actionable valid_to for Form 8-K termination {accession_number}: "
+                "both acceptance_datetime and filing_date are missing."
+            )
+
+        valid_to_iso = valid_to_date.isoformat()
+        known_at_iso = known_at_utc.isoformat() if known_at_utc else None
+        terminated_on_iso = str(terminated_on).strip()[:10] if terminated_on else None
+
+        with self.driver.session() as session:
+            session.run(
+                f"""
+                MATCH (s {{id: $source}})-[r:{rel_canonical}]->(t {{id: $target}})
+                WHERE r.valid_to IS NULL
+                SET r.valid_to = $valid_to,
+                    r.terminated_on = $terminated_on,
+                    r.termination_accession = $acc_num,
+                    r.termination_known_at = $known_at,
+                    r.termination_known_at_imputed = $known_at_imputed,
+                    r.status = 'TERMINATED',
+                    r.is_current = false
+                """,
+                source=src_canonical,
+                target=tgt_canonical,
+                valid_to=valid_to_iso,
+                terminated_on=terminated_on_iso,
+                acc_num=accession_number,
+                known_at=known_at_iso,
+                known_at_imputed=known_at_imputed,
+            )
+
+        return {
+            "terminated": True,
+            "source": src_canonical,
+            "target": tgt_canonical,
+            "rel_type": rel_canonical,
+            "valid_to": valid_to_iso,
+            "terminated_on": terminated_on_iso,
+            "termination_accession": accession_number,
+            "known_at": known_at_iso,
+            "known_at_imputed": known_at_imputed,
+        }
 
     def _record_filing_queue(
         self,

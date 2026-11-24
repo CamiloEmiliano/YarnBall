@@ -32,7 +32,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from knowledge_graph.memgraph_driver import get_memgraph_driver
 from knowledge_graph.snapshot_manager import SnapshotManager
 from knowledge_graph.entity_resolver import EntityResolver
-from retrieval import TextToCQL, HybridRetriever
+from retrieval import HybridRetriever, PiTContext, TextToCQL
 from synthesis import GroundedSynthesizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -346,7 +346,7 @@ def stress_test_concurrency(
             t_start = time.perf_counter()
             try:
                 # 1. Test Text-to-CQL validation & execution
-                res = retriever.retrieve(query)
+                res = retriever.retrieve(query, ctx=PiTContext.from_date("2026-01-02", mode="live", include_unanchored=True))
                 elapsed = (time.perf_counter() - t_start) * 1000.0  # ms
                 worker_latencies.append(elapsed)
             except Exception as e:
@@ -501,18 +501,19 @@ def stress_test_pathological_topologies() -> Dict[str, Any]:
     )
 
     # Execute tests
+    stress_ctx = PiTContext.from_date("2026-01-02", mode="live", include_unanchored=True)
     # Test 1: Query against Dense Clique (must not exceed LIMIT 50 and must complete in < 50ms)
     t0 = time.perf_counter()
-    clique_subgraph = retriever.expand_subgraph(seed_entity_ids=["Clique_0"], hops=2)
+    clique_subgraph = retriever.expand_subgraph(seed_entity_ids=["Clique_0"], ctx=stress_ctx, hops=2)
     clique_time = (time.perf_counter() - t0) * 1000.0
 
     # Test 2: Query against Deep Chain (must strictly enforce 2-hop horizon)
-    chain_subgraph = retriever.expand_subgraph(seed_entity_ids=["Chain_0"], hops=2)
+    chain_subgraph = retriever.expand_subgraph(seed_entity_ids=["Chain_0"], ctx=stress_ctx, hops=2)
     chain_targets = {t["target"] for t in chain_subgraph}
 
     # Test 3: Query against Cyclic Loop (must not hang or infinite loop)
     t_loop = time.perf_counter()
-    loop_subgraph = retriever.expand_subgraph(seed_entity_ids=["LoopA"], hops=2)
+    loop_subgraph = retriever.expand_subgraph(seed_entity_ids=["LoopA"], ctx=stress_ctx, hops=2)
     loop_time = (time.perf_counter() - t_loop) * 1000.0
 
     logger.info(
@@ -571,7 +572,8 @@ def stress_test_retrieval_accuracy() -> Dict[str, Any]:
     # Test A: 2-Hop Path Recovery (Who are the tier-2 suppliers of AAPL?)
     # Ground truth: ASML -> TSM -> AAPL
     # ----------------------------------------------------------------------
-    subgraph = retriever.expand_subgraph(seed_entity_ids=["AAPL"], hops=2)
+    acc_ctx = PiTContext.from_date("2026-01-02", mode="live", include_unanchored=True)
+    subgraph = retriever.expand_subgraph(seed_entity_ids=["AAPL"], ctx=acc_ctx, hops=2)
     retrieved_sources = {t["source"] for t in subgraph}
     retrieved_targets = {t["target"] for t in subgraph}
     all_retrieved_entities = retrieved_sources.union(retrieved_targets)
@@ -613,7 +615,7 @@ def stress_test_retrieval_accuracy() -> Dict[str, Any]:
     # Test D: Negative Grounding & Abstention
     # Query disconnected entity (e.g. "NonExistentBioCorp")
     # ----------------------------------------------------------------------
-    empty_subgraph = retriever.expand_subgraph(seed_entity_ids=["NonExistentBioCorp"], hops=2)
+    empty_subgraph = retriever.expand_subgraph(seed_entity_ids=["NonExistentBioCorp"], ctx=acc_ctx, hops=2)
     synth_res = synthesizer.synthesize(
         "What is the relation to Apple?",
         {"subgraph_triples": empty_subgraph, "articles": []},

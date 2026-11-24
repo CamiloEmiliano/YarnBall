@@ -1200,8 +1200,8 @@
     if (ticker) params.set("ticker", ticker);
     params.set("max_hops", els.kgHopsSelect.value || "2");
     params.set("direction", state.kgDirection);
-    const asOfDate = (els.kgDateInput.value || "").trim();
-    if (asOfDate) params.set("as_of_date", asOfDate);
+    const asOfDate = (els.kgDateInput.value || "").trim() || new Date().toISOString().slice(0, 10);
+    params.set("as_of_date", asOfDate);
     if (els.kgRelSelect.value) params.set("rel_types", els.kgRelSelect.value);
     params.set("required_status", els.kgStatusSelect.value || "");
 

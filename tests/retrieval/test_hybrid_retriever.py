@@ -2,11 +2,14 @@
 # -*- coding: utf-8 -*-
 """Unit tests for the HybridRetriever and GroundedSynthesizer modules."""
 
+from datetime import date
 import pytest
 from unittest.mock import MagicMock, patch
 
-from retrieval import HybridRetriever, TextToCQL
+from retrieval import HybridRetriever, PiTContext, TextToCQL
 from synthesis import GroundedSynthesizer, HybridGraphRAGEngine
+
+DEFAULT_CTX = PiTContext(as_of=date(2026, 5, 1), mode="historical")
 
 
 @pytest.fixture
@@ -40,7 +43,7 @@ def test_search_dense_entities_returns_formatted_results(hybrid_retriever):
     with patch("retrieval.hybrid.pg_connection", return_value=mock_conn), \
          patch("embedding.embedder.embed_texts", return_value=[[0.1] * 768]):
 
-        results = hybrid_retriever.search_dense_entities("Apple chip supplier", top_k=2)
+        results = hybrid_retriever.search_dense_entities("Apple chip supplier", ctx=DEFAULT_CTX, top_k=2)
 
         assert len(results) == 2
         assert results[0]["node_id"] == "Apple Inc."
@@ -53,7 +56,7 @@ def test_search_dense_entities_handles_offline_fallback(hybrid_retriever):
     with patch("retrieval.hybrid.pg_connection", side_effect=Exception("DB down")), \
          patch("embedding.embedder.embed_texts", return_value=[[0.1] * 768]):
 
-        results = hybrid_retriever.search_dense_entities("test query")
+        results = hybrid_retriever.search_dense_entities("test query", ctx=DEFAULT_CTX)
         assert results == []
 
 
@@ -78,7 +81,7 @@ def test_expand_subgraph_queries_memgraph_triples(hybrid_retriever):
     mock_driver.session.return_value.__enter__.return_value = mock_session
 
     with patch("retrieval.hybrid.get_memgraph_driver", return_value=mock_driver):
-        triples = hybrid_retriever.expand_subgraph(["Apple Inc."])
+        triples = hybrid_retriever.expand_subgraph(["Apple Inc."], ctx=DEFAULT_CTX)
 
         assert len(triples) == 1
         assert triples[0]["source"] == "Apple Inc."
@@ -89,7 +92,7 @@ def test_expand_subgraph_queries_memgraph_triples(hybrid_retriever):
 
 def test_expand_subgraph_empty_seeds(hybrid_retriever):
     """Test that empty seed list returns empty list immediately."""
-    assert hybrid_retriever.expand_subgraph([]) == []
+    assert hybrid_retriever.expand_subgraph([], ctx=DEFAULT_CTX) == []
 
 
 # ----------------------------------------------------------------------
@@ -115,7 +118,7 @@ def test_fetch_article_context_from_postgres(hybrid_retriever):
     mock_conn.cursor.return_value = mock_cursor
 
     with patch("retrieval.hybrid.pg_connection", return_value=mock_conn):
-        articles = hybrid_retriever.fetch_article_context(["hash123"])
+        articles = hybrid_retriever.fetch_article_context(["hash123"], ctx=DEFAULT_CTX)
 
         assert len(articles) == 1
         assert articles[0]["title"] == "Apple and TSMC Deepen 2nm Partnership"
@@ -187,7 +190,7 @@ def test_hybrid_graphrag_engine_end_to_end():
     }
 
     engine = HybridGraphRAGEngine(retriever=mock_retriever, synthesizer=mock_synthesizer)
-    response = engine.answer_query("Which foundry manufactures Apple chips?")
+    response = engine.answer_query("Which foundry manufactures Apple chips?", ctx=DEFAULT_CTX)
 
     assert response["is_grounded"] is True
     assert "TSMC" in response["answer"]

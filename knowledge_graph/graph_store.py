@@ -559,12 +559,12 @@ def store_graph_entities(
             merged_props = {**existing_props, **props}
             linked_nodes_by_key[dedup_key]["properties"] = merged_props
 
+    from retrieval.temporal import actionable_session
+
     clean_source_type = str(source_type or "news").strip().lower() or "news"
-    valid_from: Optional[str] = None
-    if published_at is not None:
-        pub_str = str(published_at).strip()
-        if pub_str and pub_str.lower() not in ("none", "null", "nan"):
-            valid_from = pub_str[:10]
+    session_date, known_at_utc, known_at_imputed = actionable_session(published_at)
+    valid_from: Optional[str] = session_date.isoformat() if session_date else None
+    known_at_iso: Optional[str] = known_at_utc.isoformat() if known_at_utc else None
     is_temporal_unanchored = valid_from is None
 
     active_driver = driver if driver is not None else get_memgraph_driver()
@@ -623,9 +623,12 @@ def store_graph_entities(
             SET r += $props,
                 r.source_hash = $source_hash,
                 r.source_type = $source_type,
-                r.valid_from = $valid_from,
+                r.valid_from = coalesce(r.valid_from, $valid_from),
+                r.known_at = coalesce(r.known_at, $known_at),
+                r.known_at_imputed = coalesce(r.known_at_imputed, $known_at_imputed),
+                r.last_affirmed_at = $valid_from,
                 r.is_current = true,
-                r.is_temporal_unanchored = $is_temporal_unanchored
+                r.is_temporal_unanchored = (coalesce(r.valid_from, $valid_from) IS NULL)
             """
             session.run(
                 query,
@@ -635,6 +638,8 @@ def store_graph_entities(
                 source_hash=source_hash,
                 source_type=clean_source_type,
                 valid_from=valid_from,
+                known_at=known_at_iso,
+                known_at_imputed=known_at_imputed,
                 is_temporal_unanchored=is_temporal_unanchored,
             )
 
@@ -655,7 +660,12 @@ def store_graph_entities(
         ]
         try:
             from .embedding_store import store_node_embeddings
-            store_node_embeddings(embed_nodes, source_hash=source_hash)
+            store_node_embeddings(
+                embed_nodes,
+                source_hash=source_hash,
+                valid_from=valid_from,
+                known_at=known_at_iso,
+            )
         except InvalidEmbeddingError:
             raise
         except Exception as exc:

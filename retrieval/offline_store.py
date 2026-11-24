@@ -20,6 +20,8 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Union
 
+from retrieval.temporal import PiTContext, validate_hops
+
 try:
     import pyarrow.parquet as pq
 except ImportError:  # pragma: no cover
@@ -67,7 +69,8 @@ class CypherSubgraphQuery:
     rel_types: Optional[Tuple[str, ...]] = None
     max_hops: int = DEFAULT_MAX_HOPS
     as_of_date: Optional[str] = None
-    required_status: Optional[str] = "ACTIVE_CURRENT"
+    required_status: Optional[str] = None
+    include_unanchored: bool = False
 
 
 def parse_cypher_subgraph_query(
@@ -137,13 +140,20 @@ def parse_cypher_subgraph_query(
         if date_match:
             as_of_date = date_match.group(1)
 
-    # 4. Lifecycle status requirement
+    # 4. Lifecycle status requirement (only enforced when explicitly present in Cypher, per ADR-00033)
     required_status: Optional[str] = None
     status_match = _STATUS_EQ_RE.search(clean)
     if status_match:
         required_status = status_match.group(2).strip().upper()
-    elif as_of_date is not None:
-        required_status = "ACTIVE_CURRENT"
+
+    # 5. Unanchored edge handling (ADR-00033 fail-closed default when temporalized)
+    lower_clean = clean.lower()
+    if "valid_from is not null" in lower_clean:
+        include_unanchored = False
+    elif "valid_from is null" in lower_clean:
+        include_unanchored = True
+    else:
+        include_unanchored = as_of_date is None
 
     return CypherSubgraphQuery(
         is_read_only=True,
@@ -153,6 +163,7 @@ def parse_cypher_subgraph_query(
         max_hops=max_hops,
         as_of_date=as_of_date,
         required_status=required_status,
+        include_unanchored=include_unanchored,
     )
 
 
@@ -196,6 +207,8 @@ def _edge_matches_filters(
     rel_types: Optional[Tuple[str, ...]],
     required_status: Optional[str],
     as_of_date: Optional[str],
+    include_unanchored: bool = False,
+    unanchored_counter: Optional[List[int]] = None,
 ) -> bool:
     if rel_types and edge["rel_type"] not in rel_types:
         return False
@@ -204,9 +217,15 @@ def _edge_matches_filters(
     if as_of_date:
         v_from = edge.get("valid_from")
         v_to = edge.get("valid_to")
-        if v_from and v_from > as_of_date:
+        if v_from is None:
+            if not include_unanchored:
+                if unanchored_counter is not None:
+                    unanchored_counter[0] += 1
+                return False
+        elif v_from > as_of_date:
             return False
-        if v_to and v_to < as_of_date:
+        # Strict half-open interval [valid_from, valid_to) per ADR-00033 Section 4.3
+        if v_to is not None and v_to <= as_of_date:
             return False
     return True
 
@@ -235,6 +254,7 @@ class InMemorySubgraphStore:
         self._edges_by_key: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
         self._adj: Dict[str, List[Dict[str, Any]]] = {}
         self._rev_adj: Dict[str, List[Dict[str, Any]]] = {}
+        self.last_unanchored_excluded: int = 0
         if edges:
             for e in edges:
                 self.add_edge(e)
@@ -270,6 +290,8 @@ class InMemorySubgraphStore:
         required_status: Optional[str],
         as_of_date: Optional[str],
         direction_tag: Optional[str] = None,
+        include_unanchored: bool = False,
+        unanchored_counter: Optional[List[int]] = None,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
         """Sorted cycle-safe BFS returning `(edges, min_hop_by_node)` from `root_ticker`."""
         visited_nodes: Set[str] = {root_ticker}
@@ -289,7 +311,14 @@ class InMemorySubgraphStore:
             )
             next_hop = depth + 1
             for edge in neighbors:
-                if not _edge_matches_filters(edge, rel_types, required_status, as_of_date):
+                if not _edge_matches_filters(
+                    edge,
+                    rel_types,
+                    required_status,
+                    as_of_date,
+                    include_unanchored=include_unanchored,
+                    unanchored_counter=unanchored_counter,
+                ):
                     continue
                 grp = str(edge.get("input_group") or edge.get("nature") or "default")
                 ekey = (edge["source"], edge["rel_type"], edge["target"], grp)
@@ -311,32 +340,52 @@ class InMemorySubgraphStore:
 
     def query_ego_subgraph(
         self,
+        ctx: PiTContext,
         ticker: Optional[str] = None,
         max_hops: int = 2,
         direction: str = "both",
-        as_of_date: Optional[str] = None,
         rel_types: Optional[Sequence[str]] = None,
-        required_status: Optional[str] = "ACTIVE_CURRENT",
+        required_status: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Returns Point-in-Time upstream/downstream ego network around `ticker` (ADR-00017)."""
-        capped_hops = max(1, min(int(max_hops), MAX_BFS_HOPS_CAP))
+        """Returns Point-in-Time upstream/downstream ego network around `ticker` (ADR-00017 / ADR-00033)."""
+        if not isinstance(ctx, PiTContext):
+            raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
+
+        capped_hops = validate_hops(int(max_hops), min_hops=1, max_hops=MAX_BFS_HOPS_CAP)
         rel_tuple = tuple(r.strip().upper() for r in rel_types if r.strip()) if rel_types else None
-        norm_date = _normalize_date_str(as_of_date)
+        norm_date = ctx.as_of_iso
+        eff_status = (
+            (required_status or "ACTIVE_CURRENT")
+            if ctx.mode == "live"
+            else (required_status if required_status and required_status != "ACTIVE_CURRENT" else None)
+        )
         norm_dir = (direction or "both").strip().lower()
         all_tickers = self.list_tickers()
+        unanchored_counter = [0]
 
         if not ticker or not ticker.strip():
             edges_out: List[Dict[str, Any]] = []
             nodes_seen: Dict[str, Dict[str, Any]] = {}
             for edge in self._edges_by_key.values():
-                if _edge_matches_filters(edge, rel_tuple, required_status, norm_date):
+                if _edge_matches_filters(
+                    edge,
+                    rel_tuple,
+                    eff_status,
+                    norm_date,
+                    include_unanchored=ctx.include_unanchored,
+                    unanchored_counter=unanchored_counter,
+                ):
                     row = dict(edge)
                     row.setdefault("hop", 1)
                     edges_out.append(row)
                     nodes_seen.setdefault(edge["source"], {"id": edge["source"], "ticker": edge["source"], "hop": 0, "role": "CONNECTED"})
                     nodes_seen.setdefault(edge["target"], {"id": edge["target"], "ticker": edge["target"], "hop": 1, "role": "CONNECTED"})
+            self.last_unanchored_excluded = unanchored_counter[0]
             return {
                 "root_ticker": None,
+                "as_of_date": norm_date,
+                "pit_mode": ctx.mode,
+                "unanchored_excluded": unanchored_counter[0],
                 "nodes": [nodes_seen[k] for k in sorted(nodes_seen)],
                 "edges": edges_out,
                 "available_tickers": all_tickers,
@@ -365,12 +414,30 @@ class InMemorySubgraphStore:
 
         if norm_dir in ("downstream", "both"):
             d_edges, d_hops = self._bfs_traverse(
-                self._adj, "target", root, capped_hops, rel_tuple, required_status, norm_date, "downstream"
+                self._adj,
+                "target",
+                root,
+                capped_hops,
+                rel_tuple,
+                eff_status,
+                norm_date,
+                "downstream",
+                include_unanchored=ctx.include_unanchored,
+                unanchored_counter=unanchored_counter,
             )
             _merge(d_edges, d_hops, "DOWNSTREAM")
         if norm_dir in ("upstream", "both"):
             u_edges, u_hops = self._bfs_traverse(
-                self._rev_adj, "source", root, capped_hops, rel_tuple, required_status, norm_date, "upstream"
+                self._rev_adj,
+                "source",
+                root,
+                capped_hops,
+                rel_tuple,
+                eff_status,
+                norm_date,
+                "upstream",
+                include_unanchored=ctx.include_unanchored,
+                unanchored_counter=unanchored_counter,
             )
             _merge(u_edges, u_hops, "UPSTREAM")
 
@@ -379,8 +446,12 @@ class InMemorySubgraphStore:
             combined_edges.values(),
             key=lambda e: (e["hop"], e["source"], e["target"], e["rel_type"]),
         )
+        self.last_unanchored_excluded = unanchored_counter[0]
         return {
             "root_ticker": root,
+            "as_of_date": norm_date,
+            "pit_mode": ctx.mode,
+            "unanchored_excluded": unanchored_counter[0],
             "nodes": ordered_nodes,
             "edges": ordered_edges,
             "available_tickers": all_tickers,
@@ -393,25 +464,44 @@ class InMemorySubgraphStore:
     ) -> List[Dict[str, Any]]:
         """Evaluates read-only Cypher against in-memory adjacency with PiT BFS."""
         parsed = parse_cypher_subgraph_query(cypher, params=params)
+        self.last_unanchored_excluded = 0
         if not parsed.is_read_only or not parsed.has_match:
             return []
 
+        unanchored_counter = [0]
         if not self.strict_query_scoping:
             # Canonical smoke-fixture fallback mode: still enforces PiT/status and blocks writes,
             # while tolerating legacy single-hop canned Cypher strings targeting unrelated roots.
-            return [
+            out = [
                 dict(edge)
                 for edge in self._edges_by_key.values()
-                if _edge_matches_filters(edge, parsed.rel_types, parsed.required_status, parsed.as_of_date)
+                if _edge_matches_filters(
+                    edge,
+                    parsed.rel_types,
+                    parsed.required_status,
+                    parsed.as_of_date,
+                    include_unanchored=parsed.include_unanchored,
+                    unanchored_counter=unanchored_counter,
+                )
             ]
+            self.last_unanchored_excluded = unanchored_counter[0]
+            return out
 
         if not parsed.root_ticker:
             results: List[Dict[str, Any]] = []
             for edge in self._edges_by_key.values():
-                if _edge_matches_filters(edge, parsed.rel_types, parsed.required_status, parsed.as_of_date):
+                if _edge_matches_filters(
+                    edge,
+                    parsed.rel_types,
+                    parsed.required_status,
+                    parsed.as_of_date,
+                    include_unanchored=parsed.include_unanchored,
+                    unanchored_counter=unanchored_counter,
+                ):
                     row = dict(edge)
                     row.setdefault("hop", 1)
                     results.append(row)
+            self.last_unanchored_excluded = unanchored_counter[0]
             return results
 
         results, _ = self._bfs_traverse(
@@ -422,7 +512,10 @@ class InMemorySubgraphStore:
             parsed.rel_types,
             parsed.required_status,
             parsed.as_of_date,
+            include_unanchored=parsed.include_unanchored,
+            unanchored_counter=unanchored_counter,
         )
+        self.last_unanchored_excluded = unanchored_counter[0]
         return results
 
     def session(self) -> Any:

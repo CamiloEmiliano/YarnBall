@@ -40,7 +40,7 @@ from ontology.guardrails import (
 )
 from ontology.reification import AnnotatedTriple, MaterialityTier, PolarityAxis
 from ontology.validation import validate_and_orient_triple
-from retrieval.temporal import TemporalQueryFilter
+from retrieval.temporal import PiTContext, TemporalQueryFilter
 from tests.fixtures.linguistic.schema import LinguisticTestCase
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "linguistic" / "checklist_cases.json"
@@ -157,12 +157,13 @@ class TestTemporalPiTSequencing:
             "MATCH (f:Company {name: 'FabCo'})-[r:SUPPLIES_TO]->(c:Company) "
             "RETURN f.name, c.name"
         )
-        scoped_cypher = temporal_engine.inject_active_coalescence(raw_cypher, as_of_date=as_of_date)
+        pit_ctx = PiTContext.from_date(as_of_date, mode="historical")
+        scoped_cypher = temporal_engine.inject_active_coalescence(raw_cypher, ctx=pit_ctx)
 
-        # Assert point-in-time invariant constraints injected into query
-        assert f"valid_from <= '{as_of_date}'" in scoped_cypher
-        assert f"valid_to >= '{as_of_date}'" in scoped_cypher
-        assert "coalesce(r.status, 'ACTIVE_CURRENT') = 'ACTIVE_CURRENT'" in scoped_cypher
+        # Assert ADR-00033 point-in-time historical invariant constraints injected into query
+        assert f"r.valid_from IS NOT NULL AND r.valid_from <= '{as_of_date}'" in scoped_cypher
+        assert f"(r.valid_to IS NULL OR r.valid_to > '{as_of_date}')" in scoped_cypher
+        assert "ACTIVE_CURRENT" not in scoped_cypher
 
         # Mathematically verify that event executed in August 2023 violates the as_of_date invariant
         assert not (event_date <= as_of_date), "Event date must strictly follow evaluation horizon"

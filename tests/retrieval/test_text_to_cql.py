@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 """Unit tests for the TextToCQL engine and safety guardrails."""
 
+from datetime import date
 import pytest
 from unittest.mock import MagicMock, patch
 
-from retrieval import TextToCQL
+from retrieval import PiTContext, TextToCQL
+
+DEFAULT_CTX = PiTContext(as_of=date(2024, 6, 1), mode="historical")
 
 
 @pytest.fixture
@@ -122,7 +125,7 @@ def test_execute_query_successful_first_try(text_to_cql_engine):
     with patch.object(text_to_cql_engine, "_call_llm", return_value=mock_llm_response), \
          patch("retrieval.text_to_cql.get_memgraph_driver", return_value=mock_driver):
 
-        res = text_to_cql_engine.execute_query("What is Apple's company node?")
+        res = text_to_cql_engine.execute_query("What is Apple's company node?", ctx=DEFAULT_CTX)
 
         assert res["status"] == "SUCCESS"
         assert res["retries_used"] == 0
@@ -148,7 +151,7 @@ def test_execute_query_self_corrects_on_error(text_to_cql_engine):
     with patch.object(text_to_cql_engine, "_call_llm", side_effect=mock_responses), \
          patch("retrieval.text_to_cql.get_memgraph_driver", return_value=mock_driver):
 
-        res = text_to_cql_engine.execute_query("Find all companies")
+        res = text_to_cql_engine.execute_query("Find all companies", ctx=DEFAULT_CTX)
 
         assert res["status"] == "SUCCESS"
         assert res["retries_used"] == 1  # Self-corrected on attempt 2

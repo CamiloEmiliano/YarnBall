@@ -96,6 +96,7 @@ def test_inmemory_store_and_operational_report_surface_provenance_counts() -> No
 
     pipeline_res = PipelineResult(
         query="Contagion from CRUS",
+        as_of_date="2024-05-01",
         is_valid_query=True,
         retrieved_subgraph=edges,
         verbalized_subgraph="CRUS -> AAPL / SONOS",
@@ -175,14 +176,14 @@ def test_workbench_subgraph_api_exposes_edge_param_provenance(tmp_path) -> None:
     edges_file = tmp_path / "data" / "snapshots" / "edges.json"
     edges_file.parent.mkdir(parents=True, exist_ok=True)
     edges_file.write_text(
-        '{"edges": [{"source": "TSM", "target": "AAPL", "rel_type": "SUPPLIES_TO"}]}',
+        '{"edges": [{"source": "TSM", "target": "AAPL", "rel_type": "SUPPLIES_TO", "valid_from": "2020-01-02"}]}',
         encoding="utf-8",
     )
     app = create_workbench_app(project_root=tmp_path)
     client = TestClient(app)
     resp = client.get(
         "/api/subgraph",
-        params={"edges_file": "data/snapshots/edges.json", "ticker": "TSM"},
+        params={"edges_file": "data/snapshots/edges.json", "ticker": "TSM", "as_of_date": "2024-06-01"},
     )
     assert resp.status_code == 200
     payload = resp.json()

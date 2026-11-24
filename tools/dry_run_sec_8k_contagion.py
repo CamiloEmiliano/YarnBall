@@ -54,7 +54,7 @@ from retrieval.reporting import (
     format_operational_contagion_report,
     validate_verbatim_citations,
 )
-from retrieval.temporal import TemporalQueryFilter
+from retrieval.temporal import PiTContext, TemporalQueryFilter
 from sft_pipeline.serving.model_client import ModelResponse, YarnBallModelClient
 
 logging.basicConfig(
@@ -265,6 +265,7 @@ def run_sec_8k_dry_run(
                         "share": 0.20,
                         "exposure_pct": 20.0,
                         "buffer_days": 45.0,
+                        "valid_from": "2018-01-01",
                         "hop": 1,
                     },
                     {
@@ -275,6 +276,7 @@ def run_sec_8k_dry_run(
                         "share": 0.10,
                         "exposure_pct": 10.0,
                         "buffer_days": 90.0,
+                        "valid_from": "2018-01-01",
                         "hop": 1,
                     },
                     {
@@ -285,6 +287,7 @@ def run_sec_8k_dry_run(
                         "share": 0.50,
                         "exposure_pct": 50.0,
                         "buffer_days": 90.0,
+                        "valid_from": "2018-01-01",
                         "hop": 2,
                     },
                 ]
@@ -299,6 +302,7 @@ def run_sec_8k_dry_run(
                         "share": 0.35,
                         "exposure_pct": 35.0,
                         "buffer_days": buffer_days,
+                        "valid_from": "2018-01-01",
                         "hop": 1,
                     },
                     {
@@ -309,6 +313,7 @@ def run_sec_8k_dry_run(
                         "share": 0.50,
                         "exposure_pct": 50.0,
                         "buffer_days": 90.0,
+                        "valid_from": "2018-01-01",
                         "hop": 2,
                     },
                 ]
@@ -322,6 +327,7 @@ def run_sec_8k_dry_run(
                         "share": 0.25,
                         "exposure_pct": 25.0,
                         "buffer_days": buffer_days,
+                        "valid_from": "2018-01-01",
                         "hop": 1,
                     }
                 ]
@@ -368,7 +374,7 @@ def run_sec_8k_dry_run(
     )
     analyst_query = AnalystQuery(
         query=query_text,
-        as_of_date=filing_date,
+        ctx=PiTContext.from_date(filing_date, mode="historical"),
         target_ticker=primary_target,
         shock_origin=shock_origin,
         shock_magnitude_pct=shock_magnitude_pct,

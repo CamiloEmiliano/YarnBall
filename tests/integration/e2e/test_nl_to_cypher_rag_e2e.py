@@ -201,9 +201,9 @@ def test_e2e_nl_to_cypher_rag_pipeline_flow(tmp_path: Path):
     assert result.refusal_reason is None
     assert result.total_latency_ms > 0
 
-    # 2. Cypher & Temporal Invariants
+    # 2. Cypher & Temporal Invariants (ADR-00033 historical interval bounds)
     assert result.cypher_query is not None
-    assert "coalesce(r.status, 'ACTIVE_CURRENT')" in result.cypher_query
+    assert "valid_from IS NOT NULL" in result.cypher_query
     assert "2024-06-01" in result.cypher_query
     assert len(graph_store.query_log) == 1
 

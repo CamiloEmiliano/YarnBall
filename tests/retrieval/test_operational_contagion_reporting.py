@@ -404,6 +404,7 @@ class TestPipelineResultIntegration:
 
         pipeline_res = PipelineResult(
             query="Analyze supply chain disruption from CRUS fab halt to AAPL",
+            as_of_date="2024-05-01",
             is_valid_query=True,
             retrieved_subgraph=[
                 {
