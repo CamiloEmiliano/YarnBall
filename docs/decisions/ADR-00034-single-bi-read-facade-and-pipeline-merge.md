@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00034
 - **Filename**: `ADR-00034-single-bi-read-facade-and-pipeline-merge.md`
 - **Date**: 2026-11-22 08:48 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `retrieval` / `synthesis` / `explorer` / `tests`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`5d25590`](../../retrieval/facade.py), [`5d25590`](../../retrieval/hybrid.py), [`5d25590`](../../retrieval/pipeline.py), [`5d25590`](../../retrieval/service.py), [`5d25590`](../../synthesis/synthesizer.py), [`5d25590`](../../synthesis/engine.py), [`5d25590`](../../tests/retrieval/test_adr00034_facade_invariants.py)
 
 ---
 
