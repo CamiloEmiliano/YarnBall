@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00035
 - **Filename**: `ADR-00035-text-unit-chunk-layer-and-evidence-links.md`
 - **Date**: 2026-11-22 08:48 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `ingestion` / `knowledge_graph` / `ontology` / `retrieval` / `tools`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`e0db8f9`](../../embedding/embedder.py), [`e0db8f9`](../../knowledge_graph/chunk_store.py), [`e0db8f9`](../../ingestion/segmentation/chunker.py), [`e0db8f9`](../../ingestion/sec/parser.py), [`e0db8f9`](../../ingestion/sec/harvester.py), [`e0db8f9`](../../knowledge_graph/graph_store.py), [`e0db8f9`](../../knowledge_graph/snapshot_manager.py), [`e0db8f9`](../../retrieval/pipeline.py), [`e0db8f9`](../../synthesis/synthesizer.py), [`e0db8f9`](../../tools/reextract_sp500_chunks.py), [`e0db8f9`](../../tests/ingestion/test_adr00035_chunk_evidence.py)
 
 ---
 
