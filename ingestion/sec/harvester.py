@@ -635,6 +635,62 @@ class EdgarWorker:
             except Exception as exc:
                 logger.debug("Exhibit 21 chunk persistence skipped for %s: %s", accession_number, exc)
 
+        # Durable-before-ephemeral write order (ADR-00036 Section 4.3 & Invariant #3)
+        if self.pg_conn:
+            from knowledge_graph.ledger import (
+                KGEdgeLedgerRecord,
+                KGNodeLedgerRecord,
+                persist_kg_edges,
+                persist_kg_nodes,
+            )
+
+            sub_ledger_nodes: List[KGNodeLedgerRecord] = [
+                KGNodeLedgerRecord(
+                    node_id=parent_name,
+                    label="Company",
+                    ticker=parent_ticker,
+                    cik=parent_cik or None,
+                    properties={"ticker": parent_ticker, "cik": parent_cik} if parent_cik else {"ticker": parent_ticker},
+                )
+            ]
+            sub_ledger_edges: List[KGEdgeLedgerRecord] = []
+            for sub in subsidiaries:
+                sub_name = sub.get("name", "").strip()
+                if not sub_name:
+                    continue
+                jur = sub.get("jurisdiction", "Unknown")
+                sub_ledger_nodes.append(
+                    KGNodeLedgerRecord(
+                        node_id=sub_name,
+                        label="Company",
+                        properties={"jurisdiction": jur},
+                    )
+                )
+                sub_ledger_edges.append(
+                    KGEdgeLedgerRecord(
+                        source_id=sub_name,
+                        target_id=parent_name,
+                        rel_type="SUBSIDIARY_OF",
+                        input_group="corporate_ownership",
+                        valid_from=valid_from_iso,
+                        known_at=known_at_iso,
+                        known_at_imputed=known_at_imputed,
+                        last_affirmed_at=valid_from_iso,
+                        is_current=True,
+                        is_temporal_unanchored=(valid_from_iso is None),
+                        evidence_chunk_ids=list(ex21_chunk_ids),
+                        evidence_status="chunked",
+                        source_type="sec_filing",
+                        accession_number=accession_number,
+                        form_type="10-K",
+                        section="Exhibit 21 - Subsidiaries",
+                        fiscal_year=fiscal_year,
+                        properties={"jurisdiction": jur},
+                    )
+                )
+            persist_kg_nodes(sub_ledger_nodes, conn=self.pg_conn)
+            persist_kg_edges(sub_ledger_edges, conn=self.pg_conn)
+
         with self.driver.session() as session:
             session.run(
                 "MERGE (p:Company {id: $id}) SET p.ticker = $ticker",
@@ -902,6 +958,100 @@ class EdgarWorker:
             except Exception as exc:
                 logger.debug("chunk_entity_links persistence skipped for %s:%s: %s", accession_number, section, exc)
 
+        # Pre-resolve cascade parameters and evidence links BEFORE durable & ephemeral writes (ADR-00036)
+        from contagion.parameters import resolve_edge_cascade_parameters
+        from knowledge_graph.ledger import (
+            KGEdgeLedgerRecord,
+            KGNodeLedgerRecord,
+            persist_kg_edges,
+            persist_kg_nodes,
+        )
+
+        prepared_edges: List[Dict[str, Any]] = []
+        ledger_edges: List[KGEdgeLedgerRecord] = []
+
+        for edge in gated_edges:
+            source_id = edge["source"]
+            target_id = edge["target"]
+            rel_type = edge["type"]
+            props = dict(edge.get("properties", {}) or {})
+            resolved_params = resolve_edge_cascade_parameters({**edge, "properties": props, "rel_type": rel_type})
+            props.update(resolved_params)
+
+            edge_cids = list(props.get("evidence_chunk_ids") or [])
+            if not edge_cids:
+                edge_cids = list(default_chunk_ids)
+            edge_cids = sorted({str(c).strip() for c in edge_cids if str(c).strip()})
+            evidence_status = "chunked" if edge_cids else "legacy_unchunked"
+            props["evidence_chunk_ids"] = edge_cids
+            props["evidence_status"] = evidence_status
+
+            input_group = str(props.get("input_group") or props.get("nature") or "default").strip() or "default"
+            prepared_edges.append(
+                {
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "rel_type": rel_type,
+                    "props": props,
+                    "edge_cids": edge_cids,
+                    "evidence_status": evidence_status,
+                }
+            )
+            ledger_edges.append(
+                KGEdgeLedgerRecord(
+                    source_id=source_id,
+                    target_id=target_id,
+                    rel_type=rel_type,
+                    input_group=input_group,
+                    valid_from=valid_from_iso,
+                    known_at=known_at_iso,
+                    known_at_imputed=known_at_imputed,
+                    last_affirmed_at=valid_from_iso,
+                    is_current=True,
+                    is_temporal_unanchored=(valid_from_iso is None),
+                    status=str(props.get("status") or "ACTIVE_CURRENT"),
+                    is_active=bool(props.get("is_active", True)),
+                    share=props.get("share"),
+                    buffer_days=props.get("buffer_days"),
+                    param_provenance=props.get("param_provenance"),
+                    evidence_chunk_ids=edge_cids,
+                    evidence_status=evidence_status,
+                    source_type="sec_filing",
+                    source_hash=f"{accession_number}:{section}",
+                    accession_number=accession_number,
+                    form_type=form_type,
+                    section=section,
+                    fiscal_year=fiscal_year,
+                    properties=props,
+                )
+            )
+
+        # Durable-before-ephemeral write order (ADR-00036 Section 4.3 & Invariant #3):
+        # Commit canonical nodes & edges to PostgreSQL kg_nodes/kg_edges strictly BEFORE Memgraph projection.
+        if self.pg_conn is not None:
+            ledger_nodes: List[KGNodeLedgerRecord] = [
+                KGNodeLedgerRecord(
+                    node_id=primary_name,
+                    label="Company",
+                    ticker=primary_ticker,
+                    properties={"ticker": primary_ticker},
+                )
+            ]
+            for node in gated_nodes:
+                nprops = dict(node.get("properties", {}) or {})
+                nlabel = "".join(c for c in node.get("type", "Company") if c.isalnum())[:MAX_LABEL_LENGTH] or "Company"
+                ledger_nodes.append(
+                    KGNodeLedgerRecord(
+                        node_id=node["id"],
+                        label=nlabel,
+                        ticker=nprops.get("ticker"),
+                        cik=nprops.get("cik"),
+                        properties=nprops,
+                    )
+                )
+            persist_kg_nodes(ledger_nodes, conn=self.pg_conn)
+            persist_kg_edges(ledger_edges, conn=self.pg_conn)
+
         with self.driver.session() as session:
             session.run(
                 "MERGE (p:Company {id: $id}) SET p.ticker = $ticker",
@@ -918,23 +1068,13 @@ class EdgarWorker:
                 session.run(query, id=canonical_id, props=props)
                 inserted_nodes.append(canonical_id)
 
-            from contagion.parameters import resolve_edge_cascade_parameters
-
-            for edge in gated_edges:
-                source_id = edge["source"]
-                target_id = edge["target"]
-                rel_type = edge["type"]
-                props = dict(edge.get("properties", {}) or {})
-                resolved_params = resolve_edge_cascade_parameters({**edge, "properties": props, "rel_type": rel_type})
-                props.update(resolved_params)
-
-                edge_cids = list(props.get("evidence_chunk_ids") or [])
-                if not edge_cids:
-                    edge_cids = list(default_chunk_ids)
-                edge_cids = sorted({str(c).strip() for c in edge_cids if str(c).strip()})
-                evidence_status = "chunked" if edge_cids else "legacy_unchunked"
-                props["evidence_chunk_ids"] = edge_cids
-                props["evidence_status"] = evidence_status
+            for item in prepared_edges:
+                source_id = item["source_id"]
+                target_id = item["target_id"]
+                rel_type = item["rel_type"]
+                props = item["props"]
+                edge_cids = item["edge_cids"]
+                evidence_status = item["evidence_status"]
 
                 query = f"""
                 MATCH (s {{id: $source}})
@@ -1087,6 +1227,22 @@ class EdgarWorker:
         valid_to_iso = valid_to_date.isoformat()
         known_at_iso = known_at_utc.isoformat() if known_at_utc else None
         terminated_on_iso = str(terminated_on).strip()[:10] if terminated_on else None
+
+        # Durable-before-ephemeral termination update (ADR-00036 Invariant #3)
+        if self.pg_conn is not None:
+            from knowledge_graph.ledger import terminate_kg_edge_in_ledger
+
+            terminate_kg_edge_in_ledger(
+                source_id=src_canonical,
+                target_id=tgt_canonical,
+                rel_type=rel_canonical,
+                valid_to=valid_to_iso,
+                terminated_on=terminated_on_iso,
+                accession_number=accession_number,
+                known_at=known_at_iso,
+                known_at_imputed=known_at_imputed,
+                conn=self.pg_conn,
+            )
 
         with self.driver.session() as session:
             session.run(

@@ -806,6 +806,105 @@ def store_graph_entities(
         except Exception as exc:
             logger.debug("PostgreSQL chunk persistence skipped/unavailable for %s: %s", source_hash, exc)
 
+    # Pre-resolve canonical edges and cascade parameters BEFORE any store write (ADR-00036 Invariant #3)
+    from contagion.parameters import resolve_edge_cascade_parameters
+    from knowledge_graph.ledger import (
+        KGEdgeLedgerRecord,
+        KGNodeLedgerRecord,
+        persist_kg_edges,
+        persist_kg_nodes,
+    )
+
+    resolved_edges: List[Dict[str, Any]] = []
+    ledger_edge_records: List[KGEdgeLedgerRecord] = []
+
+    for edge in edges:
+        source_raw = str(edge.get("source", "")).strip()
+        target_raw = str(edge.get("target", "")).strip()
+        if not source_raw or not target_raw:
+            continue
+
+        source = canonical_id_map.get(source_raw) or canonical_id_map.get(normalize_company_name(source_raw))
+        if not source:
+            res_s = active_linker.link_entity(name=source_raw)
+            source = str(res_s["company_name"]).strip() if res_s and res_s.get("company_name") else source_raw
+
+        target = canonical_id_map.get(target_raw) or canonical_id_map.get(normalize_company_name(target_raw))
+        if not target:
+            res_t = active_linker.link_entity(name=target_raw)
+            target = str(res_t["company_name"]).strip() if res_t and res_t.get("company_name") else target_raw
+
+        raw_type = str(edge.get("type", "RELATED_TO")).strip().upper()
+        rel_type = "".join(c for c in raw_type if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH] or "RELATED_TO"
+        props = {
+            k: v
+            for k, v in dict(edge.get("properties", {}) or {}).items()
+            if k not in _FORBIDDEN_MEMGRAPH_PROSE_KEYS
+        }
+        resolved_params = resolve_edge_cascade_parameters({**edge, "properties": props, "rel_type": rel_type})
+        props.update(resolved_params)
+
+        edge_cids = list(props.get("evidence_chunk_ids") or [])
+        if not edge_cids and default_chunk_ids:
+            edge_cids = list(default_chunk_ids)
+        edge_cids = sorted({str(c).strip() for c in edge_cids if str(c).strip()})
+        evidence_status = "chunked" if edge_cids else "legacy_unchunked"
+        props["evidence_chunk_ids"] = edge_cids
+        props["evidence_status"] = evidence_status
+
+        input_group = str(props.get("input_group") or props.get("nature") or "default").strip() or "default"
+        resolved_edges.append(
+            {
+                "source": source,
+                "target": target,
+                "rel_type": rel_type,
+                "props": props,
+                "evidence_chunk_ids": edge_cids,
+                "evidence_status": evidence_status,
+            }
+        )
+        ledger_edge_records.append(
+            KGEdgeLedgerRecord(
+                source_id=source,
+                target_id=target,
+                rel_type=rel_type,
+                input_group=input_group,
+                valid_from=valid_from,
+                known_at=known_at_iso,
+                known_at_imputed=known_at_imputed,
+                last_affirmed_at=valid_from,
+                is_current=True,
+                is_temporal_unanchored=is_temporal_unanchored,
+                status=str(props.get("status") or "ACTIVE_CURRENT"),
+                is_active=bool(props.get("is_active", True)),
+                share=props.get("share"),
+                buffer_days=props.get("buffer_days"),
+                param_provenance=props.get("param_provenance"),
+                evidence_chunk_ids=edge_cids,
+                evidence_status=evidence_status,
+                source_type=clean_source_type,
+                source_hash=source_hash,
+                properties=props,
+            )
+        )
+
+    ledger_node_records = [
+        KGNodeLedgerRecord(
+            node_id=node_entry["id"],
+            label=node_entry["label"],
+            ticker=node_entry["properties"].get("ticker"),
+            cik=node_entry["properties"].get("cik"),
+            properties=node_entry["properties"],
+        )
+        for node_entry in linked_nodes_by_key.values()
+    ]
+
+    # Durable-before-ephemeral write order (ADR-00036 Section 4.3 & Invariant #3):
+    # Commit canonical nodes & edges to PostgreSQL kg_nodes/kg_edges strictly BEFORE Memgraph projection.
+    if pg_conn is not None or driver is None:
+        persist_kg_nodes(ledger_node_records, conn=pg_conn)
+        persist_kg_edges(ledger_edge_records, conn=pg_conn)
+
     active_driver = driver if driver is not None else get_memgraph_driver()
 
     with active_driver.session() as session:
@@ -830,41 +929,13 @@ def store_graph_entities(
             session.run(mention_query, source_hash=source_hash, id=node_id)
 
         # 3. Insert/Merge Relationship Edges with compact evidence_chunk_ids pointers (ADR-00035)
-        from contagion.parameters import resolve_edge_cascade_parameters
-
-        for edge in edges:
-            source_raw = str(edge.get("source", "")).strip()
-            target_raw = str(edge.get("target", "")).strip()
-            if not source_raw or not target_raw:
-                continue
-
-            source = canonical_id_map.get(source_raw) or canonical_id_map.get(normalize_company_name(source_raw))
-            if not source:
-                res_s = active_linker.link_entity(name=source_raw)
-                source = str(res_s["company_name"]).strip() if res_s and res_s.get("company_name") else source_raw
-
-            target = canonical_id_map.get(target_raw) or canonical_id_map.get(normalize_company_name(target_raw))
-            if not target:
-                res_t = active_linker.link_entity(name=target_raw)
-                target = str(res_t["company_name"]).strip() if res_t and res_t.get("company_name") else target_raw
-
-            raw_type = str(edge.get("type", "RELATED_TO")).strip().upper()
-            rel_type = "".join(c for c in raw_type if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH] or "RELATED_TO"
-            props = {
-                k: v
-                for k, v in dict(edge.get("properties", {}) or {}).items()
-                if k not in _FORBIDDEN_MEMGRAPH_PROSE_KEYS
-            }
-            resolved_params = resolve_edge_cascade_parameters({**edge, "properties": props, "rel_type": rel_type})
-            props.update(resolved_params)
-
-            edge_cids = list(props.get("evidence_chunk_ids") or [])
-            if not edge_cids and default_chunk_ids:
-                edge_cids = list(default_chunk_ids)
-            edge_cids = sorted({str(c).strip() for c in edge_cids if str(c).strip()})
-            evidence_status = "chunked" if edge_cids else "legacy_unchunked"
-            props["evidence_chunk_ids"] = edge_cids
-            props["evidence_status"] = evidence_status
+        for item in resolved_edges:
+            source = item["source"]
+            target = item["target"]
+            rel_type = item["rel_type"]
+            props = item["props"]
+            edge_cids = item["evidence_chunk_ids"]
+            evidence_status = item["evidence_status"]
 
             query = f"""
             MATCH (s {{id: $source}})

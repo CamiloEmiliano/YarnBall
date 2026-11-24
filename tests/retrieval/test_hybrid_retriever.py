@@ -62,11 +62,13 @@ def test_search_dense_entities_returns_formatted_results(hybrid_seeder: HybridSe
 
 
 def test_search_dense_entities_handles_offline_fallback(hybrid_seeder: HybridSeeder) -> None:
-    """Test that dense search handles database connection errors gracefully."""
-    with patch("retrieval.hybrid.pg_connection", side_effect=Exception("DB down")), \
-         patch("embedding.embedder.embed_texts", return_value=[[0.1] * 768]):
-        results = hybrid_seeder.search_dense_entities("test query", ctx=DEFAULT_CTX)
-        assert results == []
+    """ADR-00036: Dense search re-raises DocumentStoreUnavailableError instead of returning []."""
+    from knowledge_graph.errors import DocumentStoreUnavailableError
+
+    with patch("retrieval.hybrid.pg_connection", side_effect=DocumentStoreUnavailableError("DB down")), \
+         patch("embedding.embedder.embed_texts", return_value=[[0.1] * 1024]):
+        with pytest.raises(DocumentStoreUnavailableError, match="DB down"):
+            hybrid_seeder.search_dense_entities("test query", ctx=DEFAULT_CTX)
 
 
 # ----------------------------------------------------------------------

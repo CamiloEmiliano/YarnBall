@@ -135,10 +135,18 @@ class TextToCQL:
         """Extract active node labels, relationship types, and properties via `MemgraphSubgraphStore`."""
         from retrieval.facade import MemgraphSubgraphStore
 
+        default_labels = sorted(DEFAULT_ALLOWED_LABELS)
+        default_rel_types = sorted(DEFAULT_ALLOWED_REL_TYPES)
+        if store is not None and not isinstance(store, MemgraphSubgraphStore):
+            return {
+                "labels": default_labels,
+                "relationship_types": default_rel_types,
+                "properties": ["aliases", "id", "name", "sector", "source_hash", "ticker"],
+            }
         active_store = store if isinstance(store, MemgraphSubgraphStore) else MemgraphSubgraphStore()
         return active_store.introspect_schema(
-            default_labels=sorted(DEFAULT_ALLOWED_LABELS),
-            default_rel_types=sorted(DEFAULT_ALLOWED_REL_TYPES),
+            default_labels=default_labels,
+            default_rel_types=default_rel_types,
         )
 
     # ----------------------------------------------------------------------
@@ -291,6 +299,8 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
             last_cypher = temporal_cypher
 
             # 4. Execute Query through SubgraphStorePort (ADR-00034 Invariant #1)
+            from knowledge_graph.errors import StoreUnavailableError
+
             try:
                 records = active_store.execute_guarded(
                     bounded_cypher,
@@ -299,6 +309,8 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
                 )
                 last_error = None
                 break  # Success!
+            except StoreUnavailableError:
+                raise
             except Exception as exc:
                 last_error = f"Memgraph Execution Error: {str(exc)}"
                 logger.warning("Attempt %d Memgraph execution failed: %s", attempt + 1, last_error)
@@ -318,6 +330,7 @@ Cypher: MATCH (p:Person)-[:LEADS]->(nvda:Company)-[:PRODUCES]->(prod:Product) WH
             "pit_mode": ctx.mode,
             "cypher": last_cypher,
             "status": status,
+            "degraded": status != "SUCCESS",
             "records": records,
             "record_count": len(records),
             "retries_used": retries_used,

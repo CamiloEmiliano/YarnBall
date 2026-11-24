@@ -295,6 +295,56 @@ def create_queue_table(db_name: str = "financial_rag"):
         );
         CREATE INDEX IF NOT EXISTS idx_chunk_entity_links_node
             ON chunk_entity_links (node_id);
+        CREATE TABLE IF NOT EXISTS kg_nodes (
+            node_id TEXT PRIMARY KEY,
+            label VARCHAR(64) NOT NULL DEFAULT 'Company',
+            ticker VARCHAR(20),
+            cik VARCHAR(10),
+            properties JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_kg_nodes_label ON kg_nodes (label);
+        CREATE INDEX IF NOT EXISTS idx_kg_nodes_ticker ON kg_nodes (ticker);
+        CREATE INDEX IF NOT EXISTS idx_kg_nodes_cik ON kg_nodes (cik);
+        CREATE TABLE IF NOT EXISTS kg_edges (
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            rel_type VARCHAR(64) NOT NULL,
+            input_group TEXT NOT NULL DEFAULT 'default',
+            valid_from DATE,
+            valid_to DATE,
+            known_at TIMESTAMPTZ,
+            known_at_imputed BOOLEAN NOT NULL DEFAULT FALSE,
+            last_affirmed_at DATE,
+            is_current BOOLEAN NOT NULL DEFAULT TRUE,
+            is_temporal_unanchored BOOLEAN NOT NULL DEFAULT FALSE,
+            status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE_CURRENT',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            share DOUBLE PRECISION,
+            buffer_days DOUBLE PRECISION,
+            param_provenance VARCHAR(64),
+            evidence_chunk_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+            evidence_status VARCHAR(32) NOT NULL DEFAULT 'chunked',
+            source_type VARCHAR(32),
+            source_hash TEXT,
+            accession_number VARCHAR(32),
+            form_type VARCHAR(20),
+            section TEXT,
+            fiscal_year INTEGER,
+            terminated_on DATE,
+            termination_accession VARCHAR(32),
+            termination_known_at TIMESTAMPTZ,
+            termination_known_at_imputed BOOLEAN,
+            properties JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (source_id, target_id, rel_type, input_group)
+        );
+        CREATE INDEX IF NOT EXISTS idx_kg_edges_source ON kg_edges (source_id);
+        CREATE INDEX IF NOT EXISTS idx_kg_edges_target ON kg_edges (target_id);
+        CREATE INDEX IF NOT EXISTS idx_kg_edges_validity ON kg_edges (valid_from, valid_to);
+        CREATE INDEX IF NOT EXISTS idx_kg_edges_current ON kg_edges (is_current);
     """)
     cur.execute("SELECT embedder_model, embedding_dim FROM embedding_schema_metadata WHERE id = 1;")
     existing_meta = cur.fetchone()

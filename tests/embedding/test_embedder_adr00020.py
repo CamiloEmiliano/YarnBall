@@ -142,18 +142,38 @@ def test_retrieval_service_health_and_search_error_codes(monkeypatch: pytest.Mon
     _simulate_missing_sentence_transformers(monkeypatch)
     client = TestClient(retrieval_app)
 
-    health_down = client.get("/health")
-    assert health_down.status_code == 503
-    assert health_down.json()["ready"] is False
+    # /health is a pure liveness check (ADR-00036 Section 4.5)
+    health_resp = client.get("/health")
+    assert health_resp.status_code == 200
+    assert health_resp.json()["status"] == "alive"
 
-    search_down = client.post("/search", json={"query": "TSMC fab", "as_of": "2024-05-01", "k": 3})
-    assert search_down.status_code == 503
+    # /ready surfaces 503 with explicit reasons when embedder is unavailable
+    with patch(
+        "retrieval.service._check_postgres_and_schema_metadata",
+        return_value={
+            "postgres": {"ready": True, "detail": None},
+            "embedding_schema_metadata": {"ready": True, "detail": None},
+        },
+    ), patch(
+        "retrieval.service.check_memgraph_readiness",
+        return_value={"ready": True, "connected": True, "hydrated": True, "detail": None},
+    ), patch(
+        "retrieval.service.check_ollama_models_ready",
+        return_value={"ready": True, "required": [], "present": [], "missing": [], "detail": None},
+    ):
+        ready_down = client.get("/ready")
+        assert ready_down.status_code == 503
+        assert ready_down.json()["ready"] is False
+        assert any("embedder:" in r for r in ready_down.json()["reasons"])
 
-    monkeypatch.setenv("YARNBALL_EMBEDDER_MOCK", "1")
-    health_ok = client.get("/health")
-    assert health_ok.status_code == 200
-    assert health_ok.json()["ready"] is True
-    assert health_ok.json()["mock"] is True
+        search_down = client.post("/search", json={"query": "TSMC fab", "as_of": "2024-05-01", "k": 3})
+        assert search_down.status_code == 503
+
+        monkeypatch.setenv("YARNBALL_EMBEDDER_MOCK", "1")
+        ready_ok = client.get("/ready")
+        assert ready_ok.status_code == 200
+        assert ready_ok.json()["ready"] is True
+        assert ready_ok.json()["checks"]["embedder"]["mock"] is True
 
 
 def test_streaming_consumer_routes_embedder_failure_to_dlt_and_checks_startup(

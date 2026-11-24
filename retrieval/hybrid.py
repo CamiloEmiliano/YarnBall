@@ -29,6 +29,7 @@ except ImportError:
     pass
 
 from knowledge_graph.db import pg_connection
+from knowledge_graph.errors import DocumentStoreUnavailableError
 from .temporal import PiTContext
 from .text_to_cql import TextToCQL
 
@@ -88,8 +89,8 @@ class HybridSeeder:
             logger.error("Dense query embedding unavailable or invalid for query '%s'", query[:80])
             raise
         except Exception as exc:
-            logger.warning("Embedding generation failed (%s); returning empty dense results", exc)
-            return None
+            logger.error("Dense query embedding failed (%s)", exc)
+            raise EmbedderUnavailableError(f"Dense query embedding failed: {exc}") from exc
 
     # ----------------------------------------------------------------------
     # 1. Point-in-Time Dense Semantic Entity Search (SCD Type 2 pgvector)
@@ -158,8 +159,11 @@ class HybridSeeder:
                     )
                 if hasattr(cur, "close"):
                     cur.close()
+        except DocumentStoreUnavailableError:
+            raise
         except Exception as exc:
-            logger.warning("pgvector similarity search query failed: %s", exc)
+            logger.error("pgvector entity similarity search failed: %s", exc)
+            raise DocumentStoreUnavailableError(f"pgvector entity similarity search failed: {exc}") from exc
 
         return results
 
@@ -214,8 +218,11 @@ class HybridSeeder:
                     )
                 if hasattr(cur, "close"):
                     cur.close()
+        except DocumentStoreUnavailableError:
+            raise
         except Exception as exc:
-            logger.warning("pgvector passage similarity search query failed: %s", exc)
+            logger.error("pgvector passage similarity search failed: %s", exc)
+            raise DocumentStoreUnavailableError(f"pgvector passage similarity search failed: {exc}") from exc
 
         return passages
 
@@ -255,8 +262,13 @@ class HybridSeeder:
                         entity_ids.append(str(row[0]))
                 if hasattr(cur, "close"):
                     cur.close()
+        except DocumentStoreUnavailableError:
+            raise
         except Exception as exc:
-            logger.warning("PostgreSQL passage-to-entity lineage lookup failed: %s", exc)
+            logger.error("PostgreSQL passage-to-entity lineage lookup failed: %s", exc)
+            raise DocumentStoreUnavailableError(
+                f"PostgreSQL passage-to-entity lineage lookup failed: {exc}"
+            ) from exc
 
         return entity_ids
 
@@ -309,8 +321,11 @@ class HybridSeeder:
                     )
                 if hasattr(cur, "close"):
                     cur.close()
+        except DocumentStoreUnavailableError:
+            raise
         except Exception as exc:
-            logger.warning("Could not fetch article context from PostgreSQL: %s", exc)
+            logger.error("Could not fetch article context from PostgreSQL: %s", exc)
+            raise DocumentStoreUnavailableError(f"PostgreSQL article context query failed: {exc}") from exc
 
         return articles
 

@@ -237,7 +237,7 @@ def _parse_json_dict(raw: Any) -> Dict[str, Any]:
         try:
             loaded = json.loads(raw)
             return dict(loaded) if isinstance(loaded, dict) else {}
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return {}
     return {}
 

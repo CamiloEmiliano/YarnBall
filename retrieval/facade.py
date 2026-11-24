@@ -30,6 +30,7 @@ from typing import (
 )
 
 import knowledge_graph.memgraph_driver as _memgraph_driver
+from knowledge_graph.errors import GraphStoreUnavailableError, StoreUnavailableError
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail
 from retrieval.offline_store import InMemorySubgraphStore, _normalize_edge_record
 from retrieval.temporal import DEFAULT_TEMPORAL_FILTER, PiTContext, TemporalQueryFilter, validate_hops
@@ -54,7 +55,7 @@ def _record_to_dict(record: Any) -> Dict[str, Any]:
             return dict(data)
     try:
         return dict(record)
-    except Exception:
+    except (TypeError, ValueError):
         return {"raw": str(record)}
 
 
@@ -317,25 +318,23 @@ class MemgraphSubgraphStore:
         driver = self._resolve_driver()
         try:
             with driver.session() as session:
-                try:
-                    res_lbl = session.run("MATCH (n) RETURN DISTINCT labels(n) AS lbls LIMIT 100")
-                    for r in res_lbl:
-                        for lbl in r.get("lbls", []):
-                            if lbl:
-                                labels.add(str(lbl))
-                except Exception:
-                    pass
+                res_lbl = session.run("MATCH (n) RETURN DISTINCT labels(n) AS lbls LIMIT 100")
+                for r in res_lbl:
+                    for lbl in r.get("lbls", []):
+                        if lbl:
+                            labels.add(str(lbl))
 
-                try:
-                    res_rel = session.run("MATCH ()-[r]->() RETURN DISTINCT type(r) AS rel LIMIT 100")
-                    for r in res_rel:
-                        rel = r.get("rel")
-                        if rel:
-                            rel_types.add(str(rel))
-                except Exception:
-                    pass
+                res_rel = session.run("MATCH ()-[r]->() RETURN DISTINCT type(r) AS rel LIMIT 100")
+                for r in res_rel:
+                    rel = r.get("rel")
+                    if rel:
+                        rel_types.add(str(rel))
+        except StoreUnavailableError:
+            raise
         except Exception as exc:
-            logger.debug("Could not query active schema from Memgraph: %s. Using default schema.", exc)
+            raise GraphStoreUnavailableError(
+                f"Failed to introspect active Memgraph schema: {exc}"
+            ) from exc
 
         return {
             "labels": sorted(labels),
@@ -397,7 +396,7 @@ def query_bi(
     if not isinstance(ctx, PiTContext):
         raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
 
-    from retrieval.pipeline import AnalystQuery, GraphRAGPipelineOrchestrator
+    from retrieval.pipeline import AnalystQuery, GraphRAGPipelineOrchestrator, PipelineResult
 
     validated_hops = validate_hops(hops)
     active_store: SubgraphStorePort = store if store is not None else MemgraphSubgraphStore()
@@ -423,7 +422,27 @@ def query_bi(
         initial_durations=initial_durations,
         initial_onsets=initial_onsets,
     )
-    return orchestrator.run(analyst_query)
+    try:
+        return orchestrator.run(analyst_query)
+    except StoreUnavailableError as exc:
+        logger.error("query_bi returning explicit degraded outcome due to store outage: %s", exc)
+        return PipelineResult(
+            query=question,
+            as_of_date=ctx.as_of_iso,
+            cypher_query=None,
+            is_valid_query=False,
+            degraded=True,
+            degraded_reasons=[f"store_unavailable: {exc}"],
+            refusal_reason=str(exc),
+            retrieved_subgraph=[],
+            seed_hits=[],
+            articles=[],
+            verbalized_subgraph=f"DEGRADED: Backing store unavailable ({exc}). Exposure cannot be evaluated.",
+            contagion_verdict=f"DEGRADED: Backing store unavailable ({exc}). Exposure cannot be determined.",
+            contagion_think_trace=None,
+            latency_breakdown_ms={},
+            total_latency_ms=0.0,
+        )
 
 
 __all__ = [

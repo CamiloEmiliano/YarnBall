@@ -30,6 +30,7 @@ from contagion import (
     ConvergentShockSummary,
     SparseNetworkCascadeEngine,
 )
+from knowledge_graph.errors import StoreUnavailableError
 from retrieval.guardrails.schema_guardrail import CypherASTWhitelistGuardrail, ValidationResult
 from retrieval.temporal import PiTContext, TemporalQueryFilter, validate_hops
 from sft_pipeline.rejection_queue import ErrorStage, RuntimeRejectionQueue
@@ -94,6 +95,8 @@ class PipelineResult(BaseModel):
     as_of_date: str
     cypher_query: Optional[str] = None
     is_valid_query: bool
+    degraded: bool = False
+    degraded_reasons: List[str] = Field(default_factory=list)
     refusal_reason: Optional[str] = None
     retrieved_subgraph: List[Dict[str, Any]] = Field(default_factory=list)
     seed_hits: List[Dict[str, Any]] = Field(default_factory=list)
@@ -130,6 +133,11 @@ class PipelineResult(BaseModel):
         model_mode: str = "LIVE_LLM",
     ) -> Any:
         """Convert pipeline result and event metadata into a validated OperationalContagionReport (ADR-00011)."""
+        if self.degraded:
+            reasons = "; ".join(self.degraded_reasons) or self.refusal_reason or "backing store unavailable"
+            raise StoreUnavailableError(
+                f"Cannot build OperationalContagionReport from degraded retrieval result: {reasons}"
+            )
         from .reporting import build_operational_contagion_report
 
         return build_operational_contagion_report(
@@ -363,6 +371,9 @@ class GraphRAGPipelineOrchestrator:
                 return raw if isinstance(raw, list) else [raw]
             logger.warning("Unrecognized graph_driver interface: %s", type(self.graph_driver))
             return []
+        except StoreUnavailableError:
+            logger.error("Graph store unavailable during query execution.")
+            raise
         except Exception as exc:
             logger.error("Graph store execution error: %s", exc)
             self.rejection_queue.record_failure(
@@ -372,7 +383,7 @@ class GraphRAGPipelineOrchestrator:
                 error_stage=ErrorStage.SYNTAX_MALFORMED,
                 error_message=f"Graph execution failed: {exc}",
             )
-            return []
+            raise
 
     def _normalize_graph_records_to_edges(
         self, records: List[Dict[str, Any]]
@@ -476,6 +487,28 @@ class GraphRAGPipelineOrchestrator:
         """Run the consolidated Domain 1 GraphRAG operational pipeline."""
         start_time = time.perf_counter()
         latencies: Dict[str, float] = {}
+        degraded_reasons: List[str] = []
+
+        def _build_degraded(reason: str, *, cypher_text: Optional[str] = None) -> PipelineResult:
+            reasons = [*degraded_reasons, reason]
+            total_ms = (time.perf_counter() - start_time) * 1000.0
+            return PipelineResult(
+                query=analyst_query.query,
+                as_of_date=analyst_query.as_of_date,
+                cypher_query=cypher_text,
+                is_valid_query=False,
+                degraded=True,
+                degraded_reasons=reasons,
+                refusal_reason=reason,
+                retrieved_subgraph=[],
+                seed_hits=seed_hits_payload,
+                articles=articles,
+                verbalized_subgraph=f"DEGRADED: Backing store unavailable ({reason}). Exposure cannot be evaluated.",
+                contagion_verdict=f"DEGRADED: Backing store unavailable ({reason}). Exposure cannot be determined.",
+                contagion_think_trace=None,
+                latency_breakdown_ms=latencies,
+                total_latency_ms=total_ms,
+            )
 
         # -------------------------------------------------------------
         # STEP 0 (Optional): Hybrid Point-in-Time Seeding (ADR-00034)
@@ -485,12 +518,16 @@ class GraphRAGPipelineOrchestrator:
         articles: List[Dict[str, Any]] = []
         if self.seeder is not None:
             t_seed = time.perf_counter()
-            seed_bundle = self.seeder.seed_with_context(
-                analyst_query.query,
-                ctx=analyst_query.ctx,
-                store=self.store,
-                include_cql=False,
-            )
+            try:
+                seed_bundle = self.seeder.seed_with_context(
+                    analyst_query.query,
+                    ctx=analyst_query.ctx,
+                    store=self.store,
+                    include_cql=False,
+                )
+            except StoreUnavailableError as exc:
+                latencies["hybrid_seeding_ms"] = (time.perf_counter() - t_seed) * 1000.0
+                return _build_degraded(f"seeder_store_unavailable: {exc}")
             hits = seed_bundle.get("hits", [])
             seed_hits_payload = [h.to_dict() if hasattr(h, "to_dict") else dict(h) for h in hits]
             seed_ids = [str(h["node_id"]) for h in seed_hits_payload if h.get("node_id")]
@@ -589,11 +626,21 @@ class GraphRAGPipelineOrchestrator:
         t0 = time.perf_counter()
         raw_records: List[Dict[str, Any]] = []
         if not skip_cypher_execution:
-            raw_records = self.execute_graph_query(
-                sanitized_cypher,
-                ctx=analyst_query.ctx,
-                params={"as_of_date": analyst_query.ctx.as_of_iso},
-            )
+            try:
+                raw_records = self.execute_graph_query(
+                    sanitized_cypher,
+                    ctx=analyst_query.ctx,
+                    params={"as_of_date": analyst_query.ctx.as_of_iso},
+                )
+            except StoreUnavailableError as exc:
+                latencies["graph_execution_ms"] = (time.perf_counter() - t0) * 1000.0
+                return _build_degraded(
+                    f"graph_store_unavailable: {exc}",
+                    cypher_text=temporalized_cypher,
+                )
+            except Exception as exc:
+                degraded_reasons.append(f"graph_execution_failed: {exc}")
+                logger.warning("Graph query execution degraded: %s", exc)
         unanchored_excluded = int(
             getattr(self.store, "last_unanchored_excluded", 0)
             or getattr(self.graph_driver, "last_unanchored_excluded", 0)
@@ -613,8 +660,15 @@ class GraphRAGPipelineOrchestrator:
                     unanchored_excluded,
                     int(getattr(self.store, "last_unanchored_excluded", 0) or 0),
                 )
+            except StoreUnavailableError as exc:
+                latencies["graph_execution_ms"] = (time.perf_counter() - t0) * 1000.0
+                return _build_degraded(
+                    f"graph_store_unavailable: {exc}",
+                    cypher_text=temporalized_cypher,
+                )
             except Exception as exc:
-                logger.warning("SubgraphStorePort seed traversal failed: %s", exc)
+                degraded_reasons.append(f"seed_traversal_failed: {exc}")
+                logger.warning("SubgraphStorePort seed traversal degraded: %s", exc)
 
         normalized_edges = self._merge_edges(cypher_edges, seeded_edges)
         latencies["graph_execution_ms"] = (time.perf_counter() - t0) * 1000.0
@@ -658,7 +712,8 @@ class GraphRAGPipelineOrchestrator:
                     else:
                         target_summary = max(cascade_summaries.values(), key=lambda s: s.peak_shock_pct)
             except Exception as exc:
-                logger.warning("Cascade engine propagation warning: %s", exc)
+                degraded_reasons.append(f"cascade_propagation_failed: {exc}")
+                logger.warning("Cascade engine propagation degraded: %s", exc)
             latencies["cascade_engine_ms"] = (time.perf_counter() - t_casc) * 1000.0
 
         verbalized_context = self.verbalizer.verbalize(
@@ -692,8 +747,10 @@ class GraphRAGPipelineOrchestrator:
             query=analyst_query.query,
             as_of_date=analyst_query.as_of_date,
             cypher_query=temporalized_cypher,
-            is_valid_query=True,
-            refusal_reason=None,
+            is_valid_query=not bool(degraded_reasons),
+            degraded=bool(degraded_reasons),
+            degraded_reasons=degraded_reasons,
+            refusal_reason="; ".join(degraded_reasons) if degraded_reasons else None,
             retrieved_subgraph=normalized_edges,
             seed_hits=seed_hits_payload,
             articles=articles,

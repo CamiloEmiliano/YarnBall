@@ -19,7 +19,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger("model_client")
 
@@ -309,4 +309,74 @@ class YarnBallModelClient:
                         return " ".join(truncated_words), True
 
         return text, False
+
+
+def check_ollama_models_ready(
+    required_models: Optional[Sequence[str]] = None,
+    *,
+    ollama_url: Optional[str] = None,
+    timeout_sec: float = 3.0,
+) -> Dict[str, Any]:
+    """Verify required Ollama model tags (`yarnball-qwen:7b` & `qwen3-embedding:0.6b`) via `/api/tags` (ADR-00036)."""
+    import embedding.embedder as _embedder
+
+    if required_models is None:
+        req_list: List[str] = [os.getenv("YARNBALL_MODEL_TAG", DEFAULT_MODEL_TAG).strip()]
+        emb_model = _embedder._get_model_name()
+        if "/" not in emb_model and not emb_model.startswith("sentence-transformers"):
+            req_list.append(emb_model)
+    else:
+        req_list = [str(m).strip() for m in required_models if str(m).strip()]
+
+    base_url = (
+        ollama_url
+        or os.getenv("OLLAMA_API_BASE")
+        or os.getenv("OLLAMA_URL")
+        or "http://localhost:11434"
+    ).strip().rstrip("/")
+    for suffix in ("/api/generate", "/api/chat", "/api/embed", "/api/tags"):
+        if base_url.endswith(suffix):
+            base_url = base_url[: -len(suffix)]
+            break
+    tags_url = f"{base_url}/api/tags"
+
+    try:
+        req = urllib.request.Request(tags_url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return {
+            "ready": False,
+            "required": req_list,
+            "present": [],
+            "missing": list(req_list),
+            "tags_url": tags_url,
+            "detail": f"ollama_unreachable: {exc}",
+        }
+
+    models_raw = payload.get("models", []) if isinstance(payload, dict) else []
+    present: List[str] = []
+    for entry in models_raw:
+        if isinstance(entry, dict):
+            name = str(entry.get("name") or entry.get("model") or "").strip()
+            if name:
+                present.append(name)
+
+    def _has_model(target: str) -> bool:
+        if target in present:
+            return True
+        if ":" not in target and f"{target}:latest" in present:
+            return True
+        return any(p == target or p.startswith(f"{target}:") for p in present)
+
+    missing = [m for m in req_list if not _has_model(m)]
+    return {
+        "ready": len(missing) == 0,
+        "required": req_list,
+        "present": sorted(present),
+        "missing": missing,
+        "tags_url": tags_url,
+        "detail": None if not missing else f"missing_ollama_models: {', '.join(missing)}",
+    }
+
 

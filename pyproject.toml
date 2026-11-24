@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graphrag-finance"
+version = "0.1.0"
+description = "YarnBall Point-in-Time Financial GraphRAG & Supply-Chain Contagion Platform"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6.0",
+    "python-dotenv>=1.0.1",
+    "psycopg[binary]>=3.2.2",
+    "neo4j>=5.14.1",
+    "numpy>=1.26.0",
+    "regex>=2023.12.25",
+    "pyarrow>=14.0.0",
+    "rapidfuzz>=3.6.0",
+]
+
+[project.optional-dependencies]
+retrieval = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.30.0",
+    "kafka-python>=2.0.2",
+]
+ingestion = [
+    "edgartools>=3.0.0",
+    "feedparser>=6.0.8",
+    "httpx>=0.27.0",
+    "tenacity>=9.0.0",
+    "APScheduler>=3.10.0",
+    "kafka-python>=2.0.2",
+    "duckdb>=1.0.0",
+    "beautifulsoup4>=4.12.0",
+    "yfinance>=0.2.40",
+]
+explorer = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.30.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "mypy>=1.10.0",
+    "httpx>=0.27.0",
+    "PyYAML>=6.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "contagion*",
+    "curation*",
+    "embedding*",
+    "explorer*",
+    "ingestion*",
+    "knowledge_graph*",
+    "ontology*",
+    "retrieval*",
+    "sft_pipeline*",
+    "streaming*",
+    "synthesis*",
+    "tools*",
+    "universe*",
+]

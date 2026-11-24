@@ -1,8 +1,17 @@
 # knowledge_graph/__init__.py
 """Knowledge Graph persistence, Memgraph driver management, and entity resolution subsystem."""
 
-from knowledge_graph.db import pg_connection
-from knowledge_graph.memgraph_driver import get_memgraph_driver
+from knowledge_graph.db import get_connection, is_pg_mock_enabled, pg_connection
+from knowledge_graph.errors import (
+    DocumentStoreUnavailableError,
+    GraphStoreUnavailableError,
+    StoreUnavailableError,
+)
+from knowledge_graph.memgraph_driver import (
+    get_memgraph_driver,
+    is_graph_mock_enabled,
+    reset_memgraph_driver_cache,
+)
 from knowledge_graph.snapshot_manager import SnapshotManager
 from knowledge_graph.entity_resolver import (
     EntityResolver,
@@ -15,8 +24,15 @@ from knowledge_graph.entity_resolver import (
 from knowledge_graph.embedding_store import format_node_embedding_text, store_node_embeddings
 
 __all__ = [
+    "DocumentStoreUnavailableError",
+    "GraphStoreUnavailableError",
+    "StoreUnavailableError",
+    "get_connection",
+    "is_pg_mock_enabled",
     "pg_connection",
     "get_memgraph_driver",
+    "is_graph_mock_enabled",
+    "reset_memgraph_driver_cache",
     "SnapshotManager",
     "EntityResolver",
     "is_blacklisted_publisher",

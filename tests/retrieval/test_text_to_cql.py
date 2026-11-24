@@ -99,6 +99,7 @@ def test_clean_cypher_markdown_fences():
 # ----------------------------------------------------------------------
 # 4. Schema Extraction Tests
 # ----------------------------------------------------------------------
+@pytest.mark.offline
 def test_get_active_schema_returns_expected_structure(text_to_cql_engine):
     """Test that get_active_schema returns node labels, relationship types, and properties."""
     schema = text_to_cql_engine.get_active_schema()

@@ -1,15 +1,26 @@
 # ------------------------------------------------------------------------------
+# YarnBall Financial GraphRAG Deployable Topology (ADR-00036)
+# - Memgraph runs purely in-memory (no persistent volume) and is hydrated
+#   deterministically from durable PostgreSQL `kg_nodes` / `kg_edges` on boot.
+# - Dead `scraper` (`ingest.scraping_worker`) service removed per ADR-00036 &
+#   data_sources policy.
+# ------------------------------------------------------------------------------
 services:
   memgraph:
     image: memgraph/memgraph-mage:latest
     container_name: memgraph
     ports:
       - "${MEMGRAPH_PORT:-7687}:7687"
-
     environment:
       - MEMGRAPH_ENABLE_UI=1
       - MEMGRAPH_USER=${MEMGRAPH_USER}
       - MEMGRAPH_PASSWORD=${MEMGRAPH_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/7687 && exec 3<&- && exec 3>&- || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     restart: unless-stopped
 
   # Memgraph Lab (UI) service
@@ -22,8 +33,10 @@ services:
       - QUICK_CONNECT_MG_HOST=memgraph
       - QUICK_CONNECT_MG_PORT=7687
     depends_on:
-      - memgraph
+      memgraph:
+        condition: service_healthy
     restart: unless-stopped
+
   postgres:
     image: pgvector/pgvector:pg16
     container_name: graphrag_pg
@@ -41,6 +54,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
   # Kafka service (KRaft mode, no Zookeeper)
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -68,7 +82,7 @@ services:
       retries: 5
       start_period: 15s
 
-  # Sidecar service that runs DB initialisation once
+  # One-shot sidecar service that runs PostgreSQL schema initialisation once
   db_init:
     build:
       context: .
@@ -79,11 +93,30 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["python", "tools/init_db.py"]
-    restart: no
+    command: ["python", "-m", "tools.init_db"]
+    restart: "no"
     mem_limit: 1g
 
-  # Scheduler service that periodically runs Finnhub ingestion via APScheduler
+  # One-shot startup hydrator that rebuilds ephemeral Memgraph RAM from Postgres ledger (ADR-00036)
+  memgraph_hydrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: graphrag_finance:latest
+    container_name: graphrag_memgraph_hydrator
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db_init:
+        condition: service_completed_successfully
+      memgraph:
+        condition: service_healthy
+    command: ["python", "-m", "tools.hydrate_memgraph"]
+    restart: "no"
+    mem_limit: 1g
+
+  # Scheduler service that periodically runs Finnhub live streaming ingestion via APScheduler
   finnhub_scheduler:
     build:
       context: .
@@ -97,6 +130,8 @@ services:
         condition: service_healthy
       db_init:
         condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -104,8 +139,48 @@ services:
       POSTGRES_PORT: ${POSTGRES_PORT}
       FINANCIAL_RAG_DB: ${FINANCIAL_RAG_DB}
     command: ["python", "-m", "tools.scheduler"]
-# ------------------------------------------------------------------------------
 
+  # Kafka consumer persisting raw financial news & embeddings into PostgreSQL
+  stream_consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: graphrag_finance:latest
+    container_name: graphrag_stream_consumer
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      db_init:
+        condition: service_completed_successfully
+    command: ["python", "-m", "streaming.consumer"]
+
+  # Kafka consumer committing extracted assertions to Postgres kg_nodes/kg_edges then Memgraph RAM
+  memgraph_consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: graphrag_finance:latest
+    container_name: graphrag_memgraph_consumer
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      db_init:
+        condition: service_completed_successfully
+      memgraph:
+        condition: service_healthy
+      memgraph_hydrator:
+        condition: service_completed_successfully
+    command: ["python", "-m", "knowledge_graph.memgraph_consumer"]
+
+  # Consolidated BI Retrieval FastAPI service (ADR-00034 / ADR-00036)
   retriever:
     build:
       context: .
@@ -118,25 +193,11 @@ services:
       postgres:
         condition: service_healthy
       memgraph:
-        condition: service_started
+        condition: service_healthy
+      memgraph_hydrator:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
-  scraper:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: graphrag_finance:latest
-    container_name: graphrag_scraper
-    restart: unless-stopped
-    env_file: .env
-    depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      db_init:
-        condition: service_completed_successfully
-    command: ["python", "-m", "ingest.scraping_worker"]
 
 volumes:
   pgdata:

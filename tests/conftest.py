@@ -24,3 +24,22 @@ os.environ["POSTGRES_URL"] = host_dsn
 # Ensure EDGAR library writes to /tmp instead of read-only ~/.edgar
 os.environ["EDGAR_LOCAL_DATA_DIR"] = "/tmp/edgar"
 Path("/tmp/edgar").mkdir(parents=True, exist_ok=True)
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _adr00036_offline_mock_opt_in(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enable explicit store mocks ONLY for tests marked `@pytest.mark.offline` (ADR-00036)."""
+    from knowledge_graph.memgraph_driver import reset_memgraph_driver_cache
+
+    reset_memgraph_driver_cache()
+    if request.node.get_closest_marker("offline") is not None:
+        monkeypatch.setenv("YARNBALL_GRAPH_MOCK", "1")
+        monkeypatch.setenv("YARNBALL_PG_MOCK", "1")
+    else:
+        monkeypatch.delenv("YARNBALL_GRAPH_MOCK", raising=False)
+        monkeypatch.delenv("YARNBALL_PG_MOCK", raising=False)

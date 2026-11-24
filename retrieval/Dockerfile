@@ -2,24 +2,37 @@ FROM python:3.11-slim
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
 
-# System packages required for Python dependencies
+# System packages required for lightweight retrieval runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libpq-dev python3-dev libssl-dev libcurl4-openssl-dev make cmake openssl \
+    gcc libpq-dev python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only the requirements file first (allows Docker cache reuse)
-COPY retrieval/requirements.txt .
+# Stage 1: Copy packaging metadata & requirements first to cache third-party layers
+# (No in-container PyTorch or sentence-transformers; embeddings run via Ollama /api/embed per ADR-00035)
+COPY pyproject.toml ./pyproject.toml
+COPY retrieval/requirements.txt ./retrieval/requirements.txt
 
-# Install Python dependencies (excluding pymgclient)
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r retrieval/requirements.txt
 
-# Copy the application source code
+# Stage 2: Selectively copy ONLY runtime source packages (no data/, tests/, docs/)
 COPY retrieval ./retrieval
 COPY knowledge_graph ./knowledge_graph
 COPY embedding ./embedding
+COPY ontology ./ontology
+COPY contagion ./contagion
+COPY synthesis ./synthesis
+COPY curation ./curation
+COPY sft_pipeline ./sft_pipeline
+COPY universe ./universe
 COPY tools ./tools
+
+# Install local package cleanly without PYTHONPATH hacks
+RUN pip install --no-cache-dir --no-deps .
+
+# Build-time import smoke verification (ADR-00036 Invariant #5)
+RUN python -c "import retrieval.service, retrieval.pipeline, synthesis.synthesizer"
 
 EXPOSE 8000
 

@@ -21,6 +21,7 @@ class _RecordingCursor:
     def __init__(self, executed: List[Tuple[str, Any]], rows: List[Tuple[Any, ...]] | None = None) -> None:
         self.executed = executed
         self._rows = rows or []
+        self._last_sql = ""
 
     def __enter__(self) -> "_RecordingCursor":
         return self
@@ -29,9 +30,12 @@ class _RecordingCursor:
         return False
 
     def execute(self, sql: str, params: Any = None) -> None:
+        self._last_sql = sql
         self.executed.append((sql, params))
 
     def fetchall(self) -> List[Tuple[Any, ...]]:
+        if "FROM financial_news_queue" in self._last_sql or "FROM node_embedding_sources" in self._last_sql:
+            return []
         return list(self._rows)
 
     def close(self) -> None:
