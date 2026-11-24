@@ -18,7 +18,7 @@ from typing import Dict, List, Optional, Pattern, Tuple
 
 @dataclass
 class FilingMetadata:
-    """Metadata describing the parent filing."""
+    """Metadata describing the parent filing or news document."""
 
     cik: str
     ticker: Optional[str] = None
@@ -26,16 +26,31 @@ class FilingMetadata:
     form_type: str = "10-K"
     period: Optional[str] = None
     filing_date: Optional[str] = None
+    accession_number: Optional[str] = None
+    doc_id: Optional[str] = None
 
     def __post_init__(self) -> None:
-        # Enforce zero-padded 10-digit CIK
-        self.cik = str(self.cik).strip().zfill(10)
+        # Enforce zero-padded 10-digit CIK when numeric/non-empty
+        raw_cik = str(self.cik).strip()
+        self.cik = raw_cik.zfill(10) if raw_cik else "0000000000"
         if self.ticker:
             self.ticker = self.ticker.strip().upper()
         if self.company_name:
             self.company_name = self.company_name.strip()
         if self.form_type:
             self.form_type = self.form_type.strip().upper()
+        if self.accession_number:
+            self.accession_number = str(self.accession_number).strip()
+        if self.doc_id:
+            self.doc_id = str(self.doc_id).strip()
+
+    @property
+    def canonical_doc_id(self) -> str:
+        if self.doc_id:
+            return self.doc_id
+        if self.accession_number:
+            return self.accession_number
+        return f"{self.cik}_{self.form_type}"
 
     def format_header(self, section_name: str) -> str:
         """Format immutable metadata header to prepend to each chunk."""
@@ -180,11 +195,11 @@ def estimate_token_count(text: str) -> int:
 
 
 class FinancialSectionSegmenter:
-    """Pre-segments SEC filings into section-bounded, token-capped chunks."""
+    """Pre-segments SEC filings and news articles into section-bounded, token-capped chunks (ADR-00035)."""
 
     def __init__(
         self,
-        max_tokens: int = 1500,
+        max_tokens: int = 800,
         overlap_tokens: int = 120,
         min_chunk_tokens: int = 40,
         section_patterns: Optional[List[Tuple[str, Pattern]]] = None,
@@ -198,37 +213,34 @@ class FinancialSectionSegmenter:
         self,
         raw_text: str,
         metadata: FilingMetadata,
+        *,
+        default_section_name: Optional[str] = None,
     ) -> List[FilingChunk]:
-        """Segment filing text into bounded chunks with metadata headers.
-
-        Args:
-            raw_text: Full SEC filing or section text.
-            metadata: Filing metadata container.
-
-        Returns:
-            List of FilingChunk objects, each strictly <= max_tokens.
-        """
+        """Segment filing text into bounded chunks with deterministic ADR-00035 chunk IDs."""
         if not raw_text or not raw_text.strip():
             return []
 
-        # 1. Detect section boundaries
-        sections = self._extract_sections(raw_text)
+        from knowledge_graph.chunk_store import make_chunk_id
 
+        # 1. Detect section boundaries
+        sections = self._extract_sections(raw_text, default_section_name=default_section_name)
+        doc_key = metadata.canonical_doc_id
         chunks: List[FilingChunk] = []
-        global_chunk_idx = 1
+        section_ordinals: Dict[str, int] = {}
 
         for sec_name, sec_text, sec_start, sec_end in sections:
             header_str = metadata.format_header(sec_name)
             header_tokens = estimate_token_count(header_str)
             content_budget = max(200, self.max_tokens - header_tokens - 10)
 
-            # 2. Check if section fits directly in one chunk
             sec_tokens = estimate_token_count(sec_text)
             if sec_tokens <= content_budget:
+                ord_idx = section_ordinals.get(sec_name, 0) + 1
+                section_ordinals[sec_name] = ord_idx
                 full_text = f"{header_str}\n\n{sec_text.strip()}"
                 chunks.append(
                     FilingChunk(
-                        chunk_id=f"{metadata.cik}_{metadata.form_type}_{global_chunk_idx:03d}",
+                        chunk_id=make_chunk_id(doc_key, sec_name, ord_idx),
                         section_name=sec_name,
                         header=header_str,
                         text=sec_text.strip(),
@@ -239,10 +251,8 @@ class FinancialSectionSegmenter:
                         metadata=metadata,
                     )
                 )
-                global_chunk_idx += 1
                 continue
 
-            # 3. Section exceeds budget -> segment into sub-chunks with overlap
             sub_chunks = self._chunk_section_text(
                 sec_text=sec_text,
                 sec_start=sec_start,
@@ -250,10 +260,12 @@ class FinancialSectionSegmenter:
             )
 
             for sub_text, sub_start, sub_end in sub_chunks:
+                ord_idx = section_ordinals.get(sec_name, 0) + 1
+                section_ordinals[sec_name] = ord_idx
                 full_text = f"{header_str}\n\n{sub_text.strip()}"
                 chunks.append(
                     FilingChunk(
-                        chunk_id=f"{metadata.cik}_{metadata.form_type}_{global_chunk_idx:03d}",
+                        chunk_id=make_chunk_id(doc_key, sec_name, ord_idx),
                         section_name=sec_name,
                         header=header_str,
                         text=sub_text.strip(),
@@ -264,12 +276,14 @@ class FinancialSectionSegmenter:
                         metadata=metadata,
                     )
                 )
-                global_chunk_idx += 1
 
         return chunks
 
     def _extract_sections(
-        self, raw_text: str
+        self,
+        raw_text: str,
+        *,
+        default_section_name: Optional[str] = None,
     ) -> List[Tuple[str, str, int, int]]:
         """Identify section boundaries using standard regex patterns."""
         matches: List[Tuple[int, int, str]] = []
@@ -279,10 +293,9 @@ class FinancialSectionSegmenter:
                 matches.append((m.start(), m.end(), name))
 
         if not matches:
-            # No section headers found; treat whole text as General Disclosure
-            return [("General Disclosure", raw_text, 0, len(raw_text))]
+            fallback_name = default_section_name or "General Disclosure"
+            return [(fallback_name, raw_text, 0, len(raw_text))]
 
-        # Sort matches by appearance in text
         matches.sort(key=lambda x: x[0])
 
         sections: List[Tuple[str, str, int, int]] = []
@@ -302,15 +315,13 @@ class FinancialSectionSegmenter:
         sec_start: int,
         content_budget: int,
     ) -> List[Tuple[str, int, int]]:
-        """Split a long section into paragraphs and sentences adhering to content_budget."""
-        # Split on double newlines (paragraphs) or table blocks
+        """Split a long section into paragraphs and sentences adhering to content_budget with char spans."""
         raw_paragraphs = [
             p.strip()
             for p in re.split(r"\n\s*\n", sec_text)
             if p.strip()
         ]
 
-        # Further subdivide any giant paragraph that alone exceeds budget
         normalized_paragraphs: List[str] = []
         for p in raw_paragraphs:
             if estimate_token_count(p) <= content_budget:
@@ -332,10 +343,23 @@ class FinancialSectionSegmenter:
                 if current_sent_group:
                     normalized_paragraphs.append(" ".join(current_sent_group))
 
-        # Group paragraphs into chunks with sliding overlap
         chunks: List[Tuple[str, int, int]] = []
         current_chunk_paras: List[str] = []
         current_chunk_tokens = 0
+        scan_cursor = 0
+
+        def _locate_span(chunk_text: str) -> Tuple[int, int]:
+            nonlocal scan_cursor
+            anchor = chunk_text[: min(80, len(chunk_text))]
+            rel_start = sec_text.find(anchor, scan_cursor)
+            if rel_start == -1:
+                rel_start = sec_text.find(anchor)
+            if rel_start == -1:
+                rel_start = scan_cursor
+            abs_start = sec_start + rel_start
+            abs_end = abs_start + len(chunk_text)
+            scan_cursor = max(scan_cursor, rel_start + max(1, len(chunk_text) // 2))
+            return abs_start, abs_end
 
         for para in normalized_paragraphs:
             p_tokens = estimate_token_count(para)
@@ -345,9 +369,9 @@ class FinancialSectionSegmenter:
             else:
                 if current_chunk_paras:
                     chunk_text = "\n\n".join(current_chunk_paras)
-                    chunks.append((chunk_text, sec_start, sec_start + len(chunk_text)))
+                    s_pos, e_pos = _locate_span(chunk_text)
+                    chunks.append((chunk_text, s_pos, e_pos))
 
-                    # Compute overlap paragraphs from the tail
                     overlap_paras: List[str] = []
                     overlap_acc = 0
                     for rev_p in reversed(current_chunk_paras):
@@ -361,27 +385,56 @@ class FinancialSectionSegmenter:
                     current_chunk_paras = overlap_paras + [para]
                     current_chunk_tokens = sum(estimate_token_count(p) for p in current_chunk_paras)
                 else:
-                    chunks.append((para, sec_start, sec_start + len(para)))
+                    s_pos, e_pos = _locate_span(para)
+                    chunks.append((para, s_pos, e_pos))
                     current_chunk_paras = []
                     current_chunk_tokens = 0
 
         if current_chunk_paras:
             final_text = "\n\n".join(current_chunk_paras)
-            chunks.append((final_text, sec_start, sec_start + len(final_text)))
+            s_pos, e_pos = _locate_span(final_text)
+            chunks.append((final_text, s_pos, e_pos))
 
         return chunks
 
 
-# Singleton default segmenter
-DEFAULT_FINANCIAL_SEGMENTER = FinancialSectionSegmenter()
+# Singleton default segmenter (ADR-00035: max_tokens=800, overlap_tokens=120)
+DEFAULT_FINANCIAL_SEGMENTER = FinancialSectionSegmenter(max_tokens=800, overlap_tokens=120)
 
 
 def segment_filing(
     raw_text: str,
     metadata: FilingMetadata,
-    max_tokens: int = 1500,
+    max_tokens: int = 800,
+    overlap_tokens: int = 120,
+    default_section_name: Optional[str] = None,
 ) -> List[FilingChunk]:
     """Functional convenience wrapper for filing segmentation."""
-    segmenter = FinancialSectionSegmenter(max_tokens=max_tokens)
-    return segmenter.segment_filing(raw_text, metadata)
+    segmenter = FinancialSectionSegmenter(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
+    return segmenter.segment_filing(raw_text, metadata, default_section_name=default_section_name)
+
+
+def segment_news_article(
+    raw_text: str,
+    *,
+    source_hash: str,
+    published_at: Optional[str] = None,
+    max_tokens: int = 800,
+    overlap_tokens: int = 120,
+) -> List[FilingChunk]:
+    """Segment a financial news article into deterministic ADR-00035 text units without truncation."""
+    if not raw_text or not raw_text.strip():
+        return []
+    meta = FilingMetadata(
+        cik="0000000000",
+        form_type="NEWS",
+        filing_date=(str(published_at)[:10] if published_at else None),
+        doc_id=str(source_hash).strip() or "news",
+    )
+    segmenter = FinancialSectionSegmenter(
+        max_tokens=max_tokens,
+        overlap_tokens=overlap_tokens,
+        section_patterns=[],
+    )
+    return segmenter.segment_filing(raw_text, meta, default_section_name="body")
 

@@ -186,4 +186,11 @@ def test_edgar_worker_propagates_source_text_for_hedge_and_termination_gating() 
         section="Item 1A Risk Factors",
         source_text=section_text,
     )
-    assert edges == [{"source": "Intel", "target": "Apple", "type": "SUPPLIES_TO"}]
+    assert edges == [
+        {
+            "source": "Intel",
+            "target": "Apple",
+            "type": "SUPPLIES_TO",
+            "evidence_chunk_ids": ["0000320193-26-000011#item_1a_risk_factors:c001"],
+        }
+    ]

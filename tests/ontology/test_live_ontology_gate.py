@@ -154,4 +154,11 @@ def test_edgar_worker_gates_sec_persisted_edges():
     )
     assert "Certain Suppliers" not in nodes
     assert "TSMC" in nodes
-    assert edges == [{"source": "Apple Inc.", "target": "TSMC", "type": "SOLE_SOURCE_DEPENDENT_ON"}]
+    assert edges == [
+        {
+            "source": "Apple Inc.",
+            "target": "TSMC",
+            "type": "SOLE_SOURCE_DEPENDENT_ON",
+            "evidence_chunk_ids": ["0000320193-26-000010#item_1_business:c001"],
+        }
+    ]

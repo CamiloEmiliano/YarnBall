@@ -100,10 +100,11 @@ class ExtractionEdge(BaseModel):
 
 
 class ExtractionGraphPayload(BaseModel):
-    """Canonical structured extraction payload consumed by Memgraph writers."""
+    """Canonical structured extraction payload consumed by Memgraph writers (ADR-00029 / ADR-00035)."""
 
     model_config = ConfigDict(extra="forbid")
 
+    chunk_id: Optional[str] = None
     nodes: List[ExtractionNode] = Field(default_factory=list)
     edges: List[ExtractionEdge] = Field(default_factory=list)
 
@@ -324,7 +325,7 @@ def _extract_balanced_json_payload(cleaned: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def parse_extraction_payload(raw_text: str) -> Dict[str, Any]:
+def parse_extraction_payload(raw_text: str, *, chunk_id: Optional[str] = None) -> Dict[str, Any]:
     """Parse and Pydantic-validate LLM output (JSON, OpenCypher triples, or '(none)')."""
     if not raw_text or not raw_text.strip():
         raise GraphExtractionError("Empty LLM extraction output", error_stage="EXTRACTION_PARSE_ERROR")
@@ -337,16 +338,28 @@ def parse_extraction_payload(raw_text: str) -> Dict[str, Any]:
         )
 
     if cleaned == "(none)":
-        return {"nodes": [], "edges": []}
+        out_empty: Dict[str, Any] = {"nodes": [], "edges": []}
+        if chunk_id is not None:
+            out_empty["chunk_id"] = chunk_id
+        return out_empty
 
     json_payload = _extract_balanced_json_payload(cleaned)
     if json_payload is not None:
+        if chunk_id is not None:
+            json_payload["chunk_id"] = chunk_id
+        elif json_payload.get("chunk_id") is None:
+            json_payload.pop("chunk_id", None)
         return json_payload
 
     cypher_payload = _parse_opencypher_triples(cleaned)
     if cypher_payload is not None:
         try:
-            return ExtractionGraphPayload.model_validate(cypher_payload).model_dump()
+            validated = ExtractionGraphPayload.model_validate(cypher_payload).model_dump()
+            if chunk_id is not None:
+                validated["chunk_id"] = chunk_id
+            elif validated.get("chunk_id") is None:
+                validated.pop("chunk_id", None)
+            return validated
         except ValidationError as exc:
             raise GraphExtractionError(
                 f"Schema validation failed for OpenCypher extraction: {exc}",
@@ -357,6 +370,84 @@ def parse_extraction_payload(raw_text: str) -> Dict[str, Any]:
         f"Unparseable or schema-invalid LLM extraction output: {cleaned[:200]}",
         error_stage="EXTRACTION_PARSE_ERROR",
     )
+
+
+def merge_chunk_extraction_payloads(chunk_payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge per-chunk extraction payloads: dedupe edges, union evidence_chunk_ids, keep highest-confidence provenance."""
+    from contagion.parameters import PROVENANCE_CONFIDENCE_RANK, resolve_edge_cascade_parameters
+
+    nodes_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    edges_by_key: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    edge_rank_by_key: Dict[Tuple[str, str, str], Tuple[int, float]] = {}
+
+    for payload in chunk_payloads:
+        chunk_id = payload.get("chunk_id")
+        for node in payload.get("nodes", []) or []:
+            nid = str(node.get("id", "")).strip()
+            ntype = str(node.get("type", "Entity")).strip() or "Entity"
+            if not nid:
+                continue
+            nkey = (ntype.lower(), nid.lower())
+            nprops = dict(node.get("properties") or {})
+            if nkey not in nodes_by_key:
+                nodes_by_key[nkey] = {"id": nid, "type": ntype, "properties": nprops}
+            else:
+                merged_nprops = dict(nodes_by_key[nkey]["properties"])
+                merged_nprops.update({k: v for k, v in nprops.items() if v is not None})
+                nodes_by_key[nkey]["properties"] = merged_nprops
+
+        for edge in payload.get("edges", []) or []:
+            src = str(edge.get("source", "")).strip()
+            tgt = str(edge.get("target", "")).strip()
+            rel = str(edge.get("type", "RELATED_TO")).strip().upper() or "RELATED_TO"
+            if not src or not tgt:
+                continue
+            ekey = (src.lower(), rel, tgt.lower())
+            eprops = dict(edge.get("properties") or {})
+            cids = set(str(c).strip() for c in (eprops.get("evidence_chunk_ids") or []) if str(c).strip())
+            if isinstance(chunk_id, str) and chunk_id.strip():
+                cids.add(chunk_id.strip())
+            eprops["evidence_chunk_ids"] = sorted(cids)
+
+            resolved = resolve_edge_cascade_parameters({**edge, "properties": eprops, "rel_type": rel})
+            prov_rank = PROVENANCE_CONFIDENCE_RANK.get(str(resolved["param_provenance"]), 0)
+            conf_raw = eprops.get("confidence", 0.0)
+            try:
+                conf_score = float(conf_raw) if conf_raw is not None else 0.0
+            except (TypeError, ValueError):
+                conf_score = 0.0
+            candidate_rank = (prov_rank, conf_score)
+
+            if ekey not in edges_by_key:
+                edges_by_key[ekey] = {
+                    "source": src,
+                    "target": tgt,
+                    "type": rel,
+                    "properties": eprops,
+                }
+                edge_rank_by_key[ekey] = candidate_rank
+            else:
+                existing = edges_by_key[ekey]
+                existing_props = dict(existing.get("properties") or {})
+                unioned_cids = sorted(
+                    set(existing_props.get("evidence_chunk_ids") or []).union(cids)
+                )
+                prev_pass = existing_props.get("extraction_pass")
+                new_pass = eprops.get("extraction_pass")
+                if candidate_rank > edge_rank_by_key[ekey]:
+                    merged_props = {**existing_props, **eprops}
+                    edge_rank_by_key[ekey] = candidate_rank
+                else:
+                    merged_props = {**eprops, **existing_props}
+                merged_props["evidence_chunk_ids"] = unioned_cids
+                if prev_pass is not None and new_pass is not None:
+                    merged_props["extraction_pass"] = min(int(prev_pass), int(new_pass))
+                existing["properties"] = merged_props
+
+    return {
+        "nodes": list(nodes_by_key.values()),
+        "edges": list(edges_by_key.values()),
+    }
 
 
 def _clean_json_response(raw_text: str) -> dict:
@@ -398,7 +489,7 @@ def _quarantine_extraction_failure(
         logger.warning("Failed to write extraction failure to RuntimeRejectionQueue: %s", exc)
 
 
-def run_structured_extraction(
+def run_structured_extraction_with_telemetry(
     *,
     prompt: str,
     task: str,
@@ -406,9 +497,11 @@ def run_structured_extraction(
     model_client: Optional["YarnBallModelClient"] = None,
     rejection_queue: Optional[Any] = None,
     source_id: Optional[str] = None,
+    chunk_id: Optional[str] = None,
     timeout_sec: float = 60.0,
-) -> Dict[str, Any]:
-    """Execute YarnBallModelClient inference, validate output, and quarantine failures."""
+    quarantine_on_error: bool = True,
+) -> Tuple[Dict[str, Any], Any]:
+    """Execute YarnBallModelClient inference, validate output, and return `(payload, ModelResponse)`."""
     if model_client is None:
         from sft_pipeline.serving.model_client import YarnBallModelClient
 
@@ -424,32 +517,64 @@ def run_structured_extraction(
     )
     if resp.error:
         logger.error("YarnBall extraction request failed (%s): %s", task, resp.error)
-        _quarantine_extraction_failure(
-            task_id=task,
-            prompt=prompt,
-            raw_completion=resp.raw_text or "",
-            error_stage="LLM_UNAVAILABLE",
-            error_message=resp.error,
-            source_id=source_id,
-            rejection_queue=rejection_queue,
-        )
+        if quarantine_on_error:
+            _quarantine_extraction_failure(
+                task_id=task,
+                prompt=prompt,
+                raw_completion=resp.raw_text or "",
+                error_stage="LLM_UNAVAILABLE",
+                error_message=resp.error,
+                source_id=source_id,
+                rejection_queue=rejection_queue,
+                metadata={"chunk_id": chunk_id} if chunk_id else None,
+            )
         raise GraphExtractionError(resp.error, error_stage="LLM_UNAVAILABLE")
 
     try:
-        return parse_extraction_payload(resp.final_output)
+        payload = parse_extraction_payload(resp.final_output, chunk_id=chunk_id)
+        return payload, resp
     except GraphExtractionError as exc:
         logger.warning("Quarantining invalid extraction output (%s): %s", task, exc)
-        _quarantine_extraction_failure(
-            task_id=task,
-            prompt=prompt,
-            raw_completion=resp.raw_text or resp.final_output or "",
-            error_stage=exc.error_stage,
-            error_message=str(exc),
-            source_id=source_id,
-            rejection_queue=rejection_queue,
-            metadata={"final_output_preview": (resp.final_output or "")[:500]},
-        )
+        if quarantine_on_error:
+            meta: Dict[str, Any] = {"final_output_preview": (resp.final_output or "")[:500]}
+            if chunk_id:
+                meta["chunk_id"] = chunk_id
+            _quarantine_extraction_failure(
+                task_id=task,
+                prompt=prompt,
+                raw_completion=resp.raw_text or resp.final_output or "",
+                error_stage=exc.error_stage,
+                error_message=str(exc),
+                source_id=source_id,
+                rejection_queue=rejection_queue,
+                metadata=meta,
+            )
         raise
+
+
+def run_structured_extraction(
+    *,
+    prompt: str,
+    task: str,
+    system_prompt: str,
+    model_client: Optional["YarnBallModelClient"] = None,
+    rejection_queue: Optional[Any] = None,
+    source_id: Optional[str] = None,
+    chunk_id: Optional[str] = None,
+    timeout_sec: float = 60.0,
+) -> Dict[str, Any]:
+    """Execute YarnBallModelClient inference, validate output, and quarantine failures."""
+    payload, _ = run_structured_extraction_with_telemetry(
+        prompt=prompt,
+        task=task,
+        system_prompt=system_prompt,
+        model_client=model_client,
+        rejection_queue=rejection_queue,
+        source_id=source_id,
+        chunk_id=chunk_id,
+        timeout_sec=timeout_sec,
+    )
+    return payload
 
 
 def _extract_entities_via_ollama(
@@ -457,6 +582,7 @@ def _extract_entities_via_ollama(
     model_client: Optional["YarnBallModelClient"] = None,
     rejection_queue: Optional[Any] = None,
     source_id: Optional[str] = None,
+    chunk_id: Optional[str] = None,
 ) -> dict:
     """Query fine-tuned YarnBall model via YarnBallModelClient for entity extraction."""
     return run_structured_extraction(
@@ -466,6 +592,7 @@ def _extract_entities_via_ollama(
         model_client=model_client,
         rejection_queue=rejection_queue,
         source_id=source_id,
+        chunk_id=chunk_id,
     )
 
 
@@ -474,16 +601,77 @@ def extract_entities(
     model_client: Optional["YarnBallModelClient"] = None,
     rejection_queue: Optional[Any] = None,
     source_id: Optional[str] = None,
+    *,
+    max_tokens: int = 800,
+    overlap_tokens: int = 120,
 ) -> dict:
-    """Extract entities and relationships from text using YarnBallModelClient."""
+    """Segment news articles exceeding token budget, extract per chunk, and merge (ADR-00035)."""
     if not text or not text.strip():
         return {"nodes": [], "edges": []}
-    return _extract_entities_via_ollama(
+
+    from ingestion.segmentation.chunker import segment_news_article
+
+    chunks = segment_news_article(
         text,
-        model_client=model_client,
-        rejection_queue=rejection_queue,
-        source_id=source_id,
+        source_hash=source_id or "news",
+        max_tokens=max_tokens,
+        overlap_tokens=overlap_tokens,
     )
+    if len(chunks) <= 1:
+        cid = chunks[0].chunk_id if chunks else None
+        payload = _extract_entities_via_ollama(
+            text,
+            model_client=model_client,
+            rejection_queue=rejection_queue,
+            source_id=source_id,
+            chunk_id=cid,
+        )
+        if cid:
+            for edge in payload.get("edges", []):
+                eprops = dict(edge.get("properties") or {})
+                eprops["evidence_chunk_ids"] = sorted({*(eprops.get("evidence_chunk_ids") or []), cid})
+                edge["properties"] = eprops
+        payload.pop("chunk_id", None)
+        return payload
+
+    chunk_payloads: List[Dict[str, Any]] = []
+    first_error: Optional[GraphExtractionError] = None
+    for chunk in chunks:
+        try:
+            raw_payload = _extract_entities_via_ollama(
+                chunk.text,
+                model_client=model_client,
+                rejection_queue=rejection_queue,
+                source_id=source_id or chunk.chunk_id,
+                chunk_id=chunk.chunk_id,
+            )
+            gated_chunk = validate_graph_payload(
+                raw_payload,
+                source_id=chunk.chunk_id,
+                rejection_queue=rejection_queue,
+                strict=True,
+                default_node_type="Entity",
+                source_text=chunk.text,
+            )
+            chunk_payloads.append(
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "nodes": gated_chunk.get("nodes", []),
+                    "edges": gated_chunk.get("edges", []),
+                }
+            )
+        except GraphExtractionError as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+
+    if not chunk_payloads and first_error is not None:
+        raise first_error
+
+    return merge_chunk_extraction_payloads(chunk_payloads)
+
+
+_FORBIDDEN_MEMGRAPH_PROSE_KEYS = frozenset({"raw_text", "full_text", "chunk_text", "evidence_text", "body_text"})
 
 
 def store_graph_entities(
@@ -495,8 +683,50 @@ def store_graph_entities(
     published_at: Optional[str] = None,
     source_type: str = "news",
     linker: Optional[Any] = None,
+    pg_conn: Optional[Any] = None,
 ) -> None:
-    """Extract entities, enforce live ontology gate, link canonically, and persist to Memgraph (ADR-00028)."""
+    """Extract entities per chunk, enforce live ontology gate, persist text units in Postgres, and link thin Memgraph pointers (ADR-00028 / ADR-00035)."""
+    from ingestion.segmentation.chunker import segment_news_article
+    from knowledge_graph.chunk_store import (
+        DocumentChunkRecord,
+        make_chunk_id,
+        store_chunk_entity_links,
+        store_document_chunks,
+    )
+    from retrieval.temporal import actionable_session
+
+    clean_source_type = str(source_type or "news").strip().lower() or "news"
+    session_date, known_at_utc, known_at_imputed = actionable_session(published_at)
+    valid_from: Optional[str] = session_date.isoformat() if session_date else None
+    known_at_iso: Optional[str] = known_at_utc.isoformat() if known_at_utc else None
+    is_temporal_unanchored = valid_from is None
+
+    news_chunks = segment_news_article(
+        text,
+        source_hash=source_hash,
+        published_at=published_at,
+        max_tokens=800,
+        overlap_tokens=120,
+    )
+    default_chunk_ids = [c.chunk_id for c in news_chunks] if news_chunks else (
+        [make_chunk_id(source_hash, "body", 1)] if (text and text.strip()) else []
+    )
+    chunk_records = [
+        DocumentChunkRecord(
+            chunk_id=c.chunk_id,
+            doc_id=source_hash,
+            source_type=clean_source_type,
+            cik=None,
+            section=c.section_name,
+            char_start=c.start_char,
+            char_end=c.end_char,
+            text=c.text,
+            valid_from=valid_from,
+            known_at=known_at_iso,
+        )
+        for c in news_chunks
+    ]
+
     if graph_data is None:
         graph_data = extract_entities(text, source_id=source_hash, rejection_queue=rejection_queue)
 
@@ -516,7 +746,7 @@ def store_graph_entities(
 
     from ingestion.sec.parser import EdgarEntityLinker, normalize_company_name
 
-    active_linker = linker if linker is not None else EdgarEntityLinker(pg_conn=None)
+    active_linker = linker if linker is not None else EdgarEntityLinker(pg_conn=pg_conn)
     canonical_id_map: Dict[str, str] = {}
     linked_nodes_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
@@ -526,7 +756,11 @@ def store_graph_entities(
             continue
         raw_type = str(node.get("type", "Entity")).strip()
         label = "".join(c for c in raw_type if c.isalnum())[:MAX_LABEL_LENGTH] or "Entity"
-        props = dict(node.get("properties", {}) or {})
+        props = {
+            k: v
+            for k, v in dict(node.get("properties", {}) or {}).items()
+            if k not in _FORBIDDEN_MEMGRAPH_PROSE_KEYS
+        }
         canonical_id = raw_id
 
         if label in ("Company", "Organization", "Entity"):
@@ -559,18 +793,23 @@ def store_graph_entities(
             merged_props = {**existing_props, **props}
             linked_nodes_by_key[dedup_key]["properties"] = merged_props
 
-    from retrieval.temporal import actionable_session
-
-    clean_source_type = str(source_type or "news").strip().lower() or "news"
-    session_date, known_at_utc, known_at_imputed = actionable_session(published_at)
-    valid_from: Optional[str] = session_date.isoformat() if session_date else None
-    known_at_iso: Optional[str] = known_at_utc.isoformat() if known_at_utc else None
-    is_temporal_unanchored = valid_from is None
+    # Persist text units and entity links to PostgreSQL (thin Memgraph invariant #2)
+    chunk_entity_links: List[Tuple[str, str, Optional[str]]] = []
+    for cid in default_chunk_ids:
+        for node_entry in linked_nodes_by_key.values():
+            chunk_entity_links.append((cid, node_entry["id"], valid_from))
+    if chunk_records:
+        try:
+            store_document_chunks(chunk_records, conn=pg_conn)
+            if chunk_entity_links:
+                store_chunk_entity_links(chunk_entity_links, conn=pg_conn)
+        except Exception as exc:
+            logger.debug("PostgreSQL chunk persistence skipped/unavailable for %s: %s", source_hash, exc)
 
     active_driver = driver if driver is not None else get_memgraph_driver()
 
     with active_driver.session() as session:
-        # 1. Insert/Merge Article News Node with published_at provenance
+        # 1. Insert/Merge Article News Node with published_at provenance (no raw prose in Memgraph)
         session.run(
             "MERGE (n:News {id: $source_hash}) SET n.updated_at = datetime(), n.published_at = $published_at, n.source_type = $source_type",
             source_hash=source_hash,
@@ -587,11 +826,10 @@ def store_graph_entities(
             query = f"MERGE (n:{label} {{id: $id}}) SET n += $props"
             session.run(query, id=node_id, props=props)
 
-            # Link news article to mentioned canonical entity
             mention_query = f"MATCH (news:News {{id: $source_hash}}), (e:{label} {{id: $id}}) MERGE (news)-[:MENTIONS]->(e)"
             session.run(mention_query, source_hash=source_hash, id=node_id)
 
-        # 3. Insert/Merge Relationship Edges with source_type and temporal provenance
+        # 3. Insert/Merge Relationship Edges with compact evidence_chunk_ids pointers (ADR-00035)
         from contagion.parameters import resolve_edge_cascade_parameters
 
         for edge in edges:
@@ -612,9 +850,21 @@ def store_graph_entities(
 
             raw_type = str(edge.get("type", "RELATED_TO")).strip().upper()
             rel_type = "".join(c for c in raw_type if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH] or "RELATED_TO"
-            props = dict(edge.get("properties", {}) or {})
-            resolved_params = resolve_edge_cascade_parameters({**edge, "rel_type": rel_type})
+            props = {
+                k: v
+                for k, v in dict(edge.get("properties", {}) or {}).items()
+                if k not in _FORBIDDEN_MEMGRAPH_PROSE_KEYS
+            }
+            resolved_params = resolve_edge_cascade_parameters({**edge, "properties": props, "rel_type": rel_type})
             props.update(resolved_params)
+
+            edge_cids = list(props.get("evidence_chunk_ids") or [])
+            if not edge_cids and default_chunk_ids:
+                edge_cids = list(default_chunk_ids)
+            edge_cids = sorted({str(c).strip() for c in edge_cids if str(c).strip()})
+            evidence_status = "chunked" if edge_cids else "legacy_unchunked"
+            props["evidence_chunk_ids"] = edge_cids
+            props["evidence_status"] = evidence_status
 
             query = f"""
             MATCH (s {{id: $source}})
@@ -623,6 +873,8 @@ def store_graph_entities(
             SET r += $props,
                 r.source_hash = $source_hash,
                 r.source_type = $source_type,
+                r.evidence_chunk_ids = $evidence_chunk_ids,
+                r.evidence_status = $evidence_status,
                 r.valid_from = coalesce(r.valid_from, $valid_from),
                 r.known_at = coalesce(r.known_at, $known_at),
                 r.known_at_imputed = coalesce(r.known_at_imputed, $known_at_imputed),
@@ -637,6 +889,8 @@ def store_graph_entities(
                 props=props,
                 source_hash=source_hash,
                 source_type=clean_source_type,
+                evidence_chunk_ids=edge_cids,
+                evidence_status=evidence_status,
                 valid_from=valid_from,
                 known_at=known_at_iso,
                 known_at_imputed=known_at_imputed,

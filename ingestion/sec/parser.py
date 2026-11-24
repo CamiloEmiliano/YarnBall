@@ -395,8 +395,83 @@ Allowed relationship types: {_SEC_ALLOWED_RELS}.
 Do not include any explanation or markdown formatting. Output raw JSON only."""
 
 
+_SALIENT_KEYWORDS: Tuple[str, ...] = (
+    r"\bsuppl(y|ier|iers|ies)\b",
+    r"\bcustomer(s)?\b",
+    r"\bvendor(s)?\b",
+    r"\bmanufactur(er|ers|ing)\b",
+    r"\bclient(s)?\b",
+    r"\bdistribut(or|ors|ion)\b",
+    r"\bcompet(e|es|ing|itor|itors|ition)\b",
+    r"\bpartner(s|ship|ships)?\b",
+    r"\balliance(s)?\b",
+    r"\bjoint venture(s)?\b",
+    r"\blicens(e|es|ing|or|ee)\b",
+    r"\bacqui(re|red|sition|sitions)\b",
+    r"\bmerg(e|ed|er|ers)\b",
+    r"\bsubsidiar(y|ies)\b",
+    r"\bdependen(t|ce)\b",
+    r"\bsole source\b|\bsingle source\b",
+    r"\breliance\b",
+)
+_SALIENT_PATTERN = re.compile("|".join(_SALIENT_KEYWORDS), re.IGNORECASE)
+
+_HIGH_SIGNAL_GLEANING_RE = re.compile(
+    r"\bitem\s*(?:1(?:\s*[-–—.\s]+business)?\b|1a\b|1\.01\b|1\.02\b|2\.01\b|8\.01\b)",
+    re.IGNORECASE,
+)
+
+
+def score_chunk_salience(text: str) -> int:
+    """Count relational supply-chain/corporate cue matches for chunk priority ranking (ADR-00035)."""
+    if not text:
+        return 0
+    return len(_SALIENT_PATTERN.findall(text))
+
+
+def rank_salient_chunks(chunks: List[Any]) -> List[Any]:
+    """Order chunks descending by relational salience without dropping or truncating any chunk (Invariant #4)."""
+    indexed = list(enumerate(chunks))
+    indexed.sort(key=lambda pair: (-score_chunk_salience(getattr(pair[1], "text", "")), pair[0]))
+    return [chunk for _, chunk in indexed]
+
+
+def is_high_signal_gleaning_section(section_name: Optional[str]) -> bool:
+    """Return True for high-signal SEC sections eligible for targeted 1-pass gleaning (ADR-00035 Section 4.4)."""
+    if not section_name:
+        return False
+    raw = str(section_name).strip()
+    if re.search(r"\bitem\s*1b\b", raw, re.IGNORECASE):
+        return False
+    return bool(_HIGH_SIGNAL_GLEANING_RE.search(raw))
+
+
+def should_glean_chunk(
+    section_name: Optional[str],
+    pass1_valid_edge_count: int,
+    generated_tokens: int,
+    runaway_detected: bool,
+    *,
+    max_new_tokens: int = 512,
+    enabled: Optional[bool] = None,
+) -> bool:
+    """Determine whether a chunk qualifies for targeted 1-pass gleaning (ADR-00035 Section 4.4)."""
+    if enabled is None:
+        env_val = os.getenv("ENABLE_TARGETED_GLEANING", "1").strip().lower()
+        is_enabled = env_val not in ("0", "false", "no", "off")
+    else:
+        is_enabled = bool(enabled)
+
+    if not is_enabled or runaway_detected:
+        return False
+    if not is_high_signal_gleaning_section(section_name):
+        return False
+    token_threshold = int(0.85 * max_new_tokens)
+    return pass1_valid_edge_count >= 1 or int(generated_tokens) >= token_threshold
+
+
 def select_salient_sec_context(text: str, max_chars: int = 2500) -> str:
-    """Select the most relationally dense paragraphs from SEC filing text (e.g. Item 1 or Item 1A)."""
+    """Legacy salience helper retained for backward-compatible tests; runtime extractors use `rank_salient_chunks`."""
     if not text or len(text) <= max_chars:
         return text
 
@@ -404,30 +479,9 @@ def select_salient_sec_context(text: str, max_chars: int = 2500) -> str:
     if not paragraphs:
         return text[:max_chars]
 
-    keywords = [
-        r"\bsuppl(y|ier|iers|ies)\b",
-        r"\bcustomer(s)?\b",
-        r"\bvendor(s)?\b",
-        r"\bmanufactur(er|ers|ing)\b",
-        r"\bclient(s)?\b",
-        r"\bdistribut(or|ors|ion)\b",
-        r"\bcompet(e|es|ing|itor|itors|ition)\b",
-        r"\bpartner(s|ship|ships)?\b",
-        r"\balliance(s)?\b",
-        r"\bjoint venture(s)?\b",
-        r"\blicens(e|es|ing|or|ee)\b",
-        r"\bacqui(re|red|sition|sitions)\b",
-        r"\bmerg(e|ed|er|ers)\b",
-        r"\bsubsidiar(y|ies)\b",
-        r"\bdependen(t|ce)\b",
-        r"\bsole source\b|\bsingle source\b",
-        r"\breliance\b",
-    ]
-    pattern = re.compile("|".join(keywords), re.IGNORECASE)
-
     scored = []
     for idx, p in enumerate(paragraphs):
-        matches = len(pattern.findall(p))
+        matches = score_chunk_salience(p)
         if matches > 0:
             scored.append((matches, idx, p))
 
@@ -450,26 +504,215 @@ def select_salient_sec_context(text: str, max_chars: int = 2500) -> str:
     return "\n\n".join(p for _, p in selected)
 
 
+def _format_gleaning_prompt(chunk_prompt_text: str, pass1_edges: List[Dict[str, Any]]) -> str:
+    """Build compact Pass-2 targeted gleaning prompt with explicit empty-JSON stop condition (ADR-00035)."""
+    triple_lines = [
+        f"- ({e.get('source', '')}, {e.get('type', 'RELATED_TO')}, {e.get('target', '')})"
+        for e in pass1_edges
+    ]
+    summary = "\n".join(triple_lines) if triple_lines else "(none extracted in Pass 1)"
+    return (
+        f"SEC Text Chunk:\n{chunk_prompt_text}\n\n"
+        f"Pass-1 Already Extracted Triples:\n{summary}\n\n"
+        "Review the SEC text chunk above for any ADDITIONAL explicitly stated corporate entities or "
+        "relationships that were missed in Pass 1 (such as secondary suppliers, customers, or risk dependencies). "
+        'Do NOT repeat triples already listed above. If no additional verified relationships are stated, output exactly: {"nodes": [], "edges": []}\n\n'
+        "JSON:"
+    )
+
+
 def extract_sec_relationships(
     text: str,
-    max_chars: int = 2500,
+    max_chars: Optional[int] = None,
     model_client: Optional[Any] = None,
     rejection_queue: Optional[Any] = None,
     source_id: Optional[str] = None,
+    *,
+    doc_id: Optional[str] = None,
+    cik: Optional[str] = None,
+    ticker: Optional[str] = None,
+    company_name: Optional[str] = None,
+    form_type: str = "10-K",
+    filing_date: Optional[str] = None,
+    section_name: Optional[str] = None,
+    max_tokens: int = 800,
+    overlap_tokens: int = 120,
+    enable_gleaning: Optional[bool] = None,
 ) -> Dict[str, Any]:
-    """Extract entities and relationships from SEC text chunk using YarnBallModelClient."""
+    """Segment full SEC section text without truncation, extract per chunk, glean, and merge (ADR-00035)."""
+    del max_chars  # Intentionally unused: ADR-00035 Invariant #4 forbids character-budget truncation.
     if not text or not text.strip():
         return {"nodes": [], "edges": []}
 
-    from knowledge_graph.graph_store import run_structured_extraction
-
-    chunk = select_salient_sec_context(text, max_chars=max_chars)
-    return run_structured_extraction(
-        prompt=f"SEC Text Section:\n{chunk}\n\nJSON:",
-        task="EXTRACT_SEC_GRAPH",
-        system_prompt=SEC_EXTRACTION_PROMPT,
-        model_client=model_client,
-        rejection_queue=rejection_queue,
-        source_id=source_id,
-        timeout_sec=90.0,
+    from ingestion.segmentation.chunker import FilingMetadata, FinancialSectionSegmenter
+    from knowledge_graph.graph_store import (
+        GraphExtractionError,
+        _quarantine_extraction_failure,
+        merge_chunk_extraction_payloads,
+        run_structured_extraction_with_telemetry,
     )
+    from ontology.validation import validate_graph_payload
+    from sft_pipeline.rejection_queue import ErrorStage
+
+    resolved_doc_id = doc_id
+    resolved_section = section_name
+    if source_id and ":" in source_id:
+        src_prefix, src_sec = source_id.split(":", 1)
+        if not resolved_doc_id and src_prefix.strip():
+            resolved_doc_id = src_prefix.strip()
+        if not resolved_section and src_sec.strip():
+            resolved_section = src_sec.strip()
+    elif source_id and not resolved_doc_id:
+        resolved_doc_id = source_id.strip()
+
+    meta = FilingMetadata(
+        cik=cik or "0000000000",
+        ticker=ticker,
+        company_name=company_name,
+        form_type=form_type,
+        filing_date=filing_date,
+        doc_id=resolved_doc_id,
+    )
+    segmenter = FinancialSectionSegmenter(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
+    raw_chunks = segmenter.segment_filing(text, meta, default_section_name=resolved_section)
+    ranked_chunks = rank_salient_chunks(raw_chunks)
+
+    chunk_payloads: List[Dict[str, Any]] = []
+    gleaning_new_edges_count = 0
+    first_error: Optional[GraphExtractionError] = None
+
+    for chunk in ranked_chunks:
+        try:
+            pass1_raw, pass1_resp = run_structured_extraction_with_telemetry(
+                prompt=f"SEC Text Section:\n{chunk.full_prompt_text}\n\nJSON:",
+                task="EXTRACT_SEC_GRAPH",
+                system_prompt=SEC_EXTRACTION_PROMPT,
+                model_client=model_client,
+                rejection_queue=rejection_queue,
+                source_id=source_id or chunk.chunk_id,
+                chunk_id=chunk.chunk_id,
+                timeout_sec=90.0,
+            )
+        except GraphExtractionError as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+
+        # Invariant #3: Ontology gate negation/hedge checks run strictly against `chunk.text`
+        pass1_valid = validate_graph_payload(
+            pass1_raw,
+            source_id=chunk.chunk_id,
+            rejection_queue=rejection_queue,
+            strict=True,
+            default_node_type="Company",
+            source_text=chunk.text,
+        )
+        for edge in pass1_valid.get("edges", []):
+            props = dict(edge.get("properties") or {})
+            props["evidence_chunk_ids"] = sorted(
+                {*(props.get("evidence_chunk_ids") or []), chunk.chunk_id}
+            )
+            props.setdefault("extraction_pass", 1)
+            edge["properties"] = props
+
+        combined_chunk_payloads = [
+            {
+                "chunk_id": chunk.chunk_id,
+                "nodes": pass1_valid.get("nodes", []),
+                "edges": pass1_valid.get("edges", []),
+            }
+        ]
+
+        if should_glean_chunk(
+            chunk.section_name,
+            len(pass1_valid.get("edges", [])),
+            getattr(pass1_resp, "generated_tokens", 0),
+            bool(getattr(pass1_resp, "runaway_detected", False)),
+            enabled=enable_gleaning,
+        ):
+            glean_prompt = _format_gleaning_prompt(chunk.full_prompt_text, pass1_valid.get("edges", []))
+            try:
+                pass2_raw, _ = run_structured_extraction_with_telemetry(
+                    prompt=glean_prompt,
+                    task="EXTRACT_SEC_GRAPH",
+                    system_prompt=SEC_EXTRACTION_PROMPT,
+                    model_client=model_client,
+                    rejection_queue=None,  # Handled non-destructively with GLEANING_PARSE_FAILED below
+                    source_id=chunk.chunk_id,
+                    chunk_id=chunk.chunk_id,
+                    timeout_sec=90.0,
+                    quarantine_on_error=False,
+                )
+                pass2_valid = validate_graph_payload(
+                    pass2_raw,
+                    source_id=f"{chunk.chunk_id}:glean",
+                    rejection_queue=rejection_queue,
+                    strict=True,
+                    default_node_type="Company",
+                    source_text=chunk.text,
+                )
+                pass1_keys = {
+                    (
+                        str(e.get("source", "")).strip().lower(),
+                        str(e.get("type", "")).strip().upper(),
+                        str(e.get("target", "")).strip().lower(),
+                    )
+                    for e in pass1_valid.get("edges", [])
+                }
+                rescued_edges: List[Dict[str, Any]] = []
+                for edge in pass2_valid.get("edges", []):
+                    ekey = (
+                        str(edge.get("source", "")).strip().lower(),
+                        str(edge.get("type", "")).strip().upper(),
+                        str(edge.get("target", "")).strip().lower(),
+                    )
+                    if ekey in pass1_keys:
+                        continue
+                    props = dict(edge.get("properties") or {})
+                    props["evidence_chunk_ids"] = sorted(
+                        {*(props.get("evidence_chunk_ids") or []), chunk.chunk_id}
+                    )
+                    props["extraction_pass"] = 2
+                    edge["properties"] = props
+                    rescued_edges.append(edge)
+                if rescued_edges or pass2_valid.get("nodes"):
+                    gleaning_new_edges_count += len(rescued_edges)
+                    combined_chunk_payloads.append(
+                        {
+                            "chunk_id": chunk.chunk_id,
+                            "nodes": pass2_valid.get("nodes", []),
+                            "edges": rescued_edges,
+                        }
+                    )
+            except GraphExtractionError as glean_exc:
+                logger.warning(
+                    "Targeted gleaning Pass 2 failed non-destructively for %s (Pass 1 retained): %s",
+                    chunk.chunk_id,
+                    glean_exc,
+                )
+                _quarantine_extraction_failure(
+                    task_id="EXTRACT_SEC_GRAPH",
+                    prompt=glean_prompt,
+                    raw_completion=str(glean_exc),
+                    error_stage=ErrorStage.GLEANING_PARSE_FAILED,
+                    error_message=f"Pass-2 gleaning failed (Pass 1 preserved): {glean_exc}",
+                    source_id=chunk.chunk_id,
+                    rejection_queue=rejection_queue,
+                    metadata={"chunk_id": chunk.chunk_id, "extraction_pass": 2},
+                )
+
+        chunk_payloads.extend(combined_chunk_payloads)
+
+    if not chunk_payloads and first_error is not None:
+        raise first_error
+
+    merged = merge_chunk_extraction_payloads(chunk_payloads)
+    if gleaning_new_edges_count > 0:
+        logger.info(
+            "SEC chunk extraction completed (%d chunks, gleaning_new_edges_count=%d)",
+            len(ranked_chunks),
+            gleaning_new_edges_count,
+        )
+    merged["gleaning_new_edges_count"] = gleaning_new_edges_count
+    merged["chunk_ids"] = [c.chunk_id for c in raw_chunks]
+    return merged

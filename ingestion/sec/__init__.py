@@ -18,8 +18,12 @@ from .parser import (
     EdgarEntityLinker,
     SEC_EXTRACTION_PROMPT,
     extract_sec_relationships,
+    is_high_signal_gleaning_section,
     normalize_company_name,
+    rank_salient_chunks,
+    score_chunk_salience,
     select_salient_sec_context,
+    should_glean_chunk,
     sync_sec_companies_from_sec,
 )
 from .harvester import (
@@ -47,6 +51,10 @@ __all__ = [
     "normalize_company_name",
     "CORP_SUFFIXES",
     "SEC_EXTRACTION_PROMPT",
+    "score_chunk_salience",
+    "rank_salient_chunks",
+    "is_high_signal_gleaning_section",
+    "should_glean_chunk",
     "select_salient_sec_context",
     "extract_sec_relationships",
     "sync_sec_companies_from_sec",

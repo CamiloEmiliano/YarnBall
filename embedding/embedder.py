@@ -1,21 +1,28 @@
 # embedding/embedder.py
 # -*- coding: utf-8 -*-
-"""Utility for generating dense vector embeddings using SentenceTransformers (ADR-00020).
+"""Dense vector embedding service supporting Qwen3-Embedding-0.6B via Ollama and SentenceTransformers (ADR-00020 / ADR-00035).
 
-Enforces fail-fast initialization on missing ML dependencies/weights and prohibits
-zero-norm or non-finite embedding vectors from reaching pgvector storage or queries.
+Defaults (ADR-00035):
+- Model: `qwen3-embedding:0.6b` (32K context, native 1024 dims, Apache 2.0)
+- Serving: Ollama `/api/embed` pinned to CPU (`options: {"num_gpu": 0}`) during live serving so
+  `yarnball-qwen:7b` retains 100% of 8 GB VRAM with zero model eviction, with optional
+  `batch_gpu=True` for offline Phase-2 batch embedding after unloading the generative model.
+- Explicit asymmetric entry points: `embed_query(text)` (instruction-prefixed) and `embed_documents(texts)`.
+- Enforces fail-fast initialization on unreachable/missing backends and prohibits zero-norm or
+  non-finite embedding vectors from reaching pgvector storage or queries.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import math
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+import urllib.request
 
-# Load environment variables if not already loaded
 try:
     from dotenv import load_dotenv
 
@@ -25,16 +32,23 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "sentence-transformers/all-mpnet-base-v2"
-_DEFAULT_EMBEDDING_DIM = 768
+_DEFAULT_MODEL = "qwen3-embedding:0.6b"
+_DEFAULT_EMBEDDING_DIM = 1024
 _MIN_NORM_SQ = 1e-8
 
+QUERY_INSTRUCTION_PREFIX = (
+    "Instruct: Given a financial supply-chain, SEC regulatory filing, or corporate disruption query, "
+    "retrieve relevant entities, filings, and evidence passages.\nQuery: "
+)
+
 _model_instance: Any = None
+_model_cache_key: Optional[tuple[str, bool]] = None
 _mock_model_instance: Any = None
+_mock_model_dim: Optional[int] = None
 
 
 class EmbedderUnavailableError(RuntimeError):
-    """Raised when SentenceTransformer cannot be loaded and mock mode was not requested."""
+    """Raised when the configured embedder backend cannot be loaded/reached and mock mode is off."""
 
 
 class InvalidEmbeddingError(ValueError):
@@ -43,9 +57,11 @@ class InvalidEmbeddingError(ValueError):
 
 def reset_embedder_cache() -> None:
     """Reset cached embedder instances (intended for deterministic unit tests)."""
-    global _model_instance, _mock_model_instance
+    global _model_instance, _model_cache_key, _mock_model_instance, _mock_model_dim
     _model_instance = None
+    _model_cache_key = None
     _mock_model_instance = None
+    _mock_model_dim = None
 
 
 def _get_model_name() -> str:
@@ -57,7 +73,7 @@ def _get_model_name() -> str:
 
 
 def get_embedding_dim() -> int:
-    """Resolve and validate positive configured EMBEDDING_DIM (default 768)."""
+    """Resolve and validate positive configured EMBEDDING_DIM (default 1024 for qwen3-embedding:0.6b)."""
     raw = os.getenv("EMBEDDING_DIM", str(_DEFAULT_EMBEDDING_DIM)).strip()
     if not raw:
         return _DEFAULT_EMBEDDING_DIM
@@ -79,6 +95,39 @@ def _is_mock_enabled(allow_mock: Optional[bool] = None) -> bool:
         return bool(allow_mock)
     env_flag = os.getenv("YARNBALL_EMBEDDER_MOCK", "").strip().lower()
     return env_flag in ("1", "true", "yes", "on")
+
+
+def _uses_sentence_transformers(model_name: str) -> bool:
+    """Return True when `model_name` specifies a HuggingFace / SentenceTransformers repo path."""
+    return "/" in model_name or model_name.startswith("sentence-transformers")
+
+
+def _resolve_ollama_embed_url() -> str:
+    from sft_pipeline.serving.model_client import resolve_ollama_urls
+
+    base_url, _ = resolve_ollama_urls(os.getenv("OLLAMA_EMBED_API_BASE") or os.getenv("OLLAMA_API_BASE"))
+    return f"{base_url}/api/embed"
+
+
+def unload_ollama_model(model_tag: Optional[str] = None, timeout_sec: float = 10.0) -> bool:
+    """Request Ollama to unload a generative model (`keep_alive: 0`) prior to GPU batch embedding."""
+    from sft_pipeline.serving.model_client import DEFAULT_MODEL_TAG, resolve_ollama_urls
+
+    tag = model_tag or os.getenv("YARNBALL_MODEL_TAG") or DEFAULT_MODEL_TAG
+    _, generate_url = resolve_ollama_urls()
+    payload = json.dumps({"model": tag, "prompt": "", "keep_alive": 0, "stream": False}).encode("utf-8")
+    req = urllib.request.Request(
+        generate_url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec):
+            return True
+    except Exception as exc:
+        logger.warning("Could not unload Ollama model '%s' before batch embedding: %s", tag, exc)
+        return False
 
 
 class _DeterministicMockEmbedder:
@@ -106,6 +155,74 @@ class _DeterministicMockEmbedder:
                 raw_vals = [v / norm for v in raw_vals]
             vectors.append(raw_vals)
         return vectors
+
+
+class _OllamaEmbedderClient:
+    """Ollama `/api/embed` client pinned to CPU (`num_gpu: 0`) for live serving (ADR-00035)."""
+
+    is_mock: bool = False
+
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        embed_url: Optional[str] = None,
+        num_gpu: Optional[int] = 0,
+        timeout_sec: float = 60.0,
+    ) -> None:
+        self.model_name = model_name
+        self.embed_url = embed_url or _resolve_ollama_embed_url()
+        self.num_gpu = num_gpu
+        self.timeout_sec = timeout_sec
+
+    def build_request_payload(self, texts: Sequence[str]) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "model": self.model_name,
+            "input": list(texts),
+        }
+        if self.num_gpu is not None:
+            payload["options"] = {"num_gpu": int(self.num_gpu)}
+        return payload
+
+    def encode(self, texts: Sequence[str], normalize_embeddings: bool = True) -> List[List[float]]:
+        if not texts:
+            return []
+        payload = self.build_request_payload(texts)
+        req = urllib.request.Request(
+            self.embed_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            raise EmbedderUnavailableError(
+                f"Failed to query Ollama embedder '{self.model_name}' at '{self.embed_url}': {exc}. "
+                "Ensure Ollama is running with `ollama pull qwen3-embedding:0.6b`, or set "
+                "`YARNBALL_EMBEDDER_MOCK=1` for offline mock tests."
+            ) from exc
+
+        embeddings = body.get("embeddings")
+        if embeddings is None and "embedding" in body:
+            embeddings = [body["embedding"]]
+        if not isinstance(embeddings, list) or len(embeddings) != len(texts):
+            raise EmbedderUnavailableError(
+                f"Malformed Ollama /api/embed response for '{self.model_name}': "
+                f"expected {len(texts)} vectors, got {type(embeddings).__name__}."
+            )
+
+        out: List[List[float]] = []
+        for vec in embeddings:
+            floats = [float(v) for v in vec]
+            if normalize_embeddings:
+                norm_sq = sum(v * v for v in floats)
+                if norm_sq > _MIN_NORM_SQ:
+                    norm = math.sqrt(norm_sq)
+                    floats = [v / norm for v in floats]
+            out.append(floats)
+        return out
 
 
 def validate_embedding_vectors(
@@ -141,45 +258,104 @@ def format_pgvector_literal(vector: Sequence[float]) -> str:
     return "[" + ",".join(repr(val) for val in validated_vec) + "]"
 
 
-def get_embedder_model(allow_mock: Optional[bool] = None) -> Any:
-    """Lazily load and cache SentenceTransformer, failing fast unless mock mode is opted in."""
-    global _model_instance, _mock_model_instance
+def get_embedder_model(
+    allow_mock: Optional[bool] = None,
+    *,
+    batch_gpu: bool = False,
+) -> Any:
+    """Lazily resolve and cache the configured embedder (Ollama Qwen3-Embedding-0.6B or SentenceTransformer)."""
+    global _model_instance, _model_cache_key, _mock_model_instance, _mock_model_dim
 
     model_name = _get_model_name()
     if _is_mock_enabled(allow_mock):
-        if _mock_model_instance is None:
-            dim = _get_embedding_dim()
+        dim = _get_embedding_dim()
+        if _mock_model_instance is None or _mock_model_dim != dim:
             logger.info("Explicit mock embedder enabled for '%s' (dim=%d).", model_name, dim)
             _mock_model_instance = _DeterministicMockEmbedder(dim=dim)
+            _mock_model_dim = dim
         return _mock_model_instance
 
-    if _model_instance is not None:
+    cache_key = (model_name, bool(batch_gpu))
+    if _model_instance is not None and _model_cache_key == cache_key:
         return _model_instance
 
-    try:
-        from sentence_transformers import SentenceTransformer
+    if _uses_sentence_transformers(model_name):
+        try:
+            from sentence_transformers import SentenceTransformer
 
-        logger.info("Loading embedding model: %s", model_name)
-        _model_instance = SentenceTransformer(model_name)
-        return _model_instance
-    except Exception as exc:
-        raise EmbedderUnavailableError(
-            f"Failed to load SentenceTransformer model '{model_name}': {exc}. "
-            "Ensure `sentence-transformers` and model weights are installed, or explicitly set "
-            "`allow_mock=True` / `YARNBALL_EMBEDDER_MOCK=1` for offline mock tests."
-        ) from exc
+            logger.info("Loading SentenceTransformer embedding model: %s", model_name)
+            _model_instance = SentenceTransformer(model_name)
+            _model_cache_key = cache_key
+            return _model_instance
+        except Exception as exc:
+            raise EmbedderUnavailableError(
+                f"Failed to load SentenceTransformer model '{model_name}': {exc}. "
+                "Ensure `sentence-transformers` and model weights are installed, or explicitly set "
+                "`allow_mock=True` / `YARNBALL_EMBEDDER_MOCK=1` for offline mock tests."
+            ) from exc
+
+    logger.info(
+        "Configuring Ollama embedder '%s' (batch_gpu=%s, num_gpu=%s)",
+        model_name,
+        batch_gpu,
+        "auto" if batch_gpu else "0",
+    )
+    _model_instance = _OllamaEmbedderClient(
+        model_name=model_name,
+        num_gpu=None if batch_gpu else 0,
+    )
+    _model_cache_key = cache_key
+    return _model_instance
 
 
-def embed_texts(texts: List[str], allow_mock: Optional[bool] = None) -> List[List[float]]:
+def embed_texts(
+    texts: List[str],
+    allow_mock: Optional[bool] = None,
+    *,
+    batch_gpu: bool = False,
+) -> List[List[float]]:
     """Return validated, non-zero embedding vectors for the supplied texts."""
     if not texts:
         return []
-    model = get_embedder_model(allow_mock=allow_mock)
+    model = get_embedder_model(allow_mock=allow_mock, batch_gpu=batch_gpu)
     result = model.encode(texts, normalize_embeddings=True)
     raw_vectors: List[List[float]] = (
         result.tolist() if hasattr(result, "tolist") else [list(row) for row in result]
     )
     return validate_embedding_vectors(raw_vectors)
+
+
+def embed_documents(
+    texts: Sequence[str],
+    *,
+    allow_mock: Optional[bool] = None,
+    batch_gpu: bool = False,
+) -> List[List[float]]:
+    """Embed document chunks, entity descriptors, or news passages without query instructions (ADR-00035)."""
+    text_list = [str(t) for t in texts]
+    if not text_list:
+        return []
+    if allow_mock is None and not batch_gpu:
+        return embed_texts(text_list)
+    return embed_texts(text_list, allow_mock=allow_mock, batch_gpu=batch_gpu)
+
+
+def embed_query(
+    text: str,
+    *,
+    instruction: str = QUERY_INSTRUCTION_PREFIX,
+    allow_mock: Optional[bool] = None,
+    batch_gpu: bool = False,
+) -> List[float]:
+    """Embed an asymmetric retrieval query with financial retrieval instruction prefix (ADR-00035)."""
+    prefixed = f"{instruction}{str(text).strip()}"
+    if allow_mock is None and not batch_gpu:
+        vectors = embed_texts([prefixed])
+    else:
+        vectors = embed_texts([prefixed], allow_mock=allow_mock, batch_gpu=batch_gpu)
+    if not vectors:
+        raise InvalidEmbeddingError("Query embedding returned empty list.")
+    return vectors[0]
 
 
 def verify_embedder_ready(

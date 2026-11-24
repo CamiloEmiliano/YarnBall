@@ -45,6 +45,7 @@ class SnapshotManager:
         time_window: Optional[Tuple[datetime | str, datetime | str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         driver: Optional[Any] = None,
+        chunks: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Export the active Memgraph graph to Parquet files and record in PostgreSQL.
 
@@ -133,9 +134,10 @@ class SnapshotManager:
         except Exception as exc:
             logger.warning("Error fetching graph data from Memgraph: %s", exc)
 
-        # 3. Write Parquet files via PyArrow
+        # 3. Write Parquet files via PyArrow (nodes, edges, and ADR-00035 chunks.parquet)
         nodes_path = snapshot_dir / "nodes.parquet"
         edges_path = snapshot_dir / "edges.parquet"
+        chunks_path = snapshot_dir / "chunks.parquet"
 
         node_schema = pa.schema([
             ("id", pa.string()),
@@ -153,11 +155,75 @@ class SnapshotManager:
             ("properties_json", pa.string()),
         ])
 
+        chunk_schema = pa.schema([
+            ("chunk_id", pa.string()),
+            ("doc_id", pa.string()),
+            ("source_type", pa.string()),
+            ("cik", pa.string()),
+            ("section", pa.string()),
+            ("char_start", pa.int64()),
+            ("char_end", pa.int64()),
+            ("text", pa.string()),
+            ("valid_from", pa.string()),
+            ("known_at", pa.string()),
+        ])
+
+        chunk_rows: List[Dict[str, Any]] = []
+        if chunks is not None:
+            for item in chunks:
+                chunk_rows.append(
+                    {
+                        "chunk_id": str(item.get("chunk_id") or ""),
+                        "doc_id": str(item.get("doc_id") or ""),
+                        "source_type": str(item.get("source_type") or "sec_filing"),
+                        "cik": (str(item["cik"]) if item.get("cik") else None),
+                        "section": str(item.get("section") or ""),
+                        "char_start": int(item.get("char_start") or 0),
+                        "char_end": int(item.get("char_end") or 0),
+                        "text": str(item.get("text") or ""),
+                        "valid_from": (str(item["valid_from"]) if item.get("valid_from") is not None else None),
+                        "known_at": (str(item["known_at"]) if item.get("known_at") is not None else None),
+                    }
+                )
+        else:
+            referenced_cids: List[str] = []
+            for e in edges:
+                try:
+                    p = json.loads(e.get("properties_json") or "{}")
+                except Exception:
+                    p = {}
+                for cid in p.get("evidence_chunk_ids") or []:
+                    s_cid = str(cid).strip()
+                    if s_cid:
+                        referenced_cids.append(s_cid)
+            if referenced_cids:
+                from knowledge_graph.chunk_store import fetch_chunks_by_ids
+
+                fetched = fetch_chunks_by_ids(referenced_cids)
+                for cid in sorted(fetched):
+                    item = fetched[cid]
+                    chunk_rows.append(
+                        {
+                            "chunk_id": str(item.get("chunk_id") or cid),
+                            "doc_id": str(item.get("doc_id") or ""),
+                            "source_type": str(item.get("source_type") or "sec_filing"),
+                            "cik": (str(item["cik"]) if item.get("cik") else None),
+                            "section": str(item.get("section") or ""),
+                            "char_start": int(item.get("char_start") or 0),
+                            "char_end": int(item.get("char_end") or 0),
+                            "text": str(item.get("text") or ""),
+                            "valid_from": (str(item["valid_from"]) if item.get("valid_from") is not None else None),
+                            "known_at": (str(item["known_at"]) if item.get("known_at") is not None else None),
+                        }
+                    )
+
         node_table = pa.Table.from_pylist(nodes, schema=node_schema) if nodes else pa.Table.from_batches([], schema=node_schema)
         edge_table = pa.Table.from_pylist(edges, schema=edge_schema) if edges else pa.Table.from_batches([], schema=edge_schema)
+        chunk_table = pa.Table.from_pylist(chunk_rows, schema=chunk_schema) if chunk_rows else pa.Table.from_batches([], schema=chunk_schema)
 
         pq.write_table(node_table, nodes_path, compression="snappy")
         pq.write_table(edge_table, edges_path, compression="snappy")
+        pq.write_table(chunk_table, chunks_path, compression="snappy")
 
         # 4. Resolve time window boundaries
         win_start = None
@@ -235,6 +301,7 @@ class SnapshotManager:
             "time_window_end": str(win_end) if win_end else None,
             "node_count": len(nodes),
             "edge_count": len(edges),
+            "chunk_count": len(chunk_rows),
             "snapshot_dir": str(snapshot_dir),
             "metadata": meta_payload,
         }

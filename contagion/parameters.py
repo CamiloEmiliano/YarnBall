@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 import math
 import re
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 
 class ParameterProvenance(str, Enum):
@@ -14,6 +15,21 @@ class ParameterProvenance(str, Enum):
     EXTRACTED_QUANTITATIVE = "EXTRACTED_QUANTITATIVE"
     EXTRACTED_QUALITATIVE_SOLE_SOURCE = "EXTRACTED_QUALITATIVE_SOLE_SOURCE"
     DEFAULT_CONSERVATIVE_BOUND = "DEFAULT_CONSERVATIVE_BOUND"
+
+
+PROVENANCE_CONFIDENCE_RANK: Dict[str, int] = {
+    ParameterProvenance.EXTRACTED_QUANTITATIVE.value: 3,
+    ParameterProvenance.EXTRACTED_QUALITATIVE_SOLE_SOURCE.value: 2,
+    ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND.value: 1,
+}
+
+
+@dataclass(frozen=True)
+class ParameterProvenanceRecord:
+    """Parameter provenance bound to its supporting `document_chunks` IDs (ADR-00035)."""
+
+    provenance: ParameterProvenance
+    evidence_chunk_ids: Tuple[str, ...] = ()
 
 
 _SHARE_PATTERNS: Tuple[re.Pattern[str], ...] = (
@@ -231,6 +247,16 @@ def resolve_edge_cascade_parameters(
         explicit_domain=str(_lookup("dependency_domain") or "") or None,
     )
 
+    raw_chunk_ids = _lookup("evidence_chunk_ids")
+    evidence_chunk_ids: List[str] = []
+    if isinstance(raw_chunk_ids, (list, tuple, set)):
+        evidence_chunk_ids = sorted({str(c).strip() for c in raw_chunk_ids if str(c).strip()})
+    elif isinstance(raw_chunk_ids, str) and raw_chunk_ids.strip():
+        evidence_chunk_ids = [raw_chunk_ids.strip()]
+    single_cid = _lookup("chunk_id")
+    if isinstance(single_cid, str) and single_cid.strip() and single_cid.strip() not in evidence_chunk_ids:
+        evidence_chunk_ids = sorted([*evidence_chunk_ids, single_cid.strip()])
+
     return {
         "share": round(final_share, 6),
         "buffer_days": float(final_buffer),
@@ -239,4 +265,5 @@ def resolve_edge_cascade_parameters(
         "param_provenance": provenance.value,
         "share_is_default": share_is_default,
         "buffer_days_is_default": buffer_is_default,
+        "evidence_chunk_ids": evidence_chunk_ids,
     }

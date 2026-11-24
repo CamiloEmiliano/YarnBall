@@ -38,6 +38,7 @@ class ErrorStage:
     EPISTEMIC_HEDGING = "EPISTEMIC_HEDGING"        # Uncommitted / contradictory reasoning synthesis
     CONTEXT_OVERFLOW = "CONTEXT_OVERFLOW"          # Input prompts exceeding token ceiling before chunking
     EXTRACTION_PARSE_ERROR = "EXTRACTION_PARSE_ERROR"  # Unparseable or schema-invalid JSON/OpenCypher extraction
+    GLEANING_PARSE_FAILED = "GLEANING_PARSE_FAILED"    # Pass-2 targeted gleaning failure (non-destructive; Pass 1 kept)
     LLM_UNAVAILABLE = "LLM_UNAVAILABLE"            # Ollama connection, timeout, or transport failure
     UNKNOWN = "UNKNOWN"
 

@@ -107,6 +107,12 @@ class _InMemoryCypherSession:
                     props["jurisdiction"] = params["jurisdiction"]
                 if "source_hash" in params:
                     props["source_hash"] = params["source_hash"]
+                if "evidence_chunk_ids" in params:
+                    props["evidence_chunk_ids"] = list(params["evidence_chunk_ids"] or [])
+                if "evidence_status" in params:
+                    props["evidence_status"] = params["evidence_status"]
+                elif "evidence_status = 'chunked'" in set_clause:
+                    props["evidence_status"] = "chunked"
                 if "source_type" in params:
                     props["source_type"] = params["source_type"]
                 elif "source_type = 'sec_filing'" in set_clause:

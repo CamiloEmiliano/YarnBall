@@ -264,6 +264,37 @@ def create_queue_table(db_name: str = "financial_rag"):
             embedding_dim INTEGER NOT NULL,
             updated_at TIMESTAMPTZ DEFAULT now()
         );
+        CREATE TABLE IF NOT EXISTS document_chunks (
+            chunk_id TEXT PRIMARY KEY,
+            doc_id TEXT NOT NULL,
+            source_type VARCHAR(32) NOT NULL,
+            cik VARCHAR(10),
+            section TEXT,
+            char_start INTEGER NOT NULL DEFAULT 0,
+            char_end INTEGER NOT NULL DEFAULT 0,
+            text TEXT NOT NULL,
+            tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', text)) STORED,
+            valid_from DATE,
+            known_at TIMESTAMPTZ,
+            embedding vector({emb_dim}),
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_doc_id
+            ON document_chunks (doc_id);
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_valid_from
+            ON document_chunks (valid_from);
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_tsv_gin
+            ON document_chunks USING gin (tsv);
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_hnsw
+            ON document_chunks USING hnsw (embedding vector_cosine_ops);
+        CREATE TABLE IF NOT EXISTS chunk_entity_links (
+            chunk_id TEXT NOT NULL REFERENCES document_chunks(chunk_id) ON DELETE CASCADE,
+            node_id TEXT NOT NULL,
+            valid_from DATE,
+            PRIMARY KEY (chunk_id, node_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chunk_entity_links_node
+            ON chunk_entity_links (node_id);
     """)
     cur.execute("SELECT embedder_model, embedding_dim FROM embedding_schema_metadata WHERE id = 1;")
     existing_meta = cur.fetchone()

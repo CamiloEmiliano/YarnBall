@@ -18,8 +18,9 @@ Implements the consolidated operational Domain 1 GraphRAG execution pipeline:
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -159,8 +160,25 @@ class HopOrderedSubgraphVerbalizer:
     - Deterministic pre-computed cascade shock metric formatting (ADR-00006).
     """
 
-    def __init__(self, max_edges: int = MAX_SUBGRAPH_EDGES):
+    def __init__(
+        self,
+        max_edges: int = MAX_SUBGRAPH_EDGES,
+        chunks_parquet_path: Optional[Path | str] = None,
+        chunk_fetcher: Optional[Callable[[Sequence[str]], Dict[str, Dict[str, Any]]]] = None,
+    ):
         self.max_edges = max_edges
+        self.chunks_parquet_path = chunks_parquet_path
+        self.chunk_fetcher = chunk_fetcher
+
+    def _fetch_evidence_chunks(self, chunk_ids: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+        unique_ids = list(dict.fromkeys(str(cid).strip() for cid in chunk_ids if str(cid).strip()))
+        if not unique_ids:
+            return {}
+        if self.chunk_fetcher is not None:
+            return self.chunk_fetcher(unique_ids)
+        from knowledge_graph.chunk_store import fetch_chunks_by_ids
+
+        return fetch_chunks_by_ids(unique_ids, chunks_parquet_path=self.chunks_parquet_path)
 
     def verbalize(
         self,
@@ -208,14 +226,27 @@ class HopOrderedSubgraphVerbalizer:
             ),
         )
 
-        # 2. Cap at max_edges (clutter cliff defense)
+        # 2. Cap at max_edges (clutter cliff defense) & collect evidence chunk IDs ONLY for clamped edges (ADR-00035)
         clamped_edges = sorted_edges[: self.max_edges]
+        clamped_chunk_ids: List[str] = []
+        edge_chunk_lists: List[List[str]] = []
+        for edge in clamped_edges:
+            props_raw = edge.get("properties")
+            eprops: Mapping[str, Any] = props_raw if isinstance(props_raw, Mapping) else {}
+            raw_cids = edge.get("evidence_chunk_ids") or eprops.get("evidence_chunk_ids") or []
+            cids = [str(c).strip() for c in raw_cids if str(c).strip()] if isinstance(raw_cids, (list, tuple, set)) else []
+            edge_chunk_lists.append(cids)
+            clamped_chunk_ids.extend(cids)
+
+        resolved_chunks = self._fetch_evidence_chunks(clamped_chunk_ids) if clamped_chunk_ids else {}
+
         lines = [
             f"### Active Subgraph Topology ({len(clamped_edges)} edges retrieved, sorted by hop distance):"
         ]
+        evidence_passage_lines: List[str] = []
 
         current_hop = None
-        for edge in clamped_edges:
+        for edge_idx, (edge, cids) in enumerate(zip(clamped_edges, edge_chunk_lists), start=1):
             hop = edge.get("hop", edge.get("hops", edge.get("distance", 1)))
             if hop != current_hop:
                 current_hop = hop
@@ -237,7 +268,16 @@ class HopOrderedSubgraphVerbalizer:
                 props.append(f"buffer_days: {edge['buffer_days']}")
 
             prop_str = f" {{{', '.join(props)}}}" if props else ""
-            lines.append(f"- ({source}) -[:{rel_type}{prop_str}]-> ({target})")
+            citation_suffix = ""
+            if cids:
+                primary_cid = cids[0]
+                citation_suffix = f" [E{edge_idx} ← {primary_cid}]"
+                chunk_info = resolved_chunks.get(primary_cid)
+                if chunk_info and chunk_info.get("text"):
+                    snippet = " ".join(str(chunk_info["text"]).split())[:240]
+                    evidence_passage_lines.append(f'- [E{edge_idx} ← {primary_cid}] "{snippet}"')
+
+            lines.append(f"- ({source}) -[:{rel_type}{prop_str}]-> ({target}){citation_suffix}")
 
         if len(sorted_edges) > self.max_edges:
             lines.append(
@@ -245,6 +285,10 @@ class HopOrderedSubgraphVerbalizer:
             )
 
         sections.append("\n".join(lines))
+        if evidence_passage_lines:
+            sections.append(
+                "### Supporting Evidence Passages (ADR-00035):\n" + "\n".join(evidence_passage_lines)
+            )
         return "\n\n".join(sections)
 
 

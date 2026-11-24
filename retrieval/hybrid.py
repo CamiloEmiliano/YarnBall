@@ -75,15 +75,15 @@ class HybridSeeder:
         from embedding.embedder import (
             EmbedderUnavailableError,
             InvalidEmbeddingError,
-            embed_texts,
+            embed_query,
             format_pgvector_literal,
         )
 
         try:
-            embeddings = embed_texts([query])
-            if not embeddings or not embeddings[0]:
+            vec = embed_query(query)
+            if not vec:
                 return None
-            return format_pgvector_literal(embeddings[0])
+            return format_pgvector_literal(vec)
         except (EmbedderUnavailableError, InvalidEmbeddingError):
             logger.error("Dense query embedding unavailable or invalid for query '%s'", query[:80])
             raise

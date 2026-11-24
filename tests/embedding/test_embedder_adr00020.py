@@ -37,7 +37,11 @@ def _simulate_missing_sentence_transformers(monkeypatch: pytest.MonkeyPatch) -> 
             raise ImportError("No module named 'sentence_transformers'")
         return real_import(name, *args, **kwargs)
 
+    def _unreachable_ollama(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("Simulated offline Ollama /api/embed endpoint")
+
     monkeypatch.setattr(builtins, "__import__", _blocked_import)
+    monkeypatch.setattr("urllib.request.urlopen", _unreachable_ollama)
 
 
 def test_get_embedder_model_fails_fast_when_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -58,7 +62,7 @@ def test_explicit_mock_mode_emits_deterministic_nonzero_unit_vectors(
 
     vecs_direct = embedder.embed_texts(["Taiwan Semiconductor", "Apple Inc."], allow_mock=True)
     assert len(vecs_direct) == 2
-    assert len(vecs_direct[0]) == 768
+    assert len(vecs_direct[0]) == 1024
     assert math.isclose(sum(v * v for v in vecs_direct[0]), 1.0, rel_tol=1e-6)
     assert vecs_direct[0] != vecs_direct[1]
 
@@ -96,7 +100,7 @@ def test_verify_embedder_ready_reports_status_without_crashing(monkeypatch: pyte
     mock_status = embedder.verify_embedder_ready(allow_mock=True, raise_on_error=False)
     assert mock_status["healthy"] is True
     assert mock_status["ready"] is True
-    assert mock_status["dim"] == 768
+    assert mock_status["dim"] == 1024
     assert mock_status["mock"] is True
 
 

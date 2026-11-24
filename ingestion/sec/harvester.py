@@ -394,35 +394,117 @@ class EdgarWorker:
             extracted_nodes.extend(sub_nodes)
             extracted_edges.extend(sub_edges)
 
-        # 2. Extract relationships from Item 1 Business & Item 1A Risk Factors
-        from knowledge_graph.graph_store import GraphExtractionError
+        # 2. Segment and extract relationships from Item 1 Business, Item 1A Risk Factors, & Item 7 MD&A (ADR-00035)
+        from ingestion.sec.parser import rank_salient_chunks
+        from ingestion.segmentation.chunker import FilingMetadata, FinancialSectionSegmenter
+        from knowledge_graph.chunk_store import DocumentChunkRecord, store_document_chunks
+        from knowledge_graph.graph_store import GraphExtractionError, merge_chunk_extraction_payloads
+        from retrieval.temporal import actionable_session
+
+        doc_session_date, doc_known_at_utc, _ = actionable_session(
+            acceptance_dt_str,
+            fallback_doc_date=filing_date_str or None,
+        )
+        doc_valid_from_iso = doc_session_date.isoformat() if doc_session_date else None
+        doc_known_at_iso = doc_known_at_utc.isoformat() if doc_known_at_utc else None
+
+        segmenter = FinancialSectionSegmenter(max_tokens=800, overlap_tokens=120)
+        filing_meta = FilingMetadata(
+            cik=cik or "0000000000",
+            ticker=ticker,
+            company_name=primary_name,
+            form_type="10-K",
+            period=report_date_str,
+            filing_date=filing_date_str,
+            accession_number=acc_num,
+        )
 
         section_specs = (
-            ("item_1_business", "Item 1 Business"),
-            ("item_1a_risk_factors", "Item 1A Risk Factors"),
+            ("item_1_business", "Item 1 - Business"),
+            ("item_1a_risk_factors", "Item 1A - Risk Factors"),
+            ("item_7_mda", "Item 7 - Management Discussion and Analysis"),
         )
         for section_key, section_label in section_specs:
             section_text = sections.get(section_key, "")
             if not section_text:
                 continue
-            try:
-                graph_data = extract_sec_relationships(
-                    section_text,
-                    source_id=f"{acc_num}:{section_key}",
+
+            raw_chunks = segmenter.segment_filing(
+                section_text,
+                filing_meta,
+                default_section_name=section_label,
+            )
+            ranked_chunks = rank_salient_chunks(raw_chunks)
+
+            chunk_records = [
+                DocumentChunkRecord(
+                    chunk_id=c.chunk_id,
+                    doc_id=acc_num,
+                    source_type="sec_filing",
+                    cik=cik or None,
+                    section=c.section_name,
+                    char_start=c.start_char,
+                    char_end=c.end_char,
+                    text=c.text,
+                    valid_from=doc_valid_from_iso,
+                    known_at=doc_known_at_iso,
                 )
-            except TypeError:
-                # Backward compatibility for mocked callables accepting positional text only
-                graph_data = extract_sec_relationships(section_text)
-            except GraphExtractionError as exc:
-                logger.warning(
-                    "Quarantined SEC %s extraction for %s (%s): %s",
-                    section_label,
-                    ticker_or_cik,
-                    acc_num,
-                    exc,
-                )
+                for c in raw_chunks
+            ]
+            if self.pg_conn and chunk_records:
+                try:
+                    store_document_chunks(chunk_records, conn=self.pg_conn)
+                except Exception as exc:
+                    logger.warning("Failed storing SEC document_chunks for %s (%s): %s", acc_num, section_label, exc)
+
+            per_chunk_payloads: List[Dict[str, Any]] = []
+            for chunk in ranked_chunks:
+                try:
+                    try:
+                        chunk_graph = extract_sec_relationships(
+                            chunk.text,
+                            source_id=f"{acc_num}:{section_key}",
+                            doc_id=acc_num,
+                            cik=cik,
+                            ticker=ticker,
+                            company_name=primary_name,
+                            form_type="10-K",
+                            filing_date=filing_date_str,
+                            section_name=chunk.section_name,
+                        )
+                    except TypeError:
+                        try:
+                            chunk_graph = extract_sec_relationships(
+                                chunk.text,
+                                source_id=f"{acc_num}:{section_key}",
+                            )
+                        except TypeError:
+                            chunk_graph = extract_sec_relationships(chunk.text)
+                except GraphExtractionError as exc:
+                    logger.warning(
+                        "Quarantined SEC %s chunk %s extraction for %s (%s): %s",
+                        section_label,
+                        chunk.chunk_id,
+                        ticker_or_cik,
+                        acc_num,
+                        exc,
+                    )
+                    continue
+
+                if chunk_graph.get("nodes") or chunk_graph.get("edges"):
+                    for edge in chunk_graph.get("edges", []):
+                        eprops = dict(edge.get("properties") or {})
+                        eprops["evidence_chunk_ids"] = sorted(
+                            {*(eprops.get("evidence_chunk_ids") or []), chunk.chunk_id}
+                        )
+                        edge["properties"] = eprops
+                    chunk_graph["chunk_id"] = chunk.chunk_id
+                    per_chunk_payloads.append(chunk_graph)
+
+            if not per_chunk_payloads:
                 continue
 
+            graph_data = merge_chunk_extraction_payloads(per_chunk_payloads)
             n, e = self._persist_sec_graph_data(
                 primary_name=primary_name,
                 primary_ticker=ticker,
@@ -433,6 +515,7 @@ class EdgarWorker:
                 section=section_label,
                 source_text=section_text,
                 acceptance_datetime=acceptance_dt_str,
+                evidence_chunk_ids=[c.chunk_id for c in raw_chunks],
             )
             extracted_nodes.extend(n)
             extracted_edges.extend(e)
@@ -509,6 +592,49 @@ class EdgarWorker:
                 cur.close()
 
         fiscal_year = int(filing_date[:4]) if filing_date and len(filing_date) >= 4 else datetime.utcnow().year
+        from knowledge_graph.chunk_store import (
+            DocumentChunkRecord,
+            make_chunk_id,
+            store_chunk_entity_links,
+            store_document_chunks,
+        )
+
+        ex21_chunk_id = make_chunk_id(accession_number, "Exhibit 21 - Subsidiaries", 1)
+        ex21_chunk_ids = [ex21_chunk_id]
+        if self.pg_conn and subsidiaries:
+            try:
+                sub_summary = "\n".join(
+                    f"{s.get('name', '').strip()} ({s.get('jurisdiction', 'Unknown')})"
+                    for s in subsidiaries
+                    if s.get("name")
+                )
+                if sub_summary:
+                    store_document_chunks(
+                        [
+                            DocumentChunkRecord(
+                                chunk_id=ex21_chunk_id,
+                                doc_id=accession_number,
+                                source_type="sec_filing",
+                                cik=parent_cik or None,
+                                section="Exhibit 21 - Subsidiaries",
+                                char_start=0,
+                                char_end=len(sub_summary),
+                                text=sub_summary,
+                                valid_from=valid_from_iso,
+                                known_at=known_at_iso,
+                            )
+                        ],
+                        conn=self.pg_conn,
+                    )
+                    sub_links = [(ex21_chunk_id, parent_name, valid_from_iso)] + [
+                        (ex21_chunk_id, s["name"].strip(), valid_from_iso)
+                        for s in subsidiaries
+                        if s.get("name", "").strip()
+                    ]
+                    store_chunk_entity_links(sub_links, conn=self.pg_conn)
+            except Exception as exc:
+                logger.debug("Exhibit 21 chunk persistence skipped for %s: %s", accession_number, exc)
+
         with self.driver.session() as session:
             session.run(
                 "MERGE (p:Company {id: $id}) SET p.ticker = $ticker",
@@ -541,6 +667,8 @@ class EdgarWorker:
                         r.last_affirmed_at = $valid_from,
                         r.is_current = true,
                         r.source_type = 'sec_filing',
+                        r.evidence_chunk_ids = $evidence_chunk_ids,
+                        r.evidence_status = 'chunked',
                         r.is_temporal_unanchored = (coalesce(r.valid_from, $valid_from) IS NULL),
                         r.form_type = '10-K',
                         r.accession_number = $acc_num,
@@ -552,10 +680,18 @@ class EdgarWorker:
                     valid_from=valid_from_iso,
                     known_at=known_at_iso,
                     known_at_imputed=known_at_imputed,
+                    evidence_chunk_ids=ex21_chunk_ids,
                     acc_num=accession_number,
                     jurisdiction=sub.get("jurisdiction", "Unknown"),
                 )
-                edges.append({"source": sub_name, "target": parent_name, "type": "SUBSIDIARY_OF"})
+                edges.append(
+                    {
+                        "source": sub_name,
+                        "target": parent_name,
+                        "type": "SUBSIDIARY_OF",
+                        "evidence_chunk_ids": list(ex21_chunk_ids),
+                    }
+                )
 
         embed_nodes: List[Dict[str, Any]] = [
             {
@@ -642,8 +778,15 @@ class EdgarWorker:
         section: str,
         source_text: Optional[str] = None,
         acceptance_datetime: Optional[str] = None,
+        evidence_chunk_ids: Optional[List[str]] = None,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
-        """Link entities and persist structured relationships into Memgraph with temporal metadata."""
+        """Link entities and persist structured relationships into Memgraph with temporal & chunk provenance (ADR-00035)."""
+        from knowledge_graph.chunk_store import (
+            DocumentChunkRecord,
+            make_chunk_id,
+            store_chunk_entity_links,
+            store_document_chunks,
+        )
         from retrieval.temporal import actionable_session
 
         nodes = graph_data.get("nodes", [])
@@ -660,6 +803,33 @@ class EdgarWorker:
         valid_from_iso = session_date.isoformat() if session_date else None
         known_at_iso = known_at_utc.isoformat() if known_at_utc else None
 
+        default_chunk_ids = sorted({str(c).strip() for c in (evidence_chunk_ids or []) if str(c).strip()})
+        if not default_chunk_ids:
+            default_chunk_ids = [make_chunk_id(accession_number, section, 1)]
+
+        if self.pg_conn and source_text and source_text.strip() and not evidence_chunk_ids:
+            try:
+                store_document_chunks(
+                    [
+                        DocumentChunkRecord(
+                            chunk_id=default_chunk_ids[0],
+                            doc_id=accession_number,
+                            source_type="sec_filing",
+                            cik=None,
+                            section=section,
+                            char_start=0,
+                            char_end=len(source_text.strip()),
+                            text=source_text.strip(),
+                            valid_from=valid_from_iso,
+                            known_at=known_at_iso,
+                        )
+                    ],
+                    conn=self.pg_conn,
+                )
+            except Exception as exc:
+                logger.debug("SEC chunk persistence skipped for %s:%s: %s", accession_number, section, exc)
+
+        forbidden_prose_keys = {"raw_text", "full_text", "chunk_text", "evidence_text", "body_text"}
         from ontology.validation import validate_graph_payload
 
         linked_nodes: List[Dict[str, Any]] = []
@@ -669,7 +839,11 @@ class EdgarWorker:
                 continue
             raw_type = str(node.get("type", "Company")).strip()
             label = "".join(c for c in raw_type if c.isalnum())[:MAX_LABEL_LENGTH] or "Company"
-            props = dict(node.get("properties", {}) or {})
+            props = {
+                k: v
+                for k, v in dict(node.get("properties", {}) or {}).items()
+                if k not in forbidden_prose_keys
+            }
             resolved = self.linker.link_entity(name=raw_id, ticker=props.get("ticker"))
             canonical_id = resolved["company_name"] if resolved else raw_id
             if resolved and resolved.get("ticker"):
@@ -690,11 +864,16 @@ class EdgarWorker:
             target_id = res_t["company_name"] if res_t else target_raw
             raw_type = str(edge.get("type", "RELATED_TO")).strip().upper()
             rel_type = "".join(c for c in raw_type if c.isalnum() or c == "_")[:MAX_REL_TYPE_LENGTH] or "RELATED_TO"
+            eprops = {
+                k: v
+                for k, v in dict(edge.get("properties", {}) or {}).items()
+                if k not in forbidden_prose_keys
+            }
             linked_edges.append({
                 "source": source_id,
                 "target": target_id,
                 "type": rel_type,
-                "properties": dict(edge.get("properties", {}) or {}),
+                "properties": eprops,
             })
 
         gated = validate_graph_payload(
@@ -711,6 +890,17 @@ class EdgarWorker:
 
         inserted_nodes = []
         inserted_edges = []
+
+        if self.pg_conn:
+            try:
+                entity_links: List[Tuple[str, str, Optional[str]]] = []
+                for cid in default_chunk_ids:
+                    entity_links.append((cid, primary_name, valid_from_iso))
+                    for node in gated_nodes:
+                        entity_links.append((cid, node["id"], valid_from_iso))
+                store_chunk_entity_links(entity_links, conn=self.pg_conn)
+            except Exception as exc:
+                logger.debug("chunk_entity_links persistence skipped for %s:%s: %s", accession_number, section, exc)
 
         with self.driver.session() as session:
             session.run(
@@ -735,8 +925,16 @@ class EdgarWorker:
                 target_id = edge["target"]
                 rel_type = edge["type"]
                 props = dict(edge.get("properties", {}) or {})
-                resolved_params = resolve_edge_cascade_parameters({**edge, "rel_type": rel_type})
+                resolved_params = resolve_edge_cascade_parameters({**edge, "properties": props, "rel_type": rel_type})
                 props.update(resolved_params)
+
+                edge_cids = list(props.get("evidence_chunk_ids") or [])
+                if not edge_cids:
+                    edge_cids = list(default_chunk_ids)
+                edge_cids = sorted({str(c).strip() for c in edge_cids if str(c).strip()})
+                evidence_status = "chunked" if edge_cids else "legacy_unchunked"
+                props["evidence_chunk_ids"] = edge_cids
+                props["evidence_status"] = evidence_status
 
                 query = f"""
                 MATCH (s {{id: $source}})
@@ -750,6 +948,8 @@ class EdgarWorker:
                     r.last_affirmed_at = $valid_from,
                     r.is_current = true,
                     r.source_type = 'sec_filing',
+                    r.evidence_chunk_ids = $evidence_chunk_ids,
+                    r.evidence_status = $evidence_status,
                     r.is_temporal_unanchored = (coalesce(r.valid_from, $valid_from) IS NULL),
                     r.form_type = $form_type,
                     r.section = $section,
@@ -764,11 +964,20 @@ class EdgarWorker:
                     valid_from=valid_from_iso,
                     known_at=known_at_iso,
                     known_at_imputed=known_at_imputed,
+                    evidence_chunk_ids=edge_cids,
+                    evidence_status=evidence_status,
                     form_type=form_type,
                     section=section,
                     acc_num=accession_number,
                 )
-                inserted_edges.append({"source": source_id, "target": target_id, "type": rel_type})
+                inserted_edges.append(
+                    {
+                        "source": source_id,
+                        "target": target_id,
+                        "type": rel_type,
+                        "evidence_chunk_ids": edge_cids,
+                    }
+                )
 
         embed_nodes: List[Dict[str, Any]] = [
             {

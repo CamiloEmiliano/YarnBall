@@ -133,7 +133,7 @@ def store_node_embeddings(
     if not valid_nodes:
         return
 
-    embeddings = _embedder.validate_embedding_vectors(_embedder.embed_texts(texts))
+    embeddings = _embedder.validate_embedding_vectors(_embedder.embed_documents(texts))
     valid_from_iso, known_at_iso, is_unanchored = _resolve_embedding_validity(valid_from, known_at)
     source_published_at = known_at_iso or (None if is_unanchored else f"{valid_from_iso}T00:00:00+00:00")
 

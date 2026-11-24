@@ -25,8 +25,10 @@ RUNTIME_DIRS = (
 
 
 def test_runtime_modules_contain_no_legacy_qwen3_or_env_vars():
-    """Runtime inference modules and .env.example must not reference qwen3 or QWEN_MODEL_NAME."""
-    forbidden = ("qwen3", "QWEN_MODEL_NAME", "QWEN_API_BASE")
+    """Runtime inference modules and .env.example must not reference non-FT qwen3 generative tags or legacy env vars."""
+    import re
+
+    forbidden_re = re.compile(r"qwen3(?!-embedding)|QWEN_MODEL_NAME|QWEN_API_BASE")
     violations = []
 
     for rel_dir in RUNTIME_DIRS:
@@ -34,14 +36,14 @@ def test_runtime_modules_contain_no_legacy_qwen3_or_env_vars():
             if "__pycache__" in py_file.parts:
                 continue
             text = py_file.read_text(encoding="utf-8")
-            for token in forbidden:
-                if token in text:
-                    violations.append((str(py_file.relative_to(PROJECT_ROOT)), token))
+            m = forbidden_re.search(text)
+            if m:
+                violations.append((str(py_file.relative_to(PROJECT_ROOT)), m.group(0)))
 
     env_example = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
-    for token in forbidden:
-        if token in env_example:
-            violations.append((".env.example", token))
+    m_env = forbidden_re.search(env_example)
+    if m_env:
+        violations.append((".env.example", m_env.group(0)))
 
     assert violations == [], f"Found forbidden non-FT Qwen references: {violations}"
 
