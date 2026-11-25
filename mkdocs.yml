@@ -46,6 +46,7 @@ nav:
   - Home: index.md
   - Technical Report:
       - "Chapter 0: System Atlas": technical-report/00-system-atlas.md
+      - "Chapter 1: PiT Universe & Ingestion": technical-report/01-pit-universe-and-ingestion.md
   - API Reference:
       - Overview: reference/index.md
       - "Universe, Ingestion & Streaming": reference/ingestion-and-universe.md

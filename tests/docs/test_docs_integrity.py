@@ -342,6 +342,56 @@ def test_chapter0_live_constants_parity() -> None:
         assert snippet in atlas_text, f"Expected live constant snippet '{snippet}' in 00-system-atlas.md"
 
 
+def test_chapter1_live_constants_parity() -> None:
+    from datetime import time
+
+    from ingestion.market.parser import MarketMetricsCalculator
+    from ingestion.news.client import TokenBucket
+    from ingestion.sec.disruption_gating import DEFAULT_MAX_FILING_CHARS
+    from ingestion.sec.parser import should_glean_chunk
+    from ingestion.segmentation.chunker import FinancialSectionSegmenter
+    from retrieval.temporal import EARLY_CLOSE_ET, REGULAR_CLOSE_ET
+    from universe.sp500 import DICTIONARY_TICKERS
+
+    ch1_path = TECH_REPORT_DIR / "01-pit-universe-and-ingestion.md"
+    assert ch1_path.is_file(), "Expected Chapter 1 at docs/technical-report/01-pit-universe-and-ingestion.md"
+
+    assert REGULAR_CLOSE_ET == time(16, 0, 0)
+    assert EARLY_CLOSE_ET == time(13, 0, 0)
+    assert DEFAULT_MAX_FILING_CHARS == 50_000
+    assert len(DICTIONARY_TICKERS) == 28
+
+    segmenter = FinancialSectionSegmenter()
+    assert segmenter.max_tokens == 800
+    assert segmenter.overlap_tokens == 120
+
+    # Verify 0.85 * 512 = 435 gleaning token threshold boundary
+    assert should_glean_chunk("Item 1 - Business", 0, 434, False, max_new_tokens=512, enabled=True) is False
+    assert should_glean_chunk("Item 1 - Business", 0, 435, False, max_new_tokens=512, enabled=True) is True
+
+    bucket = TokenBucket()
+    assert bucket.capacity == pytest.approx(60.0)
+    assert bucket.refill_rate == pytest.approx(1.0)
+
+    calc = MarketMetricsCalculator()
+    assert callable(calc.compute_event_window_metrics)
+
+    ch1_text = ch1_path.read_text(encoding="utf-8")
+    for snippet in (
+        "16:00:00",
+        "13:00:00",
+        "50_000",
+        "max_tokens = 800",
+        "overlap_tokens = 120",
+        "0.85",
+        "capacity = 60",
+        "+2.0",
+        "-1.5",
+        "-3.0",
+    ):
+        assert snippet in ch1_text, f"Expected Chapter 1 constant snippet '{snippet}' in 01-pit-universe-and-ingestion.md"
+
+
 def test_mkdocs_strict_build_when_installed(tmp_path: Path) -> None:
     required = ("mkdocs", "material", "mkdocstrings")
     if any(importlib.util.find_spec(mod) is None for mod in required):
