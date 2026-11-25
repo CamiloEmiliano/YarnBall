@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00041
 - **Filename**: `ADR-00041-ch1-pit-universe-and-statutory-ingestion.md`
 - **Date**: 2026-11-24 19:08 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `docs` / `universe` / `ingestion` / `streaming`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`480157f`](../../docs/technical-report/01-pit-universe-and-ingestion.md), [`480157f`](../../mkdocs.yml), [`480157f`](../../tests/docs/test_docs_integrity.py)
 
 ---
 
