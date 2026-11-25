@@ -392,6 +392,46 @@ def test_chapter1_live_constants_parity() -> None:
         assert snippet in ch1_text, f"Expected Chapter 1 constant snippet '{snippet}' in 01-pit-universe-and-ingestion.md"
 
 
+def test_chapter2_live_constants_parity() -> None:
+    import inspect
+
+    from embedding.embedder import _MIN_NORM_SQ, get_embedding_dim
+    from knowledge_graph.ledger import DEFAULT_MEMGRAPH_EVENT_TTL_DAYS, FORBIDDEN_MEMGRAPH_PROSE_KEYS
+    from ontology.convergence import evaluate_calibration_batch
+    from ontology.schema import EntityClass, RelationPredicate
+    from ontology.validation import check_degree_anomaly_quarantine
+
+    ch2_path = TECH_REPORT_DIR / "02-ontology-linkage-and-ledger.md"
+    assert ch2_path.is_file(), "Expected Chapter 2 at docs/technical-report/02-ontology-linkage-and-ledger.md"
+
+    assert len(EntityClass) == 20
+    assert len(RelationPredicate) == 26
+    assert get_embedding_dim() == 1024
+    assert _MIN_NORM_SQ == pytest.approx(1e-8)
+    assert DEFAULT_MEMGRAPH_EVENT_TTL_DAYS == 90
+    assert len(FORBIDDEN_MEMGRAPH_PROSE_KEYS) == 5
+
+    deg_sig = inspect.signature(check_degree_anomaly_quarantine)
+    assert deg_sig.parameters["degree_burst_threshold"].default == 25
+
+    conv_sig = inspect.signature(evaluate_calibration_batch)
+    assert conv_sig.parameters["min_support"].default == 3
+    assert conv_sig.parameters["target_max_rate"].default == pytest.approx(0.02)
+
+    ch2_text = ch2_path.read_text(encoding="utf-8")
+    for snippet in (
+        "20 `EntityClass`",
+        "26 `RelationPredicate`",
+        "EMBEDDING_DIM = 1024",
+        "1e-8",
+        "DEFAULT_MEMGRAPH_EVENT_TTL_DAYS = 90",
+        "0.88",
+        "degree_burst_threshold = 25",
+        "target_max_rate = 0.02",
+    ):
+        assert snippet in ch2_text, f"Expected Chapter 2 constant snippet '{snippet}' in 02-ontology-linkage-and-ledger.md"
+
+
 def test_mkdocs_strict_build_when_installed(tmp_path: Path) -> None:
     required = ("mkdocs", "material", "mkdocstrings")
     if any(importlib.util.find_spec(mod) is None for mod in required):

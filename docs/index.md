@@ -18,6 +18,6 @@ Welcome to the engineering and quantitative finance documentation for **YarnBall
 | :---: | :---: | :--- |
 | **Ch. 0** | Published | [Architecture of a Point-in-Time Financial GraphRAG Engine](technical-report/00-system-atlas.md) ([ADR-00040](decisions/ADR-00040-ch0-system-atlas-and-docs-integrity-----.md)) |
 | **Ch. 1** | Published | [Point-in-Time Equity Universes, Market Time & Statutory Ingestion](technical-report/01-pit-universe-and-ingestion.md) ([ADR-00041](decisions/ADR-00041-ch1-pit-universe-and-statutory-ingestion.md)) |
-| **Ch. 2** | Planned | Formal Financial Ontology, Entity Linkage & Durable-vs-Ephemeral Graph Storage ([ADR-00042](decisions/ADR-00042-ch2-ontology-entity-linkage-and-ledger--.md)) |
+| **Ch. 2** | Published | [Formal Financial Ontology, Entity Linkage & Durable-vs-Ephemeral Graph Storage](technical-report/02-ontology-linkage-and-ledger.md) ([ADR-00042](decisions/ADR-00042-ch2-ontology-entity-linkage-and-ledger--.md)) |
 | **Ch. 3** | Planned | Hybrid GraphRAG Retrieval, Network Contagion Algebra & Provenance-Graded Reporting ([ADR-00043](decisions/ADR-00043-ch3-retrieval-contagion-and-reporting---.md)) |
 | **Ch. 4** | Planned | Submodular Curation, Dataset Cartography & Task-Selective Model Alignment ([ADR-00044](decisions/ADR-00044-ch4-curation-cartography-model-foundry--.md)) |
