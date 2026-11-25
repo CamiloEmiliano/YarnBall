@@ -472,6 +472,61 @@ def test_chapter3_live_constants_parity() -> None:
         assert snippet in ch3_text, f"Expected Chapter 3 constant snippet '{snippet}' in 03-retrieval-contagion-and-reporting.md"
 
 
+def test_chapter4_live_constants_parity() -> None:
+    import inspect
+
+    from curation.active_learning.cartographer import DatasetCartographer
+    from curation.cold_start.coreset import FacilityLocationCoresetSelector
+    from curation.cold_start.minhash_lsh import MinHashLSHDeduplicator
+    from curation.cold_start.semdedup import SemanticDeduplicator
+    from sft_pipeline.sampler import DOMINANT_CLASS_CAP, RARE_RELATION_FLOORS, ManifoldTargetedSampler
+
+    ch4_path = TECH_REPORT_DIR / "04-curation-and-model-foundry.md"
+    assert ch4_path.is_file(), "Expected Chapter 4 at docs/technical-report/04-curation-and-model-foundry.md"
+
+    lsh = MinHashLSHDeduplicator()
+    assert lsh.num_perm == 128
+    assert lsh.jaccard_threshold == pytest.approx(0.85)
+    assert lsh.shingle_size == 5
+    assert lsh.num_bands == 16
+
+    sem = SemanticDeduplicator()
+    assert sem.cosine_threshold == pytest.approx(0.88)
+
+    coreset = FacilityLocationCoresetSelector()
+    assert coreset.retention_fraction == pytest.approx(0.80)
+
+    carto = DatasetCartographer()
+    assert carto.conf_thresh_high == pytest.approx(0.70)
+    assert carto.conf_thresh_low == pytest.approx(0.30)
+    assert carto.var_thresh == pytest.approx(0.15)
+    filt_sig = inspect.signature(DatasetCartographer.filter_active_learning)
+    assert filt_sig.parameters["prune_easy_ratio"].default == pytest.approx(0.80)
+
+    assert DOMINANT_CLASS_CAP == 1500
+    assert RARE_RELATION_FLOORS["SOLE_SOURCE_DEPENDENT_ON"] == 400
+    assert RARE_RELATION_FLOORS["ACQUIRED_BY"] == 500
+    samp_sig = inspect.signature(ManifoldTargetedSampler.__init__)
+    assert samp_sig.parameters["null_sample_ratio"].default == pytest.approx(0.20)
+
+    ch4_text = ch4_path.read_text(encoding="utf-8")
+    for snippet in (
+        "num_perm = 128",
+        "jaccard_threshold = 0.85",
+        "shingle_size = 5",
+        "num_bands = 16",
+        "cosine_threshold = 0.88",
+        "retention_fraction = 0.80",
+        "conf_thresh_high = 0.70",
+        "conf_thresh_low = 0.30",
+        "var_thresh = 0.15",
+        "prune_easy_ratio = 0.80",
+        "DOMINANT_CLASS_CAP = 1500",
+        "null_sample_ratio = 0.20",
+    ):
+        assert snippet in ch4_text, f"Expected Chapter 4 constant snippet '{snippet}' in 04-curation-and-model-foundry.md"
+
+
 def test_mkdocs_strict_build_when_installed(tmp_path: Path) -> None:
     required = ("mkdocs", "material", "mkdocstrings")
     if any(importlib.util.find_spec(mod) is None for mod in required):

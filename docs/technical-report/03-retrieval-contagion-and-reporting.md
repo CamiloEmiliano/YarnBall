@@ -1,6 +1,6 @@
 # Chapter 3: Hybrid GraphRAG Retrieval, Network Contagion Algebra & Provenance-Graded Reporting
 
-> **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | **Part 3 (Retrieval, Contagion & Reporting)** | Part 4 (`04-curation-and-model-foundry.md`, [ADR-00044](../decisions/ADR-00044-ch4-curation-cartography-model-foundry--.md))
+> **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | **Part 3 (Retrieval, Contagion & Reporting)** | [Part 4 (Curation & Model Foundry)](04-curation-and-model-foundry.md)
 
 Once regulatory disclosures are segmented into bitemporal chunks (Chapter 1) and committed to the PostgreSQL assertion ledger, ephemeral Memgraph projection, and Leiden community hierarchy (Chapter 2), YarnBall's analytical read plane answers operational risk queries: *Given a facility fire, ransomware halt, or contract termination at supplier $A$ on session $t_0$, which multi-tier S&P 500 customers face unbuffered production downtime, when does inventory cover run out, and how much of that estimate rests on filing-disclosed figures versus conservative fallback bounds?*
 
