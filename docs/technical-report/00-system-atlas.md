@@ -1,6 +1,6 @@
 # Chapter 0: Architecture of a Point-in-Time Financial GraphRAG Engine
 
-> **Series Navigation**: **Part 0 (System Atlas)** | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | Part 3 (`03-retrieval-contagion-and-reporting.md`, [ADR-00043](../decisions/ADR-00043-ch3-retrieval-contagion-and-reporting---.md)) | Part 4 (`04-curation-and-model-foundry.md`, [ADR-00044](../decisions/ADR-00044-ch4-curation-cartography-model-foundry--.md))
+> **Series Navigation**: **Part 0 (System Atlas)** | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | [Part 3 (Retrieval, Contagion & Reporting)](03-retrieval-contagion-and-reporting.md) | Part 4 (`04-curation-and-model-foundry.md`, [ADR-00044](../decisions/ADR-00044-ch4-curation-cartography-model-foundry--.md))
 
 YarnBall is a point-in-time Financial GraphRAG and production-network contagion platform built over U.S. Securities and Exchange Commission (SEC) filings, historical S&P 500 equity universes, and real-time corporate event streams. Given a physical or contractual disruption at a supplier, foundry, logistics hub, or counterparty, YarnBall reconstructs the supply-chain topology strictly as known at a specific market session cutoff, propagates capacity shortfalls through a buffered Grouped-Leontief cascade engine, and produces provenance-graded operational risk reports backed by verbatim statutory text chunks.
 

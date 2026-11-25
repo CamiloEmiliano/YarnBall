@@ -1,6 +1,6 @@
 # Chapter 1: Point-in-Time Equity Universes, Market Time & Statutory Ingestion
 
-> **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | **Part 1 (PiT Universe & Ingestion)** | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | Part 3 (`03-retrieval-contagion-and-reporting.md`, [ADR-00043](../decisions/ADR-00043-ch3-retrieval-contagion-and-reporting---.md)) | Part 4 (`04-curation-and-model-foundry.md`, [ADR-00044](../decisions/ADR-00044-ch4-curation-cartography-model-foundry--.md))
+> **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | **Part 1 (PiT Universe & Ingestion)** | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | [Part 3 (Retrieval, Contagion & Reporting)](03-retrieval-contagion-and-reporting.md) | Part 4 (`04-curation-and-model-foundry.md`, [ADR-00044](../decisions/ADR-00044-ch4-curation-cartography-model-foundry--.md))
 
 Quantitative supply-chain intelligence stands or falls at the data-grounding boundary. Before a single edge enters the Knowledge Graph or a single token reaches a language model, an institutional pipeline must answer three empirical questions without look-ahead bias: *Which issuers actually belonged to the equity benchmark on date $t$? At which cash-equity trading session did a statutory disclosure become actionable? And does a filing describe an executed operational disruption or routine legal boilerplate?*
 

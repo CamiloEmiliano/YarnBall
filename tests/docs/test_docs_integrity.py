@@ -432,6 +432,46 @@ def test_chapter2_live_constants_parity() -> None:
         assert snippet in ch2_text, f"Expected Chapter 2 constant snippet '{snippet}' in 02-ontology-linkage-and-ledger.md"
 
 
+def test_chapter3_live_constants_parity() -> None:
+    from contagion.cascade import SparseNetworkCascadeEngine
+    from retrieval.pipeline import MAX_SUBGRAPH_EDGES
+    from retrieval.reporting import (
+        DEFAULT_FILING_GROUNDED_MAX_SHARE,
+        DEFAULT_STRESS_UPPER_BOUND_MIN_SHARE,
+    )
+    from retrieval.temporal import MAX_TRAVERSAL_HOPS, MIN_TRAVERSAL_HOPS
+
+    ch3_path = TECH_REPORT_DIR / "03-retrieval-contagion-and-reporting.md"
+    assert ch3_path.is_file(), "Expected Chapter 3 at docs/technical-report/03-retrieval-contagion-and-reporting.md"
+
+    engine = SparseNetworkCascadeEngine()
+    assert engine.gamma == pytest.approx(0.50)
+    assert engine.friction_floor == pytest.approx(0.05)
+    assert engine.max_iterations == 5
+    assert engine.tolerance == pytest.approx(1e-9)
+    assert engine.disruption_threshold_pct == pytest.approx(25.0)
+    assert MIN_TRAVERSAL_HOPS == 1
+    assert MAX_TRAVERSAL_HOPS == 10
+    assert MAX_SUBGRAPH_EDGES == 25
+    assert DEFAULT_FILING_GROUNDED_MAX_SHARE == pytest.approx(0.10)
+    assert DEFAULT_STRESS_UPPER_BOUND_MIN_SHARE == pytest.approx(0.50)
+
+    ch3_text = ch3_path.read_text(encoding="utf-8")
+    for snippet in (
+        "gamma = 0.50",
+        "friction_floor = 0.05",
+        "max_iterations = 5",
+        "1e-9",
+        "disruption_threshold_pct = 25.0",
+        "MIN_TRAVERSAL_HOPS = 1",
+        "MAX_TRAVERSAL_HOPS = 10",
+        "MAX_SUBGRAPH_EDGES = 25",
+        "0.10",
+        "0.50",
+    ):
+        assert snippet in ch3_text, f"Expected Chapter 3 constant snippet '{snippet}' in 03-retrieval-contagion-and-reporting.md"
+
+
 def test_mkdocs_strict_build_when_installed(tmp_path: Path) -> None:
     required = ("mkdocs", "material", "mkdocstrings")
     if any(importlib.util.find_spec(mod) is None for mod in required):

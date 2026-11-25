@@ -48,6 +48,7 @@ nav:
       - "Chapter 0: System Atlas": technical-report/00-system-atlas.md
       - "Chapter 1: PiT Universe & Ingestion": technical-report/01-pit-universe-and-ingestion.md
       - "Chapter 2: Ontology, Linkage & Ledger": technical-report/02-ontology-linkage-and-ledger.md
+      - "Chapter 3: Retrieval, Contagion & Reporting": technical-report/03-retrieval-contagion-and-reporting.md
   - API Reference:
       - Overview: reference/index.md
       - "Universe, Ingestion & Streaming": reference/ingestion-and-universe.md

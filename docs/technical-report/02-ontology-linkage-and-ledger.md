@@ -1,6 +1,6 @@
 # Chapter 2: Formal Financial Ontology, Entity Linkage & Durable-vs-Ephemeral Graph Storage
 
-> **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | **Part 2 (Ontology, Linkage & Ledger)** | Part 3 (`03-retrieval-contagion-and-reporting.md`, [ADR-00043](../decisions/ADR-00043-ch3-retrieval-contagion-and-reporting---.md)) | Part 4 (`04-curation-and-model-foundry.md`, [ADR-00044](../decisions/ADR-00044-ch4-curation-cartography-model-foundry--.md))
+> **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | **Part 2 (Ontology, Linkage & Ledger)** | [Part 3 (Retrieval, Contagion & Reporting)](03-retrieval-contagion-and-reporting.md) | Part 4 (`04-curation-and-model-foundry.md`, [ADR-00044](../decisions/ADR-00044-ch4-curation-cartography-model-foundry--.md))
 
 Extracting candidate triples from chunked SEC disclosures (Chapter 1) is only half of knowledge-graph construction. Left unchecked, generative language models emit inverted relations (`Company` $\rightarrow$ `CEO_OF` $\rightarrow$ `Person`), convert speculative risk factors (*"may evaluate alternative suppliers"*) into active procurement contracts, treat anonymized placeholders (*"Customer A"*) as real companies, fragment parent corporations across dozens of operating subsidiaries, and overload in-memory Cypher engines with raw filing prose and multi-year news nodes.
 
