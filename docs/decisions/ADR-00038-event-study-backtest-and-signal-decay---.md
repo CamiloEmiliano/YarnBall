@@ -45,7 +45,7 @@ Several architectural parameters across [`ADR-00033`](ADR-00033-bitemporal-pit-c
 Establish a **Deferred First-Instance Event-Study & Signal-Decay Calibration Protocol**, to be implemented as an offline CLI harness (`tools/eval_event_signal_decay.py` + `evaluation/event_study.py`) once the data prerequisites below are satisfied.
 
 ### 4.1 Data Prerequisites Gate (Activation Criteria)
-1. **Survivorship-bias-free daily OHLCV (Open & Close)** for Point-in-Time S&P 500 constituents ([`universe/sp500.py`](../../universe/sp500.py)) plus SPY and GICS sector ETF benchmarks.
+1. **Survivorship-bias-free daily OHLCV (Open & Close) & indexed split registry**: Point-in-Time S&P 500 constituents ([`universe/sp500.py`](../../universe/sp500.py)), offline forward/reverse stock-split registry (`sp500_stock_splits` / `data/sp500_stock_splits_historical.json` per [`ADR-00039`](ADR-00039-sp500-pit-stock-split-corporate-actions-.md)), plus SPY and GICS sector ETF benchmarks.
 2. **Quarterly earnings-announcement calendar** covering the study window, to isolate or exclude events within $\pm 1$ trading day of scheduled earnings.
 3. **Timestamped historical event corpus**: SEC Form 8-K filings (with EDGAR `acceptance_datetime`) and curated historical news with UTC `published_at`.
 
@@ -66,7 +66,7 @@ Anchor each impulse to $t_0 = \text{actionable\_session}(\text{known\_at})$ ([`A
 3. **Tradable forward drift curve (`Open(t_0) -> Close(t_0 + h)`)** across horizons $h \in \{1, 3, 5, 10, 20, 40, 60\}$ trading days (plus `Close(t_0) -> Close(t_0 + h)` sensitivity check).
 4. **Cascade physics & confounder stratification**:
    - Compare cascade-unabsorbed shocks (`downtime > buffer_days`) vs. absorbed shocks (`downtime <= buffer_days`) computed by [`contagion/cascade.py`](../../contagion/cascade.py) `SparseNetworkCascadeEngine`.
-   - Separate events within $\pm 1$ trading day of scheduled earnings from non-earnings events.
+   - Separate events within $\pm 1$ trading day of scheduled earnings—and windows intersecting forward or reverse stock-split declaration/ex-dates ([`ADR-00039`](ADR-00039-sp500-pit-stock-split-corporate-actions-.md))—from unconfounded operational events.
 
 ### 4.5 Parameter Calibration Feedback Map
 Once executed with adequate sample size, empirical results recalibrate the theoretic baseline without architectural rework:
