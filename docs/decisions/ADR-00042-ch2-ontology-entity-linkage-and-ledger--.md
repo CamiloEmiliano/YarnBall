@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00042
 - **Filename**: `ADR-00042-ch2-ontology-entity-linkage-and-ledger--.md`
 - **Date**: 2026-11-25 04:22 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `docs` / `ontology` / `embedding` / `knowledge_graph`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`b3d6242`](../../docs/technical-report/02-ontology-linkage-and-ledger.md), [`b3d6242`](../../mkdocs.yml), [`b3d6242`](../../tests/docs/test_docs_integrity.py)
 
 ---
 
