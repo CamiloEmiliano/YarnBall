@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00040
 - **Filename**: `ADR-00040-ch0-system-atlas-and-docs-integrity-----.md`
 - **Date**: 2026-11-24 17:58 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `docs` / `pyproject.toml` / `tests`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`a5f4732`](../../docs/technical-report/00-system-atlas.md), [`a5f4732`](../../README.md), [`a5f4732`](../../mkdocs.yml), [`a5f4732`](../../pyproject.toml), [`a5f4732`](../../docs/index.md), [`a5f4732`](../../docs/reference/index.md), [`a5f4732`](../../tests/docs/test_docs_integrity.py)
 
 ---
 
