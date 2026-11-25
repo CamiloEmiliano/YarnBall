@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00044
 - **Filename**: `ADR-00044-ch4-curation-cartography-model-foundry--.md`
 - **Date**: 2026-11-25 04:29 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `docs` / `curation` / `sft_pipeline`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`d416274`](../../docs/technical-report/04-curation-and-model-foundry.md), [`d416274`](../../mkdocs.yml), [`d416274`](../../tests/docs/test_docs_integrity.py)
 
 ---
 
