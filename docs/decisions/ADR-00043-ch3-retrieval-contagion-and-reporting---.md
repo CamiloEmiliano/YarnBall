@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00043
 - **Filename**: `ADR-00043-ch3-retrieval-contagion-and-reporting---.md`
 - **Date**: 2026-11-25 04:29 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `docs` / `contagion` / `retrieval` / `synthesis` / `explorer`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`513fa47`](../../docs/technical-report/03-retrieval-contagion-and-reporting.md), [`513fa47`](../../mkdocs.yml), [`513fa47`](../../tests/docs/test_docs_integrity.py)
 
 ---
 
