@@ -1,0 +1,56 @@
+site_name: YarnBall Financial GraphRAG
+site_description: Point-in-Time Financial GraphRAG & Supply-Chain Contagion Intelligence Platform
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths:
+            - .
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            members_order: source
+
+extra_javascript:
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Technical Report:
+      - "Chapter 0: System Atlas": technical-report/00-system-atlas.md
+  - API Reference:
+      - Overview: reference/index.md
+      - "Universe, Ingestion & Streaming": reference/ingestion-and-universe.md
+      - "Ontology, Embeddings & Ledger": reference/ontology-and-ledger.md
+      - "Contagion, Retrieval & Explorer": reference/retrieval-and-contagion.md
+      - "Curation, SFT Foundry & Tools": reference/curation-and-foundry.md
+  - Architecture Decisions:
+      - ADR Registry: decisions/index.md
