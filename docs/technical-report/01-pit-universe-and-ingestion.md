@@ -1,4 +1,4 @@
-# Chapter 1: Point-in-Time Equity Universes, Market Time & Statutory Ingestion
+# Chapter 1:<br>Point-in-Time Equity Universes, Market Time & Statutory Ingestion
 
 > **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | **Part 1 (PiT Universe & Ingestion)** | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | [Part 3 (Retrieval, Contagion & Reporting)](03-retrieval-contagion-and-reporting.md) | [Part 4 (Curation & Model Foundry)](04-curation-and-model-foundry.md)
 
@@ -20,67 +20,74 @@ classDiagram
 
     class EquitiesUniverseAndSplitsPiT {
         <<BoundedContext>>
-        +Constituents: [date_added, date_removed)
-        +CIK: 10-digit zero-padded string
-        +TickerNorm: dot-to-hyphen (BRK-B)
-        +DictionaryGuard: 28 English-word tickers
-        +PlannedSplits: rational N/D (PROPOSED ADR-00039)
-        +get_constituents_at_date(t) List~SP500Constituent~
+        +HalfOpenInterval dateAddedToDateRemoved
+        +String cikZeroPadded10
+        +String hyphenatedShareClassTicker
+        +int dictionaryTickersCount28
+        +RationalFactor plannedSplitsAdr00039
+        +get_constituents_at_date(target_date) List~SP500Constituent~
+        +is_dictionary_ticker(ticker) bool
     }
 
     class MarketSessionClock {
         <<BoundedContext>>
-        +RegularClose: 16:00 America/New_York
-        +EarlyClose: 13:00 America/New_York
-        +Holidays: NYSE Rule 7.2 + GoodFriday + Mourning
-        +actionable_session(known_at, doc_date) Tuple
-        +PiTContext(as_of, mode, include_unanchored)
+        +TimeET regularClose1600
+        +TimeET earlyClose1300
+        +HolidaySet nyseRule72AndGoodFriday
+        +HolidaySet unscheduledMourningClosures
+        +actionable_session(known_at, fallback_doc_date) SessionTuple
+        +us_equity_holidays(year) Set~date~
     }
 
     class DisruptionSanitizerGate {
         <<BoundedContext>>
-        +MaxFilingChars: DEFAULT_MAX_FILING_CHARS = 50000
-        +Strippers: CoverPage, PSLRASafeHarbor, Signatures, Ex9_01
-        +PriorityTiers: Tier 1 (Acute) .. Tier 4 (Procedural)
-        +NegativeControl: shock_magnitude_pct = 0.0 when non-material
-        +assess_sec_8k_disruption() SanitizedDisruptionAssessment
+        +int maxFilingChars50000
+        +LinearStripper coverPagePslraAndSignatures
+        +PriorityLattice statutoryTiers1To4
+        +float negativeControlZeroShock
+        +sanitize_sec_8k_text(raw_text) String
+        +assess_sec_8k_disruption(items, content) SanitizedDisruptionAssessment
     }
 
     class SectionChunkAndGleaner {
         <<BoundedContext>>
-        +Window: max_tokens=800, overlap_tokens=120
-        +TokenBound: floor(max(1.35*W, C/3.7) + 1)
-        +SalienceOrder: non-truncating cue rank
-        +GleaningTrigger: edges>=1 or tokens>=0.85*max_new_tokens
-        +segment_filing(raw_text, meta) List~FilingChunk~
-        +extract_sec_relationships() MergedChunkGraph
+        +int maxTokens800
+        +int overlapTokens120
+        +float gleaningTokenRatio085
+        +BpeEstimator conservativeWordCharBound
+        +segment_filing(raw_text, metadata) List~FilingChunk~
+        +rank_salient_chunks(chunks) List~FilingChunk~
+        +extract_sec_relationships(text) MergedChunkGraph
     }
 
     class EventWindowMarketEconometrics {
         <<BoundedContext>>
-        +Window: [T - k, T + k] (default k = 3)
-        +CAR: R_stock - R_benchmark
-        +VolZScore: CAR / (sigma_daily * sqrt(Delta_t))
-        +Regimes: +2.0 Bullish, -1.5 Bearish, -3.0 Shock
-        +compute_event_window_metrics() Dict
+        +int symmetricWindowDays3
+        +AbnormalReturn stockMinusSpyBenchmark
+        +VolatilityZScore carOverSqrtTimeSigma
+        +PolarityThresholds bullish2Bearish15Shock3
+        +compute_event_window_metrics(ticker, event_date) MarketMetrics
     }
 
     class LiveAndArchiveIngestionStreams {
         <<BoundedContext>>
-        +Archives(2018-2025): EDGAR, yfinance, FNSPID, Transcripts
-        +LiveOnly: Finnhub TokenBucket (60 req / 60s)
-        +Transport: Kafka manual commit + .dlt quarantine
-        +CircuitBreaker: domain_status failure tracking
+        +HistoricalArchives edgarYfinanceFnspidTranscripts
+        +TokenBucket liveFinnhub60Per60s
+        +KafkaConsumer manualCommitWithDltQuarantine
+        +CircuitBreaker domainStatusBlacklist
+        +fetch_finnhub(ticker) List~NewsPayload~
         +process_streaming_event(payload) bool
     }
 
-    EquitiesUniverseAndSplitsPiT --> SectionChunkAndGleaner : canonical CIK, ticker & GICS sector
+    EquitiesUniverseAndSplitsPiT --> SectionChunkAndGleaner : canonical CIK, ticker and GICS sector
     EquitiesUniverseAndSplitsPiT --> EventWindowMarketEconometrics : survivorship-free issuer universe
-    MarketSessionClock --> SectionChunkAndGleaner : stamps valid_from & known_at
+    MarketSessionClock --> SectionChunkAndGleaner : stamps valid_from and known_at
     MarketSessionClock --> LiveAndArchiveIngestionStreams : anchors event session cutoffs
-    DisruptionSanitizerGate --> SectionChunkAndGleaner : sanitized 8-K narrative & tier
-    LiveAndArchiveIngestionStreams --> SectionChunkAndGleaner : raw SEC sections & news text
+    DisruptionSanitizerGate --> SectionChunkAndGleaner : sanitized 8-K narrative and tier
+    LiveAndArchiveIngestionStreams --> SectionChunkAndGleaner : raw SEC sections and news text
 ```
+
+**Figure 1.1:** *Chapter 1 topic-level domain architecture covering PiT equity universes, market time, statutory gating, segmentation, econometrics, and streaming.*
 
 ---
 
@@ -90,9 +97,11 @@ Backtesting a financial model on a static snapshot of current S&P 500 members in
 1. **Ex-post conditioning (upward bias)**: recent index entrants (`PLTR`, `CRWD`, `SMCI`, `KKR`) entered the S&P 500 *because* of prior multi-year growth; including them in 2019 cohorts conditions on future success.
 2. **Terminal event censoring (downward risk omission)**: firms removed due to receivership (`SIVB`, `FRC`, `SBNY`), distress/market-cap contraction (`DISH`, `LUMN`, `VNO`), or acquisition (`ATVI`, `XLNX`, `CELG`, `RTN`, `TWTR`) vanish from modern constituent tables, censoring the exact tail-risk events a contagion system exists to detect.
 
-[`SP500UniverseManager`](../../universe/sp500.py) (a pre-ADR foundation later integration-tested under [ADR-00005](../decisions/ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md)) models each constituent record $i$ as a half-open membership interval $[d_i^{\text{add}}, d_i^{\text{rem}})$, where $d_i^{\text{add}}$ defaults to the modern 500-stock S&P index inception (`1957-03-04`) when unrecorded and $d_i^{\text{rem}} = \varnothing$ denotes active membership:
+[`SP500UniverseManager`](../../universe/sp500.py) (a pre-ADR foundation later integration-tested under [ADR-00005](../decisions/ADR-00005-sit-flow-1-pit-sec-filing-to-kg-ingest--.md)) defines the point-in-time S&P 500 constituent universe $\mathcal{U}(t)$ on calendar date $t$ by modeling each constituent record $i$ as a half-open membership interval $[d_i^{\text{add}}, d_i^{\text{rem}})$, where $d_i^{\text{add}}$ defaults to the modern 500-stock S&P index inception (`1957-03-04`) when unrecorded and $d_i^{\text{rem}} = \varnothing$ denotes active membership:
 
-$$\mathbb{I}_{i \in \mathcal{U}(t)} = \mathbb{I}\!\left(d_i^{\text{add}} \le t\right) \cdot \mathbb{I}\!\left(d_i^{\text{rem}} = \varnothing \,\lor\, t < d_i^{\text{rem}}\right)$$
+$$i \in \mathcal{U}(t) \iff \left(d_i^{\text{add}} \le t\right) \;\land\; \left(d_i^{\text{rem}} = \varnothing \,\lor\, t < d_i^{\text{rem}}\right) \tag{1.1}$$
+
+meaning issuer $i$ belongs to the active point-in-time universe $\mathcal{U}(t)$ if and only if its addition date $d_i^{\text{add}}$ is on or before $t$ and it has not yet been removed ($d_i^{\text{rem}} = \varnothing$ or $t < d_i^{\text{rem}}$).
 
 #### Identifier Hygiene & Dictionary-Ticker Collision Defense
 Cross-source equity datasets routinely disagree on share-class punctuation and entity identifiers. [`SP500Constituent`](../../universe/sp500.py) enforces four normalization invariants at construction:
@@ -119,9 +128,9 @@ Under regular-hours execution (no after-hours trading), a filing accepted by EDG
 
 Given raw acceptance timestamp $t_{\text{known}}$ (including 14-digit EDGAR header strings `YYYYMMDDHHMMSS` interpreted in `America/New_York`) and fallback document date $d_{\text{doc}}$, the actionable-session operator $\tau_{\text{act}}$ in `actionable_session(known_at, fallback_doc_date)` is:
 
-$$\tau_{\text{act}}(t_{\text{known}}, d_{\text{doc}}) = \begin{cases} d_{\text{ET}}, & \text{if } t_{\text{known}} \ne \varnothing \;\land\; \text{open}(d_{\text{ET}}) \;\land\; \text{time}_{\text{ET}}(t_{\text{known}}) \le t_{\text{close}}(d_{\text{ET}}) \\[4pt] \text{next\_open}(d_{\text{ET}}), & \text{if } t_{\text{known}} \ne \varnothing \;\land\; \big(\neg\text{open}(d_{\text{ET}}) \,\lor\, \text{time}_{\text{ET}}(t_{\text{known}}) > t_{\text{close}}(d_{\text{ET}})\big) \\[4pt] \text{next\_open}(d_{\text{doc}}), & \text{if } t_{\text{known}} = \varnothing \;\land\; d_{\text{doc}} \ne \varnothing \quad (\text{conservative end-of-day imputation}) \end{cases}$$
+$$\tau_{\text{act}}(t_{\text{known}}, d_{\text{doc}}) = \begin{cases} d_{\text{ET}}, & \text{if } t_{\text{known}} \ne \varnothing \;\land\; \text{open}(d_{\text{ET}}) \;\land\; \text{time}_{\text{ET}}(t_{\text{known}}) \le t_{\text{close}}(d_{\text{ET}}) \\[4pt] \text{next\_open}(d_{\text{ET}}), & \text{if } t_{\text{known}} \ne \varnothing \;\land\; \big(\neg\text{open}(d_{\text{ET}}) \,\lor\, \text{time}_{\text{ET}}(t_{\text{known}}) > t_{\text{close}}(d_{\text{ET}})\big) \\[4pt] \text{next\_open}(d_{\text{doc}}), & \text{if } t_{\text{known}} = \varnothing \;\land\; d_{\text{doc}} \ne \varnothing \quad (\text{conservative end-of-day imputation}) \end{cases} \tag{1.2}$$
 
-When only a calendar `filing_date` $d_{\text{doc}}$ is available (`known_at_imputed = True`), `actionable_session` imputes $t_{\text{known}}$ to `23:59:59 ET` on $d_{\text{doc}}$ and advances `valid_from` to `next_us_equity_trading_day(d_doc)`, guaranteeing zero intraday look-ahead bias even on legacy date-only archives.
+where $d_{\text{ET}}$ and $\text{time}_{\text{ET}}(t_{\text{known}})$ are the `America/New_York` calendar date and wall-clock time of $t_{\text{known}}$, $\text{open}(d)$ indicates whether U.S. equity markets are open on date $d$, $t_{\text{close}}(d) \in \{\text{16:00 ET}, \text{13:00 ET}\}$ is the scheduled close on date $d$, and $\text{next\_open}(d)$ returns the strictly next trading session via `next_us_equity_trading_day(d)`. When only a calendar `filing_date` $d_{\text{doc}}$ is available (`known_at_imputed = True`), `actionable_session` imputes $t_{\text{known}}$ to `23:59:59 ET` on $d_{\text{doc}}$ and advances `valid_from` to `next_us_equity_trading_day(d_doc)`, guaranteeing zero intraday look-ahead bias even on legacy date-only archives.
 
 ---
 
@@ -154,17 +163,17 @@ Long Form 10-K `Item 1` (Business) and `Item 1A` (Risk Factors) sections frequen
 1. **Conservative Deterministic Token Bound**:
    To prevent prompt overflow on Qwen/BPE tokenizers without invoking a runtime tokenizer dependency inside pure chunking paths, `estimate_token_count(x)` bounds token allocation via:
 
-   $$\hat{T}(x) = \left\lfloor \max\!\left(1.35\, W(x),\; \frac{C(x)}{3.7}\right) + 1 \right\rfloor$$
+   $$\hat{T}(x) = \left\lfloor \max\!\left(1.35\, W(x),\; \frac{C(x)}{3.7}\right) + 1 \right\rfloor \tag{1.3}$$
 
-   where $W(x)$ is whitespace word count and $C(x)$ is character length.
+   where $\hat{T}(x)$ is the conservative token-count estimate for text $x$, $W(x)$ is whitespace word count, and $C(x)$ is character length.
 2. **Section-Aware Windowing & Immutable Headers**:
    `FinancialSectionSegmenter` (`max_tokens = 800`, `overlap_tokens = 120`, `min_chunk_tokens = 40`) splits filings along 13 canonical `10-K`/`10-Q`/`8-K`/`Exhibit 21` regex boundaries first, then packs paragraphs and sentences within each section while prepending an immutable header (`[DOCUMENT: SEC Form 10-K | CIK: ... | TICKER: ... | COMPANY: ... | PERIOD: ... | DATE: ... | SECTION: ...]`) and assigning deterministic `make_chunk_id(doc_id, section, ordinal)` keys persisted into PostgreSQL `document_chunks`.
 3. **Non-Truncating Salience Ordering & Conditional Pass-2 Gleaning**:
    `rank_salient_chunks` orders chunks descending by relational supply-chain cue count (`score_chunk_salience`) while retaining **100% of chunks** ([ADR-00035](../decisions/ADR-00035-text-unit-chunk-layer-and-evidence-links.md) Invariant #4). After Pass-1 extraction on chunk $c$, `should_glean_chunk` triggers a single targeted Pass-2 gleaning prompt if and only if:
 
-   $$\text{Glean}(c) \iff \text{HighSignal}(\text{sec}_c) \;\land\; \neg\text{runaway}_1 \;\land\; \Big(|E_1(c)| \ge 1 \;\lor\; T_{\text{gen},1}(c) \ge \lfloor 0.85\, T_{\max} \rfloor\Big)$$
+   $$\text{Glean}(c) \iff \text{HighSignal}(\text{sec}_c) \;\land\; \neg\text{runaway}_1 \;\land\; \Big(|E_1(c)| \ge 1 \;\lor\; T_{\text{gen},1}(c) \ge \lfloor 0.85\, T_{\max} \rfloor\Big) \tag{1.4}$$
 
-   where high-signal sections cover `Item 1`, `Item 1A` (explicitly excluding `Item 1B`), `Item 1.01`, `Item 1.02`, `Item 2.01`, and `Item 8.01`, and $T_{\max} = 512$. Pass-2 failures are quarantined non-destructively (`ErrorStage.GLEANING_PARSE_FAILED`) without discarding Pass-1 triples.
+   where $\text{HighSignal}(\text{sec}_c)$ holds when chunk $c$'s statutory section $\text{sec}_c$ is `Item 1`, `Item 1A` (explicitly excluding `Item 1B`), `Item 1.01`, `Item 1.02`, `Item 2.01`, or `Item 8.01`; $\text{runaway}_1$ indicates Pass-1 hit runaway loop truncation; $|E_1(c)|$ is the Pass-1 extracted edge count; $T_{\text{gen},1}(c)$ is the Pass-1 generated token count; and $T_{\max} = 512$ is the Pass-1 output budget. Pass-2 failures are quarantined non-destructively (`ErrorStage.GLEANING_PARSE_FAILED`) without discarding Pass-1 triples.
 
 ---
 
@@ -173,26 +182,28 @@ Long Form 10-K `Item 1` (Business) and `Item 1A` (Risk Factors) sections frequen
 #### Event-Study Abnormal Returns & Volatility Polarity
 To ground historical events and SFT volatility boundary cohorts in realized market reactions, [`MarketMetricsCalculator`](../../ingestion/market/parser.py) computes symmetric $[T - k, T + k]$ (`window_days` $k = 3$) event-window metrics from daily `yfinance` OHLCV histories against `SPY`:
 
-$$R_{i,[t_{\text{pre}}, t_{\text{post}}]} = \frac{P_i(t_{\text{post}}) - P_i(t_{\text{pre}})}{\max(10^{-4},\, P_i(t_{\text{pre}}))}, \qquad \text{CAR}_{i} = R_{i,[t_{\text{pre}}, t_{\text{post}}]} - R_{m,[t_{\text{pre}}, t_{\text{post}}]}$$
+$$R_{i,[t_{\text{pre}}, t_{\text{post}}]} = \frac{P_i(t_{\text{post}}) - P_i(t_{\text{pre}})}{\max(10^{-4},\, P_i(t_{\text{pre}}))}, \qquad \text{CAR}_{i} = R_{i,[t_{\text{pre}}, t_{\text{post}}]} - R_{m,[t_{\text{pre}}, t_{\text{post}}]} \tag{1.5}$$
 
-Baseline daily return volatility $\hat{\sigma}_i = \sqrt{\max(10^{-8},\, s_r^2)}$ (defaulting to `0.02` if fewer than 2 daily returns exist) scales over $\Delta t = \max(1, \text{idx}_{\text{post}} - \text{idx}_{\text{pre}})$ trading sessions via square-root-of-time diffusion to yield the standardized volatility $z$-score and 5-axis polarity regime:
+where $P_i(t_{\text{pre}})$ and $P_i(t_{\text{post}})$ are issuer $i$'s adjusted closing prices at the start and end of the $[t_{\text{pre}}, t_{\text{post}}]$ event window, $R_{i,[t_{\text{pre}}, t_{\text{post}}]}$ and $R_{m,[t_{\text{pre}}, t_{\text{post}}]}$ are the cumulative returns of issuer $i$ and the `SPY` market benchmark, and $\text{CAR}_i$ is the resulting Cumulative Abnormal Return. Baseline daily return volatility $\hat{\sigma}_i = \sqrt{\max(10^{-8},\, s_r^2)}$ (defaulting to `0.02` if fewer than 2 daily returns exist) scales over $\Delta t = \max(1, \text{idx}_{\text{post}} - \text{idx}_{\text{pre}})$ trading sessions via square-root-of-time diffusion to yield the standardized volatility $z$-score and 5-axis polarity regime:
 
-$$z_i = \frac{\text{CAR}_i}{\hat{\sigma}_i \sqrt{\Delta t}}, \qquad \text{Polarity}(z_i) = \begin{cases} \texttt{EXPANDING\_BULLISH}, & z_i \ge +2.0 \\ \texttt{DISRUPTIVE\_SHOCK}, & z_i \le -3.0 \\ \texttt{CONTRACTING\_BEARISH}, & -3.0 < z_i \le -1.5 \\ \texttt{NEUTRAL\_STABLE}, & -1.5 < z_i < +2.0 \end{cases}$$
+$$z_i = \frac{\text{CAR}_i}{\hat{\sigma}_i \sqrt{\Delta t}}, \qquad \text{Polarity}(z_i) = \begin{cases} \texttt{EXPANDING\_BULLISH}, & z_i \ge +2.0 \\ \texttt{DISRUPTIVE\_SHOCK}, & z_i \le -3.0 \\ \texttt{CONTRACTING\_BEARISH}, & -3.0 < z_i \le -1.5 \\ \texttt{NEUTRAL\_STABLE}, & -1.5 < z_i < +2.0 \end{cases} \tag{1.6}$$
 
 #### Strict Historical-vs-Live Source Partitioning & Rate-Limited Streaming
 YarnBall enforces an explicit architectural wall between multi-year historical archives (`2018–2025+`) and live forward streaming:
 - **Historical & Dry-Run Grounding**: SEC EDGAR filings via `edgartools` ([`EdgarClient`](../../ingestion/sec/client.py)), daily OHLCV via `yfinance` ([`YahooFinanceClient`](../../ingestion/market/client.py)), local FNSPID Parquet news archives ([`HistoricalNewsIngestor`](../../ingestion/news/harvester.py)), and cached quarterly earnings call transcripts ([`EarningsTranscriptIngestor`](../../ingestion/transcripts/harvester.py)).
-- **Live Forward Streaming Only**: [`fetch_finnhub`](../../ingestion/news/client.py) is strictly reserved for real-time forward ingestion (Finnhub's free tier lacks multi-year depth), throttled by a thread-safe continuous-refill [`TokenBucket`](../../ingestion/news/client.py) (`capacity = 60`, `refill_seconds = 60`, rate $r = 1.0\text{ token/s}$):
+- **Live Forward Streaming Only**: [`fetch_finnhub`](../../ingestion/news/client.py) is strictly reserved for real-time forward ingestion (Finnhub's free tier lacks multi-year depth), throttled by a thread-safe continuous-refill [`TokenBucket`](../../ingestion/news/client.py) with capacity $B = 60$ (`capacity = 60`, `refill_seconds = 60`) and refill rate $r = 1.0\text{ token/s}$:
 
-  $$b(t) = \min\!\big(B,\; b(t_0) + r\,(t - t_0)\big)$$
+  $$b(t) = \min\!\big(B,\; b(t_0) + r\,(t - t_0)\big) \tag{1.7}$$
 
-  Live payloads publish to Kafka via [`streaming/driver.py`](../../streaming/driver.py) and are consumed by [`streaming/consumer.py`](../../streaming/consumer.py) (`enable_auto_commit = False`), which validates required fields (`raw_payload`, `fetched_at`, `source_hash`), persists deduplicated rows into `financial_news_queue`, embeds text via `embed_texts` (failing fast on `EmbedderUnavailableError` / `InvalidEmbeddingError` per [ADR-00020](../decisions/ADR-00020-fail-fast-embedder-and-zero-vector-guard.md)), merges extracted entities, and routes malformed or failed payloads deterministically to `<KAFKA_TOPIC>.dlt` ([ADR-00003](../decisions/ADR-00003-sit-flow-4-streaming-event-graph-update-.md)).
+  where $b(t)$ is the token balance available at monotonic time $t$ and $t_0$ is the prior refill timestamp. Live payloads publish to Kafka via [`streaming/driver.py`](../../streaming/driver.py) and are consumed by [`streaming/consumer.py`](../../streaming/consumer.py) (`enable_auto_commit = False`), which validates required fields (`raw_payload`, `fetched_at`, `source_hash`), persists deduplicated rows into `financial_news_queue`, embeds text via `embed_texts` (failing fast on `EmbedderUnavailableError` / `InvalidEmbeddingError` per [ADR-00020](../decisions/ADR-00020-fail-fast-embedder-and-zero-vector-guard.md)), merges extracted entities, and routes malformed or failed payloads deterministically to `<KAFKA_TOPIC>.dlt` ([ADR-00003](../decisions/ADR-00003-sit-flow-4-streaming-event-graph-update-.md)).
 
 ---
 
 ### A.7 Chapter 1 Theory-to-Code Crosswalk Table
 
 Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs/test_docs_integrity.py`](../../tests/docs/test_docs_integrity.py).
+
+**Table 1.1:** *Chapter 1 Theory-to-Code Crosswalk (PiT Universe, Market Calendar, 8-K Gating, Chunking, and Market Econometrics).*
 
 | Concept / Mathematical Invariant | Code Anchor (`module:symbol`) | Provenance | Verification Suite |
 | :--- | :--- | :--- | :--- |
@@ -223,6 +234,8 @@ Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs
 
 ### B.1 Subsystem Module Inventory
 
+**Table 1.2:** *Chapter 1 Subsystem Module Inventory Across `universe/`, `ingestion/`, `streaming/`, and `retrieval/temporal.py`.*
+
 | Module Path | Key Classes & Functions | Role in Chapter 1 Pipeline |
 | :--- | :--- | :--- |
 | [`universe/sp500.py`](../../universe/sp500.py) | `SP500Constituent`, `SP500UniverseManager`, `is_dictionary_ticker`, `normalize_exchange` | Point-in-time S&P 500 lookups, GICS sector stats, JSON cache & PostgreSQL sync. |
@@ -251,54 +264,63 @@ Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs
 #### Pipeline 1: SEC Form 10-K & Exhibit 21 Chunked Ingestion & Targeted Gleaning
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
 flowchart TD
-    A["EdgarWorker.process_company_10k"] --> B["EdgarClient.fetch_latest_10k & extract_10k_sections"]
-    A --> C["EdgarEntityLinker.link_entity"]
-    A --> D["EdgarWorker._persist_subsidiaries -> sec_subsidiaries"]
-    A --> E["temporal.actionable_session(acceptance_datetime, filing_date)"]
-    E --> F["FinancialSectionSegmenter.segment_filing (800 tok / 120 overlap)"]
-    F --> G["chunk_store.store_document_chunks -> document_chunks"]
-    F --> H["parser.rank_salient_chunks (lossless salience sort)"]
-    H --> I["parser.extract_sec_relationships"]
-    I --> J["graph_store.run_structured_extraction_with_telemetry (Pass 1)"]
-    J --> K["validation.validate_graph_payload(source_text=chunk.text)"]
-    K --> L{"parser.should_glean_chunk?"}
-    L -->|"Yes"| M["Pass-2 Gleaning + validate_graph_payload"]
-    L -->|"No"| N["graph_store.merge_chunk_extraction_payloads"]
+    A["EdgarWorker: process_company_10k"] --> B["EdgarClient: fetch + extract_10k_sections"]
+    A --> C["EdgarEntityLinker: link_entity"]
+    A --> D["persist_subsidiaries to sec_subsidiaries"]
+    A --> E["temporal: actionable_session cutoff"]
+    E --> F["segment_filing (800 tok / 120 overlap)"]
+    F --> G["store_document_chunks to Postgres"]
+    F --> H["rank_salient_chunks (salience sort)"]
+    H --> I["parser: extract_sec_relationships"]
+    I --> J["Pass-1 structured LLM extraction"]
+    J --> K["validate_graph_payload against chunk"]
+    K --> L{"should_glean_chunk?"}
+    L -->|"Yes"| M["Pass-2 gleaning + ontology validation"]
+    L -->|"No"| N["merge_chunk_extraction_payloads"]
     M --> N
-    N --> O["EdgarWorker._persist_sec_graph_data -> Ledger & Memgraph"]
+    N --> O["persist_sec_graph_data to Ledger + RAM"]
 ```
+
+**Figure 1.2:** *Execution call graph for SEC Form 10-K and Exhibit 21 chunked ingestion with conditional Pass-2 gleaning.*
 
 #### Pipeline 2: SEC Form 8-K Boilerplate Sanitization & Disruption Gating
 
 ```mermaid
-flowchart LR
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
+flowchart TD
     A["normalize_staged_8k_payload"] --> B["assess_sec_8k_disruption"]
-    B --> C["sanitize_sec_8k_text (O(N) PSLRA, cover & signature strip)"]
-    B --> D["select_primary_sec_8k_item (Tier 1..4 precedence)"]
-    C --> E{"Operational halt cue or Tier-1 statutory item?"}
+    B --> C["sanitize_sec_8k_text (O(N) boilerplate strip)"]
+    B --> D["select_primary_sec_8k_item (Tiers 1..4)"]
+    C --> E{"Operational halt cue or Tier-1 item?"}
     D --> E
-    E -->|"Yes"| F["SanitizedDisruptionAssessment (material=True, shock>0)"]
-    E -->|"No"| G["Negative Control (NONE_ROUTINE_GOVERNANCE_OR_FINANCIAL, shock=0.0)"]
+    E -->|"Yes"| F["Material disruption (shock above 0.0)"]
+    E -->|"No"| G["Negative control (routine 8-K, shock=0.0)"]
 ```
+
+**Figure 1.3:** *Execution call graph for linear-time SEC Form 8-K boilerplate sanitization and 4-tier disruption gating.*
 
 #### Pipeline 3: Live Scheduled Finnhub Fetch & Kafka DLT Streaming Loop
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
 flowchart TD
-    A["tools.scheduler:schedule_jobs (APScheduler)"] --> B["ingestion.task_runner:run_all"]
-    B --> C["news.client:fetch_finnhub"]
+    A["scheduler: schedule_jobs (APScheduler)"] --> B["task_runner: run_all"]
+    B --> C["news.client: fetch_finnhub"]
     C --> D["TokenBucket.wait (60 calls / 60s)"]
-    C --> E["streaming.driver:send_record -> Kafka Topic"]
-    E --> F["streaming.consumer:run_consumer (auto_commit=False)"]
-    F --> G["streaming.consumer:process_streaming_event"]
+    C --> E["driver: send_record to Kafka topic"]
+    E --> F["consumer: run_consumer (auto_commit=False)"]
+    F --> G["consumer: process_streaming_event"]
     G --> H{"Valid payload?"}
-    H -->|"No"| I["streaming.producer:send_to_dlt (<topic>.dlt)"]
-    H -->|"Yes"| J["store_raw -> financial_news_queue"]
-    J --> K["embedder.embed_texts & validate_embedding_vectors"]
-    K --> L["graph_store:store_graph_entities"]
+    H -->|"No"| I["producer: send_to_dlt (topic.dlt)"]
+    H -->|"Yes"| J["store_raw to financial_news_queue"]
+    J --> K["embed_texts + validate_embedding_vectors"]
+    K --> L["graph_store: store_graph_entities"]
     L -->|"Runtime failure"| I
 ```
+
+**Figure 1.4:** *Execution call graph for scheduled live Finnhub polling, token-bucket throttling, and manual-commit Kafka DLT streaming.*
 
 ---
 
@@ -323,6 +345,8 @@ flowchart TD
 ```
 
 #### Key Chapter 1 Configuration & Persistence Contracts
+
+**Table 1.3:** *Chapter 1 Configuration Flags, Archive Formats, and Staged Payload Contracts.*
 
 | Variable / Artifact | Default / Location | Contract Summary |
 | :--- | :--- | :--- |

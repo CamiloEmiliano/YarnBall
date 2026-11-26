@@ -1,4 +1,4 @@
-# Chapter 3: Hybrid GraphRAG Retrieval, Network Contagion Algebra & Provenance-Graded Reporting
+# Chapter 3:<br>Hybrid GraphRAG Retrieval, Network Contagion Algebra & Provenance-Graded Reporting
 
 > **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | **Part 3 (Retrieval, Contagion & Reporting)** | [Part 4 (Curation & Model Foundry)](04-curation-and-model-foundry.md)
 
@@ -20,73 +20,77 @@ classDiagram
 
     class RulesFirstQueryRouter {
         <<BoundedContext>>
-        +Modes: auto, local, global, hybrid
-        +Latency: O(1) deterministic (zero LLM call)
-        +Anchors: EdgarEntityLinker ticker & corporate spans
-        +MacroCues: cluster, sector, S&P 500, concentration
-        +classify_query_route(query, route) Tuple
+        +RouteMode autoLocalGlobalHybrid
+        +Complexity constantTimeZeroLlm
+        +EntityLinker edgarAnchorResolution
+        +RegexSet macroAndClusterCues
+        +classify_query_route(query, route) RouteDecision
     }
 
     class SubgraphStorePort {
         <<BoundedContext>>
-        +MandatoryCtx: PiTContext(as_of, mode, include_unanchored)
-        +HopsBound: MIN_TRAVERSAL_HOPS=1 .. MAX_TRAVERSAL_HOPS=10
-        +LiveImpl: MemgraphSubgraphStore (Bolt + TemporalQueryFilter)
-        +OfflineImpl: InMemorySubgraphStore (Parquet parity)
-        +Guardrail: CypherASTWhitelistGuardrail (read-only)
+        +PiTContext mandatoryNonOptionalCtx
+        +int minHops1ToMaxHops10
+        +StoreAdapter liveMemgraphAndOfflineParquet
+        +AstGuardrail readOnlyCypherWhitelist
         +traverse(seed_ids, hops, ctx) List~Edge~
+        +execute_guarded(cypher, params, ctx) List~Record~
     }
 
     class HybridPiTSeeder {
         <<BoundedContext>>
-        +DenseEntities: SCD2 node_embeddings cosine (top_k=5)
-        +DensePassages: financial_news_queue + durable lineage
-        +ChunkRRF: search_chunks_hybrid_rrf (pgvector + tsvector)
-        +GuardedCQL: TextToCQL.execute_query()
+        +int topKDense5
+        +VectorIndex scdType2NodeEmbeddings
+        +LineageTable durableNodeEmbeddingSources
+        +RankFusion chunkPgvectorAndTsvectorRrf
+        +search_dense_entities(query, ctx) List~SeedHit~
     }
 
     class SparseNetworkCascadeEngine {
         <<BoundedContext>>
-        +IntraGroup: additive share sum_u a_uv <= 1.0
-        +InterGroup: Leontief bottleneck max_k
-        +SCCDamping: gamma = 0.50 (Tarjan O(V+E) feedback)
-        +Timing: Simchi-Levi TTS onset t_v & downtime d_v
-        +Thresholds: friction_floor=0.05, disruption=25.0%
-        +propagate(graph, shocks, durations) Dict~Summary~
+        +ProductionFn groupedLeontiefWithBuffers
+        +float sccFeedbackGamma050
+        +float frictionFloor005
+        +float disruptionThresholdPct25
+        +compute_spectral_radius(graph, feedback) float
+        +propagate(graph, shocks, durations) Dict~ConvergentShockSummary~
     }
 
     class ImpactRankedVerbalizer {
         <<BoundedContext>>
-        +EdgeCap: MAX_SUBGRAPH_EDGES = 25
-        +Order: cascade impact score -> hop -> lexicographic
-        +AuditMetric: dropped_impact_share in [0.0, 1.0]
-        +verbalize(edges, cascade, passages) str
+        +int maxSubgraphEdges25
+        +SortOrder cascadeImpactThenHop
+        +float droppedImpactShareMetric
+        +verbalize(edges, cascade, passages) String
     }
 
     class GroundedSynthesizer {
         <<BoundedContext>>
-        +Handles: [E1 <- chunk_id] verbatim citations
-        +Abstention: NO_VERIFIED_EVIDENCE_MESSAGE
-        +validate_evidence_citations(answer, handles) List~str~
-        +synthesize(query, context) Dict
+        +CitationFormat chunkHandleBindings
+        +AbstentionRule noVerifiedEvidenceFallback
+        +validate_evidence_citations(answer, handles) List~String~
+        +synthesize(query, context) SynthesisResult
     }
 
     class OperationalContagionReport {
         <<BoundedContext>>
-        +DomainWall: Domain 1 physical/contractual only
-        +Grades: FILING_GROUNDED(<=0.10) .. STRESS_UPPER_BOUND(>=0.50)
-        +Invariants: truncated & degraded!=ok enforced
-        +Exports: 1NF ContagionTimeSeriesEventRecord rows
+        +ScopeBoundary domain1OperationalOnly
+        +float filingGroundedMaxShare010
+        +float stressUpperBoundMinShare050
+        +ReportCoverage failHonestTruncationAndStatus
+        +flatten_report_to_timeseries_records(report) List~EventRow~
     }
 
-    RulesFirstQueryRouter --> HybridPiTSeeder : local / hybrid seed dispatch
-    HybridPiTSeeder --> SubgraphStorePort : ranked SeedHit anchors + PiTContext
+    RulesFirstQueryRouter --> HybridPiTSeeder : local and hybrid seed dispatch
+    HybridPiTSeeder --> SubgraphStorePort : ranked SeedHit anchors and PiTContext
     SubgraphStorePort --> SparseNetworkCascadeEngine : active PiT directed edges
-    SparseNetworkCascadeEngine --> ImpactRankedVerbalizer : ConvergentShockSummary & spectral_radius
-    ImpactRankedVerbalizer --> GroundedSynthesizer : top-25 impact edges + chunk snippets
-    SparseNetworkCascadeEngine --> OperationalContagionReport : node contractions, onsets & downtimes
+    SparseNetworkCascadeEngine --> ImpactRankedVerbalizer : ConvergentShockSummary and spectral_radius
+    ImpactRankedVerbalizer --> GroundedSynthesizer : top-25 impact edges and chunk snippets
+    SparseNetworkCascadeEngine --> OperationalContagionReport : node contractions, onsets and downtimes
     GroundedSynthesizer --> OperationalContagionReport : cited operational synthesis
 ```
+
+**Figure 3.1:** *Chapter 3 topic-level domain architecture connecting zero-LLM routing, hybrid PiT seeding, `SubgraphStorePort`, Grouped-Leontief contagion, impact-ranked verbalization, and Domain-1 reporting.*
 
 ---
 
@@ -102,19 +106,19 @@ Random-walk and eigenvector centralities treat incoming links as uniform convex 
 2. **Tarjan SCC Feedback Identification & Spectral Stability**:
    Real industrial networks contain cyclic cross-licensing and reciprocal chemical/wafer supply loops. `compute_sccs` executes Tarjan's $O(V + E)$ algorithm, and `identify_feedback_edges` classifies edge $(u \to v, k)$ as a **cyclic feedback edge** ($(u, v, k) \in \mathcal{F}$) iff $u$ and $v$ belong to the same non-trivial Strongly Connected Component (or self-loop) and $\text{dist}(v) \le \text{dist}(u)$ in BFS hop distance from initial shock seeds. Feedback edges are attenuated by intermediate input share $\gamma = 0.50$:
 
-   $$a_{uv}^{\text{eff}} = \begin{cases} \gamma\, a_{uv}, & (u, v, k) \in \mathcal{F} \\ a_{uv}, & (u, v, k) \notin \mathcal{F} \end{cases}$$
+   $$a_{uv}^{\text{eff}} = \begin{cases} \gamma\, a_{uv}, & (u, v, k) \in \mathcal{F} \\ a_{uv}, & (u, v, k) \notin \mathcal{F} \end{cases} \tag{3.1}$$
 
    and `compute_spectral_radius` reports $\rho(W_{\text{eff}}) = \max_i |\lambda_i(W_{\text{eff}})|$ as an explicit loop-amplification diagnostic.
 3. **Grouped-Leontief Fixed-Point Recurrence**:
    Given normalized initial capacity shocks $h_v^{(0)} \in [0, 1]$ and upstream disruption durations $d_u \ge 0$, round $r \in \{1, \dots, R\}$ (`max_iterations = 5`, convergence `tolerance = 1e-9`) updates nodes in topological BFS hop order:
 
-   $$h_v^{(r)} = \max\!\left(h_v^{(0)},\; \max_{k \in \mathcal{K}(v)} \min\!\left(1,\; \sum_{u \in \text{In}_k(v)} \mathbb{I}\!\left(B_{uv} = 0 \,\lor\, h_u^{(r-1)} d_u > B_{uv}\right) a_{uv}^{\text{eff}}\, h_u^{(r-1)}\right)\right)$$
+   $$h_v^{(r)} = \max\!\left(h_v^{(0)},\; \max_{k \in \mathcal{K}(v)} \min\!\left(1,\; \sum_{u \in \text{In}_k(v)} \mathbf{1}\!\left[B_{uv} = 0 \,\lor\, h_u^{(r-1)} d_u > B_{uv}\right] a_{uv}^{\text{eff}}\, h_u^{(r-1)}\right)\right) \tag{3.2}$$
 
-   Inventory cover $B_{uv} > 0$ absorbs upstream shocks completely whenever lost upstream capacity-days satisfy $h_u d_u \le B_{uv}$.
+   where $\text{In}_k(v)$ denotes the upstream suppliers $u$ feeding input group $k \in \mathcal{K}(v)$ into node $v$, and $\mathbf{1}[\cdot] \in \{0, 1\}$ is the indicator function ($1$ when the condition holds, $0$ otherwise) activating edge $(u \to v)$ only when buffer cover $B_{uv} = 0$ or lost upstream capacity-days satisfy $h_u^{(r-1)} d_u > B_{uv}$ (otherwise inventory cover $B_{uv} > 0$ absorbs the shock completely).
 4. **Simchi-Levi Time-to-Survive (TTS) Onset & Unbuffered Downtime**:
-   Across all active unabsorbed incoming edges ($h_u d_u > B_{uv}$), shock arrival time $t_{uv}$, unbuffered edge downtime $d_{uv}$, and node window $[t_v^{\text{onset}}, t_v^{\text{end}}]$ resolve in hop order:
+   Across all active unabsorbed incoming edges ($h_u d_u > B_{uv}$), given upstream node $u$'s onset time $t_u$ ($t_u = 0$ for initial shock seeds), converged impairment $h_u$, and duration $d_u$, shock arrival time $t_{uv}$, unbuffered edge downtime $d_{uv}$, and node disruption window $[t_v^{\text{onset}}, t_v^{\text{onset}} + d_v^{\text{net}}]$ resolve in hop order:
 
-   $$t_{uv} = t_u + \frac{B_{uv}}{h_u}, \qquad d_{uv} = \max\!\left(0,\; d_u - \frac{B_{uv}}{h_u}\right), \qquad t_v^{\text{onset}} = \min_{(u,v) \text{ active}} t_{uv}, \qquad d_v^{\text{net}} = \max_{(u,v) \text{ active}}(t_{uv} + d_{uv}) - t_v^{\text{onset}}$$
+   $$\begin{aligned} t_{uv} &= t_u + \frac{B_{uv}}{h_u}, & d_{uv} &= \max\!\left(0,\; d_u - \frac{B_{uv}}{h_u}\right), \\[4pt] t_v^{\text{onset}} &= \min_{(u,v) \text{ active}} t_{uv}, & d_v^{\text{net}} &= \max_{(u,v) \text{ active}}(t_{uv} + d_{uv}) - t_v^{\text{onset}} \end{aligned} \tag{3.3}$$
 
 5. **Active-Buffer Friction Floor & Institutional Verdicts**:
    When a non-seed customer $v$ experiences incoming upstream disruption that is **fully absorbed** by safety stock ($h_u d_u \le B_{uv}$, yielding $d_v^{\text{net}} = 0$), expediting and buffer drawdown costs are flagged via `is_friction_floor = True` (`friction_floor = 0.05`) and assigned verdict `TOLERATED_BUFFERED`. Unbuffered peaks $\ge 25.0\%$ (`disruption_threshold_pct = 25.0`) emit `DISRUPTIVE_SHOCK`, $(0\%, 25\%)$ emit `CONTAINED_MINIMAL_CONTAGION`, and $0\%$ emit `NEUTRAL_UNAFFECTED`. All 10 canonical topologies (chains, diamonds, dual-source splits, butterflies) and 8 adversarial pathologies (resonant cycles, zero-buffer singularities, horizon cutoffs) are verified in [`ADR-00007`](../decisions/ADR-00007-cascade-engine-adversarial-verification-.md).
@@ -152,12 +156,12 @@ Using a 7B generative model to classify query intent adds hundreds of millisecon
 #### Multi-Channel Seeding & Reciprocal Rank Fusion
 [`HybridSeeder`](../../retrieval/hybrid.py) combines SCD Type 2 `node_embeddings` cosine search (`1 - (embedding <=> query_vec)`), dense news passage hits joined through durable `node_embedding_sources` (immune to Memgraph's 90-day `:News` TTL eviction), and guarded `TextToCQL`. Supporting filing chunks in `document_chunks` are ranked via **Reciprocal Rank Fusion (RRF)** (`search_chunks_hybrid_rrf` in [`knowledge_graph/chunk_store.py`](../../knowledge_graph/chunk_store.py), smoothing constant $k_{\text{RRF}} = 60$) over `pgvector` HNSW rank $r_{\text{vec}}(c)$ and PostgreSQL `tsvector` GIN rank $r_{\text{fts}}(c)$:
 
-$$\text{RRF}(c) = \frac{1}{k_{\text{RRF}} + r_{\text{vec}}(c)} + \frac{1}{k_{\text{RRF}} + r_{\text{fts}}(c)}$$
+$$\text{RRF}(c) = \frac{1}{k_{\text{RRF}} + r_{\text{vec}}(c)} + \frac{1}{k_{\text{RRF}} + r_{\text{fts}}(c)} \tag{3.4}$$
 
 #### Impact-Ranked Subgraph Pruning (`MAX_SUBGRAPH_EDGES = 25`)
-To fit 7B context windows cleanly without arbitrary alphabetical truncation, [`HopOrderedSubgraphVerbalizer`](../../retrieval/pipeline.py) ranks retrieved edges descending by cascade impairment impact $\max(h_{\text{src}}, h_{\text{tgt}}) \cdot a_{uv}$ before hop distance, retains the top `MAX_SUBGRAPH_EDGES = 25` edges with resolved verbatim chunk passages, and computes exact tail loss:
+To fit 7B context windows cleanly without arbitrary alphabetical truncation, [`HopOrderedSubgraphVerbalizer`](../../retrieval/pipeline.py) ranks retrieved edges $e = (u \to v) \in E_{\text{all}}$ descending by cascade impairment impact $w_{\text{impact}}(e) = \max(h_u, h_v) \cdot a_{uv}$ before hop distance, retains the top `MAX_SUBGRAPH_EDGES = 25` edges with resolved verbatim chunk passages, and computes exact tail loss over the pruned set $E_{\text{dropped}} \subseteq E_{\text{all}}$:
 
-$$\text{dropped\_impact\_share} = \frac{\sum_{e \in E_{\text{dropped}}} w_{\text{impact}}(e)}{\sum_{e \in E_{\text{all}}} w_{\text{impact}}(e)} \in [0, 1]$$
+$$\text{dropped\_impact\_share} = \frac{\sum_{e \in E_{\text{dropped}}} w_{\text{impact}}(e)}{\sum_{e \in E_{\text{all}}} w_{\text{impact}}(e)} \in [0, 1] \tag{3.5}$$
 
 ---
 
@@ -181,6 +185,8 @@ $$\text{dropped\_impact\_share} = \frac{\sum_{e \in E_{\text{dropped}}} w_{\text
 ### A.6 Chapter 3 Theory-to-Code Crosswalk Table
 
 Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs/test_docs_integrity.py`](../../tests/docs/test_docs_integrity.py).
+
+**Table 3.1:** *Chapter 3 Theory-to-Code Crosswalk (Contagion Algebra, Read Facade, Cypher Guardrails, Routing, Reporting, and Workbench).*
 
 | Concept / Mathematical Invariant | Code Anchor (`module:symbol`) | Provenance | Verification Suite |
 | :--- | :--- | :--- | :--- |
@@ -209,6 +215,8 @@ Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs
 
 ### B.1 Subsystem Module Inventory
 
+**Table 3.2:** *Chapter 3 Subsystem Module Inventory Across `contagion/`, `retrieval/`, `synthesis/`, and `explorer/`.*
+
 | Module Path | Key Classes & Functions | Role in Chapter 3 Pipeline |
 | :--- | :--- | :--- |
 | [`contagion/cascade.py`](../../contagion/cascade.py) | `CascadeNode`, `CascadeEdge`, `CascadeGraph`, `ConvergentShockSummary`, `SparseNetworkCascadeEngine` | Pure-math Grouped-Leontief cascade solver, Tarjan SCC feedback damping & TTS timing. |
@@ -234,46 +242,55 @@ Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs
 #### Pipeline 1: Unified `query_bi` Execution Across `local`, `global`, and `hybrid` Routes
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
 flowchart TD
-    A["facade:query_bi(query, ctx, store, route)"] --> B["routing:classify_query_route"]
-    B -->|"global or hybrid"| C["communities:search_community_reports_global (as_of <= ctx.as_of)"]
-    B -->|"local or hybrid"| D["GraphRAGPipelineOrchestrator.run"]
-    D --> E["HybridSeeder (SCD2 node_embeddings + durable news lineage)"]
-    E --> F["SubgraphStorePort.traverse (1..10 hops, TemporalQueryFilter)"]
-    F --> G["SparseNetworkCascadeEngine.propagate (Grouped-Leontief + TTS)"]
-    G --> H["chunk_store:fetch_chunks_by_ids (evidence_chunk_ids)"]
-    H --> I["HopOrderedSubgraphVerbalizer.verbalize (top-25 impact, dropped_impact_share)"]
+    A["facade: query_bi (query, ctx, store, route)"] --> B["routing: classify_query_route"]
+    B -->|"global or hybrid"| C["Global search: community_reports (PiT)"]
+    B -->|"local or hybrid"| D["GraphRAGPipelineOrchestrator: run"]
+    D --> E["HybridSeeder (SCD2 vectors + news lineage)"]
+    E --> F["SubgraphStorePort: traverse (1..10 hops)"]
+    F --> G["SparseNetworkCascadeEngine: propagate"]
+    G --> H["chunk_store: fetch_chunks_by_ids"]
+    H --> I["HopOrderedSubgraphVerbalizer (top-25 impact)"]
     I --> J["YarnBallModelClient / GroundedSynthesizer"]
     C --> J
-    J --> K["PipelineResult (degraded & coverage telemetry)"]
+    J --> K["PipelineResult (degraded + coverage status)"]
 ```
+
+**Figure 3.2:** *Execution call graph for unified `query_bi` dispatch across `local`, `global`, and `hybrid` BI routes.*
 
 #### Pipeline 2: SEC Form 8-K Disruption Evaluation, Provenance Grading & 1NF Export
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
 flowchart TD
-    A["POST /report or POST /api/evaluate-8k or run_sec_8k_dry_run"] --> B["disruption_gating:assess_sec_8k_disruption"]
-    B -->|"is_material=False"| C["Zero-shock negative-control OperationalContagionReport"]
-    B -->|"is_material=True"| D["facade:query_bi(initial_shocks, initial_durations)"]
-    D --> E["PipelineResult.to_operational_report"]
-    E --> F["reporting:build_operational_contagion_report"]
-    F --> G["classify_provenance_tier (0.10 / 0.50 default_param_impact_share)"]
-    G --> H["ReportCoverage validators (truncated & degraded!=ok)"]
-    H --> I["validate_verbatim_citations & flatten_report_to_timeseries_records"]
+    A["POST /report, /api/evaluate-8k or dry run"] --> B["disruption_gating: assess_sec_8k_disruption"]
+    B -->|"is_material=False"| C["Zero-shock negative-control report"]
+    B -->|"is_material=True"| D["facade: query_bi (shocks + durations)"]
+    D --> E["PipelineResult: to_operational_report"]
+    E --> F["Build OperationalContagionReport"]
+    F --> G["classify_provenance_tier (0.10 / 0.50 cutoffs)"]
+    G --> H["ReportCoverage fail-honest status check"]
+    H --> I["validate_verbatim_citations + 1NF flatten"]
 ```
+
+**Figure 3.3:** *Execution call graph for SEC Form 8-K disruption evaluation, provenance-tier grading, fail-honest coverage checks, and 1NF time-series export.*
 
 #### Pipeline 3: Guarded NL-to-OpenCypher Execution Path
 
 ```mermaid
-flowchart LR
-    A["TextToCQL.execute_query(question, ctx, store)"] --> B["TextToCQL.get_active_schema"]
-    B --> C["YarnBallModelClient.generate (task=TEXT_TO_CYPHER)"]
-    C --> D["TextToCQL.clean_cypher & enforce_limit"]
-    D --> E["SubgraphStorePort.execute_guarded"]
-    E --> F["CypherASTWhitelistGuardrail.validate (no writes, hops <= 10)"]
-    F --> G["TemporalQueryFilter.inject_active_coalescence(ctx)"]
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
+flowchart TD
+    A["TextToCQL: execute_query (question, ctx)"] --> B["TextToCQL: get_active_schema"]
+    B --> C["YarnBallModelClient (TEXT_TO_CYPHER)"]
+    C --> D["TextToCQL: clean_cypher + enforce_limit"]
+    D --> E["SubgraphStorePort: execute_guarded"]
+    E --> F["CypherASTWhitelistGuardrail (max 10 hops)"]
+    F --> G["TemporalQueryFilter: inject_active_coalescence"]
     G --> H["Memgraph Bolt or InMemorySubgraphStore"]
 ```
+
+**Figure 3.4:** *Execution call graph for guarded natural-language-to-OpenCypher translation, AST whitelisting, and bitemporal filter injection.*
 
 ---
 
@@ -296,6 +313,8 @@ flowchart LR
 ```
 
 #### Key Hyperparameters & Epistemic Thresholds
+
+**Table 3.3:** *Chapter 3 Cascade Hyperparameters, Traversal Bounds, and Epistemic Provenance Thresholds.*
 
 | Constant / Parameter | Location | Value | Architectural Guarantee |
 | :--- | :--- | :---: | :--- |

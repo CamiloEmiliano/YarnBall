@@ -1,4 +1,4 @@
-# Chapter 2: Formal Financial Ontology, Entity Linkage & Durable-vs-Ephemeral Graph Storage
+# Chapter 2:<br>Formal Financial Ontology, Entity Linkage & Durable-vs-Ephemeral Graph Storage
 
 > **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | **Part 2 (Ontology, Linkage & Ledger)** | [Part 3 (Retrieval, Contagion & Reporting)](03-retrieval-contagion-and-reporting.md) | [Part 4 (Curation & Model Foundry)](04-curation-and-model-foundry.md)
 
@@ -20,72 +20,79 @@ classDiagram
 
     class TBoxAnd5AxisOntology {
         <<BoundedContext>>
-        +EntityClasses: 20 canonical concepts
-        +Predicates: 26 domain/range typed relations
-        +Axes: Identity, Predicate, Polarity, ASC280Materiality, Lifecycle
-        +SymmetricOrder: R(min(a,b), max(a,b))
-        +compile_to_cypher_dsl(triple) str
+        +int entityClasses20
+        +int relationPredicates26
+        +MaterialityAxis gaapAsc280Tiers
+        +SymmetricOrder lexicographicEndpointPair
+        +canonicalize_symmetric_edge(src, tgt, rel_type) EndpointPair
+        +compile_to_cypher_dsl(triple) String
     }
 
     class ClauseAndStructuralGate {
         <<BoundedContext>>
-        +ClauseScope: MODAL_HEDGE_REGEX & NEGATION_REGEX (60ch)
-        +Stoplist: anonymized counterparties & generic roles
-        +OwnershipDAG: DFS weakest-edge cycle pruning
-        +DegreeBurst: check_degree_anomaly_quarantine (25)
-        +Convergence: target_max_rate = 0.02 (min_support = 3)
-        +validate_graph_payload(strict=True) ValidatedGraph
+        +ClauseFilter modalHedgeAndNegationWindow60
+        +EntityStoplist anonymizedCounterpartyGuard
+        +int degreeBurstThreshold25
+        +float convergenceMaxRate002
+        +validate_graph_payload(graph_data, strict) ValidatedGraph
+        +detect_and_break_ownership_cycles(edges) List~Edge~
     }
 
     class UnionFindEntityResolver {
         <<BoundedContext>>
-        +EdgarLinker: 4-tier pg_trgm + sec_subsidiaries
-        +SafeUnion: CIK & ticker conflict prevention
-        +SubsidiaryRollup: dynamic Exhibit 21 -> parent CIK
-        +Similarity: Jaro-Winkler >= 0.88, Levenshtein <= 2
-        +resolve_nodes(nodes) Tuple~Mapping, Nodes~
+        +PostgresLookup edgarFourTierPgTrgmLinker
+        +ConflictGuard safeUnionCikAndTickerCheck
+        +SubsidiaryMap dynamicExhibit21ParentRollup
+        +float jaroWinklerMin088AndLevenshteinMax2
+        +resolve_nodes(nodes) ResolvedNodeCluster
+        +rewire_edges(edges, node_mapping) List~Edge~
     }
 
     class BitemporalVectorIndex {
         <<BoundedContext>>
-        +Model: qwen3-embedding:0.6b (EMBEDDING_DIM = 1024)
-        +LiveServing: CPU-pinned (num_gpu = 0, preserves 8GB VRAM)
-        +NormGuard: ||v||_2^2 >= 1e-8 (no zero/NaN vectors)
-        +NodeVectors: SCD Type 2 PRIMARY KEY (node_id, valid_from)
-        +ChunkIndex: pgvector HNSW + tsvector GIN
+        +String modelQwen3Embedding06b
+        +int embeddingDim1024CpuPinnedLive
+        +float minNormSquared1e8
+        +CompositeKey scdType2NodeIdAndValidFrom
+        +embed_query(text) List~float~
+        +store_node_embeddings(nodes, source_hash) void
     }
 
     class DurableKGLedger {
         <<BoundedContext>>
-        +Tables: kg_nodes & kg_edges (PostgreSQL source of truth)
-        +EdgePK: (source_id, target_id, rel_type, input_group)
-        +ProseStrip: FORBIDDEN_MEMGRAPH_PROSE_KEYS removed
-        +Evidence: evidence_chunk_ids JSONB & param_provenance
+        +PostgresTable kgNodesAndKgEdgesSourceOfTruth
+        +CompositeKey sourceTargetRelInputGroup
+        +PropertyFilter forbiddenMemgraphProseStripped
+        +persist_kg_nodes(records) int
+        +persist_kg_edges(records) int
     }
 
     class EphemeralMemgraphProjection {
         <<BoundedContext>>
-        +Mode: pure in-memory RAM Bolt projection
-        +BootHydration: hydrate_memgraph_from_ledger()
-        +EventTTL: DEFAULT_MEMGRAPH_EVENT_TTL_DAYS = 90
-        +evict_expired_news_nodes(ttl_days=90) int
+        +StorageMode pureInMemoryRamBoltProjection
+        +int defaultMemgraphEventTtlDays90
+        +hydrate_memgraph_from_ledger() HydrationStats
+        +evict_expired_news_nodes(ttl_days) int
     }
 
     class PiTLeidenCommunityPartition {
         <<BoundedContext>>
-        +EdgeScope: active structural edges [valid_from, valid_to)
-        +Primary: seeded hierarchical_leiden (graspologic)
-        +Fallback: connected-component Louvain (Traag invariant)
-        +Persistence: community_reports & communities.parquet
+        +HalfOpenFilter structuralEdgesAtAsOf
+        +Partitioner seededHierarchicalLeiden
+        +Fallback connectedComponentLouvain
+        +build_communities(as_of) List~Community~
+        +summarize_communities(communities) List~Community~
     }
 
-    TBoxAnd5AxisOntology --> ClauseAndStructuralGate : domain/range & 5-axis schema
+    TBoxAnd5AxisOntology --> ClauseAndStructuralGate : domain, range and 5-axis schema
     ClauseAndStructuralGate --> UnionFindEntityResolver : schema-valid, unhedged triples
-    UnionFindEntityResolver --> DurableKGLedger : canonical nodes, CIK rollups & rewired edges
-    UnionFindEntityResolver --> BitemporalVectorIndex : contextualized entity & chunk texts
-    DurableKGLedger --> EphemeralMemgraphProjection : deterministic boot & live Bolt MERGE
+    UnionFindEntityResolver --> DurableKGLedger : canonical nodes, CIK rollups and rewired edges
+    UnionFindEntityResolver --> BitemporalVectorIndex : contextualized entity and chunk texts
+    DurableKGLedger --> EphemeralMemgraphProjection : deterministic boot and live Bolt MERGE
     DurableKGLedger --> PiTLeidenCommunityPartition : structural supply-chain topology at as_of
 ```
+
+**Figure 2.1:** *Chapter 2 topic-level domain architecture spanning the 5-axis ontology, clause gates, CIK Union-Find linkage, SCD2 vectors, durable ledger, Memgraph projection, and PiT Leiden communities.*
 
 ---
 
@@ -123,7 +130,7 @@ Evaluating modal speculation across an entire 800-token chunk causes catastrophi
 2. **Placeholder stoplist (`is_generic_placeholder`)**: rejects ungrounded indefinite descriptors (*"a major supplier"*, *"certain customers"*) and anonymized ASC 280 labels (*"Customer A"*, *"Supplier 1"*) that would otherwise form super-node hubs across unrelated filers.
 3. **Multi-source epistemic confidence calibration (`compute_edge_confidence`)**: combines base source reliability $c_0(p)$ (`SEC_EXHIBIT_21 = 1.00`, `SEC_10K_ITEM1 = 0.98`, `SEC_8K = 0.95`, `FINANCIAL_NEWS_VERIFIED = 0.75`, `NEWS_EXTRACTION = 0.60`) with independent corroborating source count $k \ge 1$:
 
-   $$c(p, k) = \min\!\Big(1.0,\; c_0(p) + 0.05 \cdot \min(4,\, k - 1)\Big)$$
+   $$c(p, k) = \min\!\Big(1.0,\; c_0(p) + 0.05 \cdot \min(4,\, k - 1)\Big) \tag{2.1}$$
 
 4. **Corporate ownership DAG enforcement (`detect_and_break_ownership_cycles`)**: legal parent-subsidiary ownership (`SUBSIDIARY_OF`, `PARENT_OF`) must form a strict Directed Acyclic Graph. Iterative DFS detects directed cycles $C$ and removes the weakest-confidence edge $e^* = \arg\min_{e \in C} c(e)$ until zero cycles remain.
 5. **Degree-burst hallucination quarantine (`check_degree_anomaly_quarantine`) & predicate convergence ([ADR-00031](../decisions/ADR-00031-iterative-predicate-convergence-protocol.md))**: any non-benchmark entity (`nid not in BENCHMARK_TOP_COMPANIES`) accumulating $\ge 25$ edges (`degree_burst_threshold = 25`) in a single extraction batch is quarantined as a runaway hub anomaly. Rejected triples log to `RuntimeRejectionQueue`, where [`evaluate_calibration_batch`](../../ontology/convergence.py) verifies that holdout non-noise schema rejections converge below `target_max_rate = 0.02` (`2%`) at support $\ge 3$.
@@ -146,9 +153,9 @@ Financial texts refer to the same legal issuer as `"Taiwan Semiconductor Manufac
    - Curated conglomerate aliases (`KNOWN_ALIASES`) and non-dictionary initialisms (`extract_initialism`, blocked when `is_dictionary_ticker` is true),
    - Prefix-anchored token subset containment, bounded Levenshtein edit distance ($\text{lev}(s_1, s_2) \le 1$, or $\le 2$ when $\min(|s_1|, |s_2|) \ge 6$), and Jaro-Winkler similarity (`>= 0.88` with Winkler prefix weight $p = 0.1$, prefix length $\ell \le 4$):
 
-   $$s_{\text{JW}}(s_1, s_2) = s_J(s_1, s_2) + \ell\, p\,\big(1 - s_J(s_1, s_2)\big), \qquad s_J(s_1, s_2) = \frac{1}{3}\!\left(\frac{m}{|s_1|} + \frac{m}{|s_2|} + \frac{m - t}{m}\right)$$
+   $$s_{\text{JW}}(s_1, s_2) = s_J(s_1, s_2) + \ell\, p\,\big(1 - s_J(s_1, s_2)\big), \qquad s_J(s_1, s_2) = \frac{1}{3}\!\left(\frac{m}{|s_1|} + \frac{m}{|s_2|} + \frac{m - t}{m}\right) \tag{2.2}$$
 
-   Each Union-Find component selects its canonical node ID by maximizing the lexicographic tuple `(-is_sub, -is_descriptive, has_suffix, length_score)`, ensuring parent registrants (`NVIDIA Corporation`) always supersede rolled-up subsidiaries (`Mellanox Technologies`) and definite descriptions.
+   where $s_J(s_1, s_2)$ is the Jaro similarity of normalized entity strings $s_1$ and $s_2$ (with lengths $|s_1|, |s_2|$), $m$ is the count of matching characters within the Jaro match window, $t$ is half the number of character transpositions, $\ell \le 4$ is the shared prefix length, and $p = 0.1$ is the Winkler prefix scaling factor. Each Union-Find component selects its canonical node ID by maximizing the lexicographic tuple `(-is_sub, -is_descriptive, has_suffix, length_score)`, ensuring parent registrants (`NVIDIA Corporation`) always supersede rolled-up subsidiaries (`Mellanox Technologies`) and definite descriptions.
 
 ---
 
@@ -185,6 +192,8 @@ To answer thematic index-wide questions (*"Which S&P 500 semiconductor clusters 
 
 Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs/test_docs_integrity.py`](../../tests/docs/test_docs_integrity.py).
 
+**Table 2.1:** *Chapter 2 Theory-to-Code Crosswalk (Ontology TBox, Clause Gates, Entity Resolution, Embeddings, Ledger, and Communities).*
+
 | Concept / Mathematical Invariant | Code Anchor (`module:symbol`) | Provenance | Verification Suite |
 | :--- | :--- | :--- | :--- |
 | 20-class / 26-predicate TBox & domain/range schema | `ontology.schema:ONTOLOGY_SCHEMA` | Pre-ADR + [ADR-00023](../decisions/ADR-00023-unified-live-ontology-gate-and-schema---.md) | [`test_ontology.py`](../../tests/ontology/test_ontology.py) |
@@ -214,6 +223,8 @@ Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs
 
 ### B.1 Subsystem Module Inventory
 
+**Table 2.2:** *Chapter 2 Subsystem Module Inventory Across `ontology/`, `embedding/`, and `knowledge_graph/`.*
+
 | Module Path | Key Classes & Functions | Role in Chapter 2 Pipeline |
 | :--- | :--- | :--- |
 | [`ontology/schema.py`](../../ontology/schema.py) | `EntityClass`, `RelationPredicate`, `ONTOLOGY_SCHEMA`, `PREDICATE_ALIASES` | Closed-world TBox typology, domain/range axioms, alias inversion & prompt vocabulary. |
@@ -239,44 +250,53 @@ Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs
 #### Pipeline 1: Structured Extraction, Inline Ontology Gate & Durable-Before-Ephemeral Write
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
 flowchart TD
-    A["graph_store:store_graph_entities"] --> B["run_structured_extraction_with_telemetry (YarnBallModelClient)"]
-    B -->|"JSON/Schema error"| Q["RuntimeRejectionQueue.record_failure"]
-    B --> C["validation:validate_graph_payload(strict=True, source_text=...)"]
-    C --> D["Tier4OntologyGate.gate_json_payload (CIK rollup, hedge/noise prune, termination repair)"]
-    D --> E["is_generic_placeholder + validate_and_orient_triple + canonicalize_symmetric_edge"]
-    E --> F["detect_and_break_ownership_cycles (DFS weakest-edge prune)"]
-    F --> G["parameters:resolve_edge_cascade_parameters (share, buffer_days, provenance)"]
-    G --> H["ledger:persist_kg_nodes & persist_kg_edges -> PostgreSQL (Durable First)"]
-    H --> I["embedding_store:store_node_embeddings -> SCD Type 2 pgvector"]
-    H --> J["Memgraph Bolt MERGE (prose stripped) + evict_expired_news_nodes(90d)"]
+    A["graph_store: store_graph_entities"] --> B["Structured extraction (YarnBallModelClient)"]
+    B -->|"JSON or schema error"| Q["RuntimeRejectionQueue: record_failure"]
+    B --> C["validation: validate_graph_payload (strict)"]
+    C --> D["Tier4OntologyGate: gate_json_payload"]
+    D --> E["Stoplist + domain orient + symmetric order"]
+    E --> F["Break ownership cycles (DFS DAG)"]
+    F --> G["Resolve cascade share + buffer_days"]
+    G --> H["persist_kg_nodes + persist_kg_edges (Postgres)"]
+    H --> I["store_node_embeddings (SCD Type 2 pgvector)"]
+    H --> J["Memgraph Bolt MERGE + 90d news TTL eviction"]
 ```
+
+**Figure 2.2:** *Execution call graph for structured extraction, inline ontology gating, ownership-DAG pruning, and durable-before-ephemeral writes.*
 
 #### Pipeline 2: Cross-Source Entity Resolution, PiT Leiden Communities & Parquet Snapshot Export
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
 flowchart TD
-    A["tools.build_kg_snapshot:build_and_export_kg_snapshot"] --> B["EntityResolver.resolve_nodes (CIK-safe Union-Find, JW>=0.88)"]
-    B --> C["EntityResolver.rewire_edges (self-loop drop, ontology & DAG check)"]
-    C --> D["SnapshotManager -> nodes.parquet, edges.parquet, chunks.parquet"]
-    D --> E["communities:filter_structural_edges_pit (valid_from <= as_of < valid_to)"]
-    E --> F["communities:build_communities (hierarchical_leiden / connected Louvain)"]
-    F --> G["communities:summarize_communities (fetch_chunks_by_ids + COMMUNITY_REPORT)"]
-    G --> H["persist_community_reports (Postgres) & export_communities_parquet"]
+    A["build_kg_snapshot: build_and_export"] --> B["EntityResolver: resolve_nodes (JW min 0.88)"]
+    B --> C["EntityResolver: rewire_edges (DAG + TBox)"]
+    C --> D["SnapshotManager: nodes, edges, chunks Parquet"]
+    D --> E["filter_structural_edges_pit (as_of window)"]
+    E --> F["build_communities (Leiden / Louvain)"]
+    F --> G["summarize_communities (chunk-cited reports)"]
+    G --> H["persist_community_reports + Parquet export"]
 ```
+
+**Figure 2.3:** *Execution call graph for cross-source CIK-safe Union-Find entity resolution, PiT Leiden community detection, and Parquet snapshot export.*
 
 #### Pipeline 3: Container Startup Schema Check & Ephemeral Memgraph Hydration
 
 ```mermaid
-flowchart LR
-    A["tools.init_db:create_queue_table"] --> B["Verify embedding_schema_metadata (dim=1024)"]
-    B --> C["tools.hydrate_memgraph:main"]
-    C --> D["ledger:hydrate_memgraph_from_ledger"]
-    D --> E["load_ledger_nodes & load_ledger_edges (PostgreSQL)"]
-    E --> F["Replay structural nodes/edges into Memgraph RAM"]
-    F --> G["evict_expired_news_nodes (MEMGRAPH_EVENT_TTL_DAYS=90)"]
-    G --> H["check_memgraph_readiness -> /ready HTTP 200"]
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
+flowchart TD
+    A["init_db: create_queue_table"] --> B["Verify embedding_schema_metadata (dim=1024)"]
+    B --> C["hydrate_memgraph: main"]
+    C --> D["ledger: hydrate_memgraph_from_ledger"]
+    D --> E["load_ledger_nodes + load_ledger_edges"]
+    E --> F["Replay structural graph into Memgraph RAM"]
+    F --> G["evict_expired_news_nodes (TTL=90d)"]
+    G --> H["check_memgraph_readiness (/ready HTTP 200)"]
 ```
+
+**Figure 2.4:** *Execution call graph for container startup schema validation, PostgreSQL-to-Memgraph RAM hydration, and 90-day news TTL eviction.*
 
 ---
 
@@ -296,6 +316,8 @@ flowchart LR
 ```
 
 #### Core Ledger & Snapshot Column Contracts
+
+**Table 2.3:** *Core Durable Ledger and Offline Parquet Snapshot Column Contracts.*
 
 | Table / Parquet File | Primary Key / Identity | Critical Bitemporal & Quantitative Fields |
 | :--- | :--- | :--- |

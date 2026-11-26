@@ -1,4 +1,4 @@
-# Chapter 4: Submodular Curation, Dataset Cartography & Task-Selective Model Alignment
+# Chapter 4:<br>Submodular Curation, Dataset Cartography & Task-Selective Model Alignment
 
 > **Series Navigation**: [Part 0 (System Atlas)](00-system-atlas.md) | [Part 1 (PiT Universe & Ingestion)](01-pit-universe-and-ingestion.md) | [Part 2 (Ontology, Linkage & Ledger)](02-ontology-linkage-and-ledger.md) | [Part 3 (Retrieval, Contagion & Reporting)](03-retrieval-contagion-and-reporting.md) | **Part 4 (Curation & Model Foundry)**
 
@@ -20,71 +20,80 @@ classDiagram
 
     class ColdStartSubmodularCurator {
         <<BoundedContext>>
-        +MinHashLSH: shingle=5, P=128, b=16, Jaccard >= 0.85
-        +SemDeDup: cosine >= 0.88 centroid exemplar
-        +Coreset: Facility Location F(S), retention = 0.80
-        +Guarantee: (1 - 1/e) greedy submodular bound
-        +run(records, embeddings) CuratedSubset
+        +int minhashPerms128AndBands16
+        +float jaccardThreshold085
+        +float semdedupCosineThreshold088
+        +float facilityLocationRetention080
+        +deduplicate(records) CuratedSplitPair
+        +select_coreset(records, embeddings) CuratedSplitPair
     }
 
     class ManifoldTargetedSampler {
         <<BoundedContext>>
-        +RareFloors: 400..500 (SOLE_SOURCE, DEFAULTED_ON, ACQUIRED_BY)
-        +DominantCap: DOMINANT_CLASS_CAP = 1500
-        +HardNegatives: null_sample_ratio = 0.20 -> (none)
-        +SpinOffs: statutory effective-date separation
-        +steer_from_cartography(ambiguous_rels, boost=1.5)
+        +int rareRelationFloors400To500
+        +int dominantClassCap1500
+        +float hardNegativeNullRatio020
+        +SpinOffGuard statutoryEffectiveDateFilter
+        +synthesize_hard_negatives(passages, pairs) List~ManifoldSample~
+        +steer_from_cartography(ambiguous_relations, boost_factor) void
     }
 
     class DatasetCartographer {
         <<BoundedContext>>
-        +Confidence: mu_i = mean_e p^(e)(y* | x_i)
-        +Variability: sigma_i = std_e p^(e)(y* | x_i)
-        +Thresholds: var=0.15, conf_high=0.70, conf_low=0.30
-        +Recipe: 100% Ambiguous, prune 80% Easy, quarantine Hard
-        +Forgetfulness: Toneva transitions (999 never-learned)
+        +float confThreshHigh070AndLow030
+        +float variabilityThresh015
+        +float pruneEasyRatio080
+        +int neverLearnedSentinel999
+        +map_dataset(dynamics_file) List~CartographyCoordinate~
+        +filter_active_learning(coordinates) ActiveLearningPartition
     }
 
     class InflectionSliceDPOFoundry {
         <<BoundedContext>>
-        +InflectionLag: seq_prob < 0.70 at Steps 50 & 100
-        +EarlyAULC: mean seq_prob over steps [0,25,50,100,200]
-        +Buckets: Task D mode-bleed, CIK rollup, z-score, Cypher
-        +ScopeNote: Historical Task E isolated from Domain-1 runtime
-        +analyze_inflection_dynamics() Dict
+        +float slowInflectionProbCutoff070
+        +StepWindow checkpoints0To200EarlyAulc
+        +ScopeWall historicalTaskEIsolatedOffline
+        +analyze_inflection_dynamics() InflectionReport
+        +run_dpo_training() TrainingArtifacts
     }
 
     class LoRAFusionAndGGUFServing {
         <<BoundedContext>>
-        +Precision: BF16 -> FP32 sequential LoRA merge -> GGUF
-        +Client: YarnBallModelClient (yarnball-qwen:7b)
-        +VRAMBudget: 8 GB GPU co-resident with CPU embedder
-        +Guards: demux_cot & detect_and_truncate_runaway
+        +FusionMath bf16UpcastFp32SequentialMerge
+        +ModelTag yarnballQwen7bOllama
+        +VramCap gpu8GbWithCpuEmbedder
+        +merge_sft_and_dpo_adapters() Path
+        +generate(prompt, task) ModelResponse
     }
 
     class RuntimeRejectionFlywheel {
         <<BoundedContext>>
-        +Queue: RuntimeRejectionQueue JSONL logs
-        +Convergence: holdout rejection rate <= 0.02
+        +LogStore runtimeRejectionJsonlQueue
+        +float holdoutConvergenceMaxRate002
+        +record_failure(task_id, prompt, completion) void
         +export_dpo_candidates() List~DPORecord~
     }
 
     class TortureAndJudgeAudit {
         <<BoundedContext>>
-        +Axes: Verdict, HopTrace, Provenance, CIKIntegrity
-        +Calibration: 3-judge inter-annotator audit
-        +ProposedNext: Qwen3.5-9B GRPO (ADR-00012) & Backtest (ADR-00038)
+        +ScoringAxes verdictHopProvenanceAndCik
+        +AuditPanel blindedThreeJudgeCalibration
+        +Roadmap proposedAdr00012AndAdr00038
+        +evaluate_torture_sample(sample) EvalScore
+        +build_audit() AuditManifest
     }
 
     ColdStartSubmodularCurator --> ManifoldTargetedSampler : deduplicated, sector-diverse passages
-    ManifoldTargetedSampler --> DatasetCartographer : multi-task SFT splits (80/10/10)
+    ManifoldTargetedSampler --> DatasetCartographer : multi-task SFT splits 80-10-10
     DatasetCartographer --> ManifoldTargetedSampler : ambiguous relation 1.5x floor boost
-    DatasetCartographer --> InflectionSliceDPOFoundry : slow-learning boundary guids
-    InflectionSliceDPOFoundry --> LoRAFusionAndGGUFServing : SFT + DPO LoRA adapters
-    LoRAFusionAndGGUFServing --> RuntimeRejectionFlywheel : live extraction & CQL failures
+    DatasetCartographer --> InflectionSliceDPOFoundry : slow-learning boundary GUIDs
+    InflectionSliceDPOFoundry --> LoRAFusionAndGGUFServing : SFT and DPO LoRA adapters
+    LoRAFusionAndGGUFServing --> RuntimeRejectionFlywheel : live extraction and CQL failures
     RuntimeRejectionFlywheel --> InflectionSliceDPOFoundry : quarantined rejected completions
     LoRAFusionAndGGUFServing --> TortureAndJudgeAudit : Phase-5 torture suite responses
 ```
+
+**Figure 4.1:** *Chapter 4 topic-level domain architecture modeling YarnBall's closed-loop submodular curation, Dataset Cartography, inflection-lag DPO, FP32 LoRA fusion, runtime quarantine flywheel, and Phase-5 evaluation.*
 
 ---
 
@@ -95,15 +104,15 @@ Corporate filings and financial news feeds exhibit extreme Zipfian redundancy: i
 1. **Stage 1: Syntactic Near-Duplicate Removal (`MinHashLSHDeduplicator` in [`minhash_lsh.py`](../../curation/cold_start/minhash_lsh.py))**:
    Following Broder (1997) and Lee et al. (2022), documents are tokenized into lowercase word `shingle_size = 5` n-grams hashed to 32-bit integers. Across `num_perm = 128` universal linear hash permutations modulo the Mersenne prime $M = 2^{31} - 1$:
 
-   $$\text{sig}_i(D) = \min_{s \in \mathcal{S}_5(D)} \big((a_i s + b_i) \bmod (2^{31} - 1)\big), \qquad i \in \{1, \dots, 128\}$$
+   $$\text{sig}_i(D) = \min_{s \in \mathcal{S}_5(D)} \big((a_i s + b_i) \bmod (2^{31} - 1)\big), \qquad i \in \{1, \dots, 128\} \tag{4.1}$$
 
-   Signatures are partitioned into `num_bands = 16` bands of $r = 8$ rows each, inducing the Locality-Sensitive Hashing (LSH) candidate collision probability $P_{\text{cand}}(J) = 1 - (1 - J^8)^{16}$ (steepest inflection at $J \approx (1/16)^{1/8} \approx 0.707$) before exact signature verification prunes pairs exceeding `jaccard_threshold = 0.85`.
+   where $\text{sig}_i(D)$ is the $i$-th MinHash signature coordinate for document $D$, $\mathcal{S}_5(D)$ is the set of 32-bit hashed 5-gram word shingles in $D$, and $(a_i, b_i)$ are deterministic seeded universal hash coefficients ($a_i \ne 0$). Signatures are partitioned into `num_bands = 16` bands of $r = 8$ rows each, inducing the Locality-Sensitive Hashing (LSH) candidate collision probability $P_{\text{cand}}(J) = 1 - (1 - J^8)^{16}$ (steepest inflection at $J \approx (1/16)^{1/8} \approx 0.707$) before exact signature verification prunes pairs exceeding `jaccard_threshold = 0.85`.
 2. **Stage 2: Dense Semantic Deduplication (`SemanticDeduplicator` in [`semdedup.py`](../../curation/cold_start/semdedup.py))**:
    Paraphrased governance boilerplate escapes lexical shingling. Adapting SemDeDup (Abbas et al., 2023), unit-normalized embeddings $\hat{v}_i = v_i / \|v_i\|_2$ are clustered via Union-Find over edges satisfying $\langle \hat{v}_i, \hat{v}_j \rangle \ge 0.88$ (`cosine_threshold = 0.88`). Each cluster $C$ collapses to its single centroid-nearest exemplar $i^* = \arg\max_{i \in C} \langle \hat{v}_i, \hat{\mu}_C \rangle$.
 3. **Stage 3: Submodular Facility Location Core-Set Selection (`FacilityLocationCoresetSelector` in [`coreset.py`](../../curation/cold_start/coreset.py))**:
-   Uniform random downsampling under-represents smaller GICS sectors (such as Utilities, Materials, and Real Estate). Given non-negative cosine similarity $w_{ij} = \max(0, \langle \hat{v}_i, \hat{v}_j \rangle)$ and cardinality budget $K = \lfloor 0.80\, N \rfloor$ (`retention_fraction = 0.80`), the selector maximizes the monotone submodular Facility Location objective (Mirzasoleiman et al., 2020; Wei et al., 2015):
+   Uniform random downsampling under-represents smaller GICS sectors (such as Utilities, Materials, and Real Estate). Over the candidate corpus $V$ ($|V| = N$) with non-negative cosine similarity $w_{ij} = \max(0, \langle \hat{v}_i, \hat{v}_j \rangle)$ and cardinality budget $K = \lfloor 0.80\, N \rfloor$ (`retention_fraction = 0.80`), the selector chooses a core-set $S \subseteq V$ ($|S| \le K$) maximizing the monotone submodular Facility Location objective $F(S)$ via greedy marginal gain $\Delta(c \mid S)$ for each candidate $c \in V \setminus S$ (Mirzasoleiman et al., 2020; Wei et al., 2015):
 
-   $$F(S) = \sum_{i \in V} \max_{j \in S}\, w_{ij}, \qquad \Delta(c \mid S) = \sum_{i \in V} \max\!\big(0,\; w_{ic} - \alpha_i\big)$$
+   $$F(S) = \sum_{i \in V} \max_{j \in S}\, w_{ij}, \qquad \Delta(c \mid S) = \sum_{i \in V} \max\!\big(0,\; w_{ic} - \alpha_i\big) \tag{4.2}$$
 
    where $\alpha_i = \max_{j \in S} w_{ij}$ tracks the running coverage envelope. By Nemhauser-Wolsey-Fisher submodularity, greedy maximization guarantees $F(S_{\text{greedy}}) \ge (1 - 1/e)\, F(S^*)$.
 
@@ -121,11 +130,11 @@ In uncurated SEC prose, generic `SUPPLIES_TO` and `COMPETES_WITH` mentions outnu
 
 ### A.4 Dataset Cartography, Learning Dynamics & Closed-Loop Steering
 
-Static pre-training heuristics cannot anticipate which syntactic patterns a 7B model genuinely finds ambiguous. [`DatasetCartographer`](../../curation/active_learning/cartographer.py) adapts Swayamdipta et al. (2020) and Toneva et al. (2019) to autoregressive sequence probabilities $p_{\theta^{(e)}}(y_i^* \mid x_i)$ logged across training checkpoints $e \in \{1, \dots, E\}$:
+Static pre-training heuristics cannot anticipate which syntactic patterns a 7B model genuinely finds ambiguous. [`DatasetCartographer`](../../curation/active_learning/cartographer.py) adapts Swayamdipta et al. (2020) and Toneva et al. (2019) to compute mean confidence $\hat{\mu}_i$ and variability $\hat{\sigma}_i$ from autoregressive sequence probabilities $p_{\theta^{(e)}}(y_i^* \mid x_i)$ of gold target $y_i^*$ given prompt $x_i$ logged across training checkpoints $\theta^{(e)}$, $e \in \{1, \dots, E\}$:
 
-$$\hat{\mu}_i = \frac{1}{E} \sum_{e=1}^E p_{\theta^{(e)}}(y_i^* \mid x_i), \qquad \hat{\sigma}_i = \sqrt{\frac{1}{E} \sum_{e=1}^E \Big(p_{\theta^{(e)}}(y_i^* \mid x_i) - \hat{\mu}_i\Big)^2}$$
+$$\hat{\mu}_i = \frac{1}{E} \sum_{e=1}^E p_{\theta^{(e)}}(y_i^* \mid x_i), \qquad \hat{\sigma}_i = \sqrt{\frac{1}{E} \sum_{e=1}^E \Big(p_{\theta^{(e)}}(y_i^* \mid x_i) - \hat{\mu}_i\Big)^2} \tag{4.3}$$
 
-Alongside $(\hat{\mu}_i, \hat{\sigma}_i)$, `compute_forgetfulness` counts learned-to-unlearned transitions $\mathbb{I}(\text{correct}_i^{(e)} = 1 \land \text{correct}_i^{(e+1)} = 0)$, assigning sentinel `999` to instances never predicted correctly across all epochs. `filter_active_learning` partitions the corpus across three geometry regions (`var_thresh = 0.15`, `conf_thresh_high = 0.70`, `conf_thresh_low = 0.30`):
+Alongside $(\hat{\mu}_i, \hat{\sigma}_i)$, `compute_forgetfulness` counts learned-to-unlearned transitions $\sum_{e=1}^{E-1} \mathbf{1}\!\left[\text{correct}_i^{(e)} = 1 \land \text{correct}_i^{(e+1)} = 0\right]$, assigning sentinel `999` to instances never predicted correctly across all epochs. `filter_active_learning` partitions the corpus across three geometry regions (`var_thresh = 0.15`, `conf_thresh_high = 0.70`, `conf_thresh_low = 0.30`):
 1. **Ambiguous ($\hat{\sigma}_i \ge 0.15$)**: `100%` retained; decision-boundary instances that drive out-of-distribution generalization.
 2. **Easy-to-Learn ($\hat{\sigma}_i < 0.15 \land \hat{\mu}_i \ge 0.70$)**: `80%` pruned (`prune_easy_ratio = 0.80`), preventing overfitting to repetitive templates while preserving `20%` anchor centroids.
 3. **Hard-to-Learn ($\hat{\sigma}_i < 0.15 \land \hat{\mu}_i < 0.70$)**: `100%` quarantined for human/automated CIK and label noise audit.
@@ -151,9 +160,9 @@ Rather than constructing random preference pairs, `analyze_inflection_dynamics` 
 #### Sequential FP32 LoRA Fusion, GGUF Export & Single-Client Serving
 [`sft_pipeline/phase4_export_and_serve.py`](../../sft_pipeline/phase4_export_and_serve.py) upcasts BF16 base weights $W_0$ to exact FP32, merges sequential SFT and DPO Low-Rank Adaptation (LoRA) tensors without intermediate quantization loss:
 
-$$W_{\text{merged}} = W_0 + \frac{\alpha_{\text{SFT}}}{r_{\text{SFT}}} B_{\text{SFT}} A_{\text{SFT}} + \frac{\alpha_{\text{DPO}}}{r_{\text{DPO}}} B_{\text{DPO}} A_{\text{DPO}}$$
+$$W_{\text{merged}} = W_0 + \frac{\alpha_{\text{SFT}}}{r_{\text{SFT}}} B_{\text{SFT}} A_{\text{SFT}} + \frac{\alpha_{\text{DPO}}}{r_{\text{DPO}}} B_{\text{DPO}} A_{\text{DPO}} \tag{4.4}$$
 
-and serializes GGUF weights served locally by Ollama (`yarnball-qwen:7b`). [`YarnBallModelClient`](../../sft_pipeline/serving/model_client.py) ([ADR-00030](../decisions/ADR-00030-purge-non-ft-qwen-runtime-dependencies--.md)) provides the sole runtime inference interface across the repository, demultiplexing `<think>...</think>` reasoning traces (`demux_cot`), truncating degenerate n-gram loops (`detect_and_truncate_runaway`), and logging schema/transport failures into [`RuntimeRejectionQueue`](../../sft_pipeline/rejection_queue.py) ([ADR-00029](../decisions/ADR-00029-structured-llm-extraction-and-quarantine.md), [ADR-00031](../decisions/ADR-00031-iterative-predicate-convergence-protocol.md)).
+where $(\alpha_{\text{SFT}}, r_{\text{SFT}}, A_{\text{SFT}}, B_{\text{SFT}})$ and $(\alpha_{\text{DPO}}, r_{\text{DPO}}, A_{\text{DPO}}, B_{\text{DPO}})$ denote the LoRA scaling factor, adapter rank, and low-rank projection matrices for the SFT and DPO stages, respectively, producing merged FP32 weights $W_{\text{merged}}$ before serializing GGUF weights served locally by Ollama (`yarnball-qwen:7b`). [`YarnBallModelClient`](../../sft_pipeline/serving/model_client.py) ([ADR-00030](../decisions/ADR-00030-purge-non-ft-qwen-runtime-dependencies--.md)) provides the sole runtime inference interface across the repository, demultiplexing `<think>...</think>` reasoning traces (`demux_cot`), truncating degenerate n-gram loops (`detect_and_truncate_runaway`), and logging schema/transport failures into [`RuntimeRejectionQueue`](../../sft_pipeline/rejection_queue.py) ([ADR-00029](../decisions/ADR-00029-structured-llm-extraction-and-quarantine.md), [ADR-00031](../decisions/ADR-00031-iterative-predicate-convergence-protocol.md)).
 
 ---
 
@@ -178,6 +187,8 @@ Two `PROPOSED` Architecture Decision Records specify the next evolutionary stage
 ### A.7 Chapter 4 Theory-to-Code Crosswalk Table
 
 Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs/test_docs_integrity.py`](../../tests/docs/test_docs_integrity.py).
+
+**Table 4.1:** *Chapter 4 Theory-to-Code Crosswalk (Cold-Start Curation, Cartography, Manifold Sampling, SFT/DPO Foundry, Serving, and Evaluation).*
 
 | Concept / Mathematical Invariant | Code Anchor (`module:symbol`) | Provenance | Verification Suite |
 | :--- | :--- | :--- | :--- |
@@ -205,6 +216,8 @@ Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs
 
 ### B.1 Subsystem Module Inventory
 
+**Table 4.2:** *Chapter 4 Subsystem Module Inventory Across `curation/` and `sft_pipeline/`.*
+
 | Module Path | Key Classes & Functions | Role in Chapter 4 Pipeline |
 | :--- | :--- | :--- |
 | [`curation/contracts.py`](../../curation/contracts.py) | `CartographyRegion`, `CartographyCoordinate`, `ActiveLearningPartition` | Typed dataclasses shared across cold-start curation, Dataset Cartography & SFT builders. |
@@ -230,42 +243,51 @@ Every `<package>.<module>:<symbol>` anchor below is AST-verified by [`tests/docs
 #### Pipeline 1: Cold-Start Submodular Curation, Manifold Sampling & SFT Split Export
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
 flowchart TD
-    A["FullSFTDatasetBuilder.build_dataset"] --> B["ManifoldTargetedSampler.mine_rare_relation_candidates (floors 400..500)"]
-    A --> C["ManifoldTargetedSampler.synthesize_hard_negatives (null_ratio=0.20)"]
-    B --> D["ColdStartCurationPipeline.run"]
+    A["FullSFTDatasetBuilder: build_dataset"] --> B["mine_rare_relation_candidates (floors 400..500)"]
+    A --> C["synthesize_hard_negatives (null_ratio=0.20)"]
+    B --> D["ColdStartCurationPipeline: run"]
     C --> D
-    D --> E["MinHashLSHDeduplicator.deduplicate (5-gram, 128-perm, J>=0.85)"]
-    E --> F["SemanticDeduplicator.deduplicate_with_embeddings (cos>=0.88)"]
-    F --> G["FacilityLocationCoresetSelector.select_coreset (80% submodular cover)"]
-    G --> H["SFTDatasetExporter.export_full_sft_splits (80/10/10 zero-leakage JSONL)"]
+    D --> E["MinHashLSHDeduplicator (5-gram, J min 0.85)"]
+    E --> F["SemanticDeduplicator (cos min 0.88)"]
+    F --> G["FacilityLocation coreset (80% cover)"]
+    G --> H["export_full_sft_splits (80/10/10 JSONL)"]
 ```
+
+**Figure 4.2:** *Execution call graph for cold-start MinHash LSH, SemDeDup, Facility Location core-set selection, and leak-free 80/10/10 SFT split export.*
 
 #### Pipeline 2: Cartography Dynamics, Inflection-Lag DPO, FP32 LoRA Fusion & Runtime Flywheel
 
 ```mermaid
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
 flowchart TD
-    A["training_dynamics.jsonl"] --> B["DatasetCartographer.map_dataset (mu_i, sigma_i, forgetfulness)"]
-    B --> C["DatasetCartographer.filter_active_learning (100% Ambiguous, -80% Easy, quarantine Hard)"]
-    C -->|"ambiguous_relations"| D["ManifoldTargetedSampler.steer_from_cartography (1.5x boost)"]
-    A --> E["InflectionSliceDPOBuilder.analyze_inflection_dynamics (Step 50/100 < 0.70)"]
-    E --> F["train_dpo:run_dpo_training (TRL DPOTrainer)"]
-    F --> G["phase4_export_and_serve:merge_sft_and_dpo_adapters (FP32 exact fuse -> GGUF)"]
-    G --> H["YarnBallModelClient.generate (yarnball-qwen:7b)"]
-    H -->|"Malformed JSON / Ontology reject"| I["RuntimeRejectionQueue.record_failure"]
+    A["training_dynamics.jsonl"] --> B["DatasetCartographer: map_dataset (mu, sigma)"]
+    B --> C["filter_active_learning (-80% Easy, Hard audit)"]
+    C -->|"ambiguous_relations"| D["steer_from_cartography (1.5x floor boost)"]
+    A --> E["analyze_inflection_dynamics (prob under 0.70)"]
+    E --> F["train_dpo: run_dpo_training (TRL DPOTrainer)"]
+    F --> G["merge_sft_and_dpo_adapters (FP32 to GGUF)"]
+    G --> H["YarnBallModelClient: generate (7B Qwen)"]
+    H -->|"JSON or ontology reject"| I["RuntimeRejectionQueue: record_failure"]
     I -->|"export_dpo_candidates"| E
 ```
+
+**Figure 4.3:** *Execution call graph for Dataset Cartography steering, Step-50/100 inflection-lag DPO, FP32 LoRA-to-GGUF fusion, and runtime quarantine feedback.*
 
 #### Pipeline 3: Phase-5 Adversarial Torture Benchmark & Multi-Judge Audit
 
 ```mermaid
-flowchart LR
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
+flowchart TD
     A["build_phase5_torture_suite"] --> B["run_phase5_torture_suite"]
-    B --> C["query_ollama_torture + poll_gpu_vram_mib (<= 8 GB budget)"]
-    C --> D["evaluate_torture_sample (Verdict, HopTrace, Provenance, CIK)"]
-    D --> E["compute_architectural_decisions -> Scorecard JSON"]
-    D --> F["phase5_judge_audit:build_audit (blinded 3-judge + control items)"]
+    B --> C["query_ollama_torture + VRAM poll (8 GB cap)"]
+    C --> D["evaluate_torture_sample (4 scoring axes)"]
+    D --> E["Scorecard + architectural gate"]
+    D --> F["build_audit (blinded 3-judge + controls)"]
 ```
+
+**Figure 4.4:** *Execution call graph for the Phase-5 adversarial torture benchmark under an 8 GB VRAM cap and blinded 3-judge calibration audit.*
 
 ---
 
@@ -289,6 +311,8 @@ flowchart LR
 ```
 
 #### Core Foundry JSONL & Coordinate Schemas
+
+**Table 4.3:** *Core Foundry JSONL and Cartography Coordinate Record Schemas.*
 
 | Artifact / Record | Producer | Key Fields |
 | :--- | :--- | :--- |

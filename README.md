@@ -5,15 +5,16 @@
 YarnBall reconstructs corporate supply-chain, subsidiary, and risk networks from statutory SEC filings (`Form 10-K`, `10-Q`, `8-K`, `Exhibit 21`) and market event streams under strict bitemporal U.S. equity session cutoffs (`16:00 ET` regular close / `13:00 ET` early close). When an operational shock occurs, YarnBall propagates capacity shortfalls through a deterministic Grouped-Leontief cascade engine with inventory buffer absorption and cyclic feedback damping, emitting provenance-graded **Domain 1** operational contagion reports anchored to verbatim filing chunks.
 
 ```mermaid
-flowchart LR
-    A["PiT S&P 500 Universe & 16:00 ET Clock"] --> B["SEC 10-K/10-Q/8-K & News Ingestion"]
-    B --> C["5-Axis Ontology Gate & CIK Entity Linkage"]
-    C --> D["Durable Postgres Ledger + Ephemeral Memgraph + Leiden Communities"]
-    D --> E["query_bi Facade + Grouped-Leontief Cascade Engine"]
-    E --> F["OperationalContagionReport & FastAPI Workbench"]
-    C -.->|"Quarantine Telemetry"| G["Submodular Curation, Cartography & Qwen Alignment Foundry"]
+%%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 420, "padding": 20}}}%%
+flowchart TD
+    A["PiT SP500 Universe + 16:00 ET Clock"] --> B["SEC 10-K / 10-Q / 8-K + News Ingestion"]
+    B --> C["5-Axis Ontology Gate + CIK Linkage"]
+    C --> D["Postgres Ledger + Memgraph + Leiden"]
+    D --> E["query_bi Facade + Cascade Engine"]
+    E --> F["OperationalContagionReport + Workbench"]
+    C -.->|"Quarantine Telemetry"| G["Submodular Curation + Qwen Foundry"]
     G -.->|"Fine-Tuned 7B Serving"| B
-    G -.->|"Fine-Tuned CQL & Reasoning"| E
+    G -.->|"Fine-Tuned CQL + Reasoning"| E
 ```
 
 ---

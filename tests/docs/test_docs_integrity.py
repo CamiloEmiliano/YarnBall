@@ -331,15 +331,175 @@ def test_chapter0_live_constants_parity() -> None:
         "MAX_SUBGRAPH_EDGES = 25",
         "EMBEDDING_DIM = 1024",
         "MEMGRAPH_EVENT_TTL_DAYS = 90",
-        "max_tokens=800",
-        "overlap=120",
+        "`800`-token",
+        "`120`-token",
         "0.10",
         "0.50",
-        "20 EntityClasses",
-        "26 RelationPredicates",
+        "20 `EntityClass`",
+        "26 `RelationPredicate`",
     )
     for snippet in expected_snippets:
         assert snippet in atlas_text, f"Expected live constant snippet '{snippet}' in 00-system-atlas.md"
+
+
+def test_mermaid_diagrams_strict_syntax() -> None:
+    """Prevent Mermaid Jison/parseMember crashes (e.g., unbalanced `[a, b)` parens in classDiagram)."""
+    class_open_re = re.compile(r"^class\s+[A-Za-z_][A-Za-z0-9_]*\s*\{\s*$")
+    stereotype_re = re.compile(r"^<<[A-Za-z0-9_]+>>$")
+    attr_re = re.compile(r"^[+#~-][A-Za-z0-9_~]+\s+[A-Za-z0-9_]+$")
+    method_re = re.compile(r"^[+#~-][A-Za-z0-9_]+\([A-Za-z0-9_, ]*\)(?:\s+[A-Za-z0-9_~]+)?$")
+    rel_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\s+-->\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Za-z0-9_, ./+-]+$")
+    unquoted_shape_re = re.compile(r"[A-Za-z_][A-Za-z0-9_]*[\[\{](?!\")")
+    quoted_label_re = re.compile(r'"([^"]+)"')
+    xml_special_in_svg_label_re = re.compile(r"[<>&']")
+
+    targets = [README_PATH, *sorted(TECH_REPORT_DIR.glob("*.md"))]
+    checked_blocks = 0
+    for path in targets:
+        blocks = MERMAID_BLOCK_RE.findall(path.read_text(encoding="utf-8"))
+        for block in blocks:
+            checked_blocks += 1
+            raw_lines = [ln.strip() for ln in block.strip().splitlines() if ln.strip()]
+            lines = [ln for ln in raw_lines if not ln.startswith("%%")]
+            assert lines, f"Empty mermaid block in {path.relative_to(REPO_ROOT)}"
+            header = lines[0]
+
+            if header == "classDiagram":
+                in_class = False
+                for ln in lines[1:]:
+                    if ln.startswith("direction "):
+                        assert ln in ("direction TB", "direction LR", "direction BT", "direction RL")
+                        continue
+                    if not in_class:
+                        if class_open_re.match(ln):
+                            in_class = True
+                        else:
+                            assert rel_re.match(ln), (
+                                f"Invalid classDiagram relation '{ln}' in {path.relative_to(REPO_ROOT)}"
+                            )
+                    else:
+                        if ln == "}":
+                            in_class = False
+                        else:
+                            assert stereotype_re.match(ln) or attr_re.match(ln) or method_re.match(ln), (
+                                f"Unsafe classDiagram member '{ln}' in {path.relative_to(REPO_ROOT)} "
+                                "(must be strict +Type attr or +method(args) ReturnType without '[a, b)' or '..')"
+                            )
+                assert not in_class, f"Unclosed class block in {path.relative_to(REPO_ROOT)}"
+            elif header.startswith("flowchart "):
+                assert raw_lines[0].startswith('%%{init: {"flowchart": {"htmlLabels": false'), (
+                    f"Flowchart in {path.relative_to(REPO_ROOT)} must disable htmlLabels (<foreignObject> clipping)"
+                )
+                for ln in lines[1:]:
+                    assert not unquoted_shape_re.search(ln), (
+                        f"Unquoted flowchart node label '{ln}' in {path.relative_to(REPO_ROOT)} (use [\"...\"] or {{\"...\"}})"
+                    )
+                    for label_text in quoted_label_re.findall(ln):
+                        assert not xml_special_in_svg_label_re.search(label_text), (
+                            f"Angle bracket or single-quote inside SVG flowchart label '{label_text}' in {path.relative_to(REPO_ROOT)}"
+                        )
+                        assert len(label_text) <= 52, (
+                            f"Flowchart label '{label_text}' ({len(label_text)} chars) exceeds 52-char width budget in {path.relative_to(REPO_ROOT)}"
+                        )
+                        for tok in label_text.split():
+                            assert len(tok) <= 32, (
+                                f"Unbroken token '{tok}' ({len(tok)} chars) in {path.relative_to(REPO_ROOT)} risks box clipping"
+                            )
+            else:
+                pytest.fail(f"Unsupported Mermaid diagram header '{header}' in {path.relative_to(REPO_ROOT)}")
+
+    assert checked_blocks >= 18, f"Expected >=18 Mermaid diagrams across README and Ch. 0-4, found {checked_blocks}"
+
+
+def test_display_equations_sequentially_numbered() -> None:
+    """Every display equation in Chapters 0-4 must carry a sequential \\tag{C.N} label."""
+    display_eq_re = re.compile(r"\$\$(.*?)\$\$", re.DOTALL)
+    tag_re = re.compile(r"\\tag\{(\d+)\.(\d+)\}")
+
+    total_equations = 0
+    for path in sorted(TECH_REPORT_DIR.glob("[0-9][0-9]-*.md")):
+        chapter_num = int(path.name[:2])
+        text = _strip_code_blocks(path.read_text(encoding="utf-8"))
+        equations = display_eq_re.findall(text)
+        assert equations, f"Expected display equations in {path.relative_to(REPO_ROOT)}"
+        for expected_idx, eq_body in enumerate(equations, start=1):
+            tags = tag_re.findall(eq_body)
+            assert len(tags) == 1, (
+                f"Display equation #{expected_idx} in {path.name} must have exactly one \\tag{{C.N}}, found {tags}"
+            )
+            tag_ch, tag_eq = int(tags[0][0]), int(tags[0][1])
+            assert (tag_ch, tag_eq) == (chapter_num, expected_idx), (
+                f"Expected \\tag{{{chapter_num}.{expected_idx}}} in {path.name}, found \\tag{{{tag_ch}.{tag_eq}}}"
+            )
+            total_equations += 1
+
+    assert total_equations >= 21, f"Expected >=21 numbered display equations across Ch. 0-4, found {total_equations}"
+
+
+def test_tables_and_figures_sequentially_numbered() -> None:
+    """Monograph Standard: every Table (caption above) and Figure (caption below) in Ch. 0-4 is numbered C.N."""
+    table_sep_re = re.compile(r"^\|\s*:?-{3,}:?\s*\|")
+    table_cap_re = re.compile(r"^\*\*Table (\d+)\.(\d+):\*\*\s+\*.+\*$")
+    figure_cap_re = re.compile(r"^\*\*Figure (\d+)\.(\d+):\*\*\s+\*.+\*$")
+
+    total_tables = 0
+    total_figures = 0
+    for path in sorted(TECH_REPORT_DIR.glob("[0-9][0-9]-*.md")):
+        chapter_num = int(path.name[:2])
+        lines = path.read_text(encoding="utf-8").splitlines()
+        in_code = False
+        code_is_mermaid = False
+        expected_tbl = 1
+        expected_fig = 1
+
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                if not in_code:
+                    in_code = True
+                    code_is_mermaid = stripped.startswith("```mermaid")
+                else:
+                    if code_is_mermaid:
+                        # Next non-blank line after closing ``` must be **Figure C.N:** *...*
+                        nxt = idx + 1
+                        while nxt < len(lines) and not lines[nxt].strip():
+                            nxt += 1
+                        assert nxt < len(lines), f"Missing Figure caption after mermaid block in {path.name}"
+                        m_fig = figure_cap_re.match(lines[nxt].strip())
+                        assert m_fig is not None, (
+                            f"Expected '**Figure {chapter_num}.{expected_fig}:** *...*' below diagram at {path.name}:{idx + 1}, "
+                            f"found '{lines[nxt].strip()}'"
+                        )
+                        assert (int(m_fig.group(1)), int(m_fig.group(2))) == (chapter_num, expected_fig), (
+                            f"Out-of-sequence Figure caption in {path.name}: expected {chapter_num}.{expected_fig}, "
+                            f"found {m_fig.group(1)}.{m_fig.group(2)}"
+                        )
+                        expected_fig += 1
+                        total_figures += 1
+                    in_code = False
+                    code_is_mermaid = False
+                continue
+
+            if not in_code and table_sep_re.match(stripped):
+                # Previous non-blank line before header row (idx - 1) must be **Table C.N:** *...*
+                prev = idx - 2
+                while prev >= 0 and not lines[prev].strip():
+                    prev -= 1
+                assert prev >= 0, f"Missing Table caption above table at {path.name}:{idx}"
+                m_tbl = table_cap_re.match(lines[prev].strip())
+                assert m_tbl is not None, (
+                    f"Expected '**Table {chapter_num}.{expected_tbl}:** *...*' above table at {path.name}:{idx}, "
+                    f"found '{lines[prev].strip()}'"
+                )
+                assert (int(m_tbl.group(1)), int(m_tbl.group(2))) == (chapter_num, expected_tbl), (
+                    f"Out-of-sequence Table caption in {path.name}: expected {chapter_num}.{expected_tbl}, "
+                    f"found {m_tbl.group(1)}.{m_tbl.group(2)}"
+                )
+                expected_tbl += 1
+                total_tables += 1
+
+    assert total_tables >= 20, f"Expected >=20 numbered tables across Ch. 0-4, found {total_tables}"
+    assert total_figures >= 18, f"Expected >=18 numbered figures across Ch. 0-4, found {total_figures}"
 
 
 def test_chapter1_live_constants_parity() -> None:
