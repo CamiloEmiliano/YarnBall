@@ -24,6 +24,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from knowledge_graph.memgraph_driver import get_memgraph_driver
 from knowledge_graph.graph_store import MAX_LABEL_LENGTH, MAX_REL_TYPE_LENGTH
 from universe import SP500Constituent, SP500UniverseManager
+from .canon import (
+    SECFormType,
+    get_default_harvest_forms,
+    is_termination_eligible_form,
+    normalize_form_type,
+)
 from .client import EdgarClient, DEFAULT_SP500_BENCHMARK
 from .parser import (
     EdgarEntityLinker,
@@ -137,7 +143,8 @@ class HistoricalSECHarvester:
         forms: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Harvest all requested filings for a specific company and fiscal year."""
-        forms_to_fetch = [f.upper() for f in (forms or ["10-K", "8-K", "10-Q", "4"])]
+        requested = forms if forms is not None else list(get_default_harvest_forms())
+        forms_to_fetch = [normalize_form_type(f) for f in requested]
         ticker = constituent.ticker.upper()
         company_year_dir = self.output_dir / ticker / str(year)
         company_year_dir.mkdir(parents=True, exist_ok=True)
@@ -157,7 +164,7 @@ class HistoricalSECHarvester:
         }
 
         # 1. Form 10-K
-        if "10-K" in forms_to_fetch:
+        if SECFormType.FORM_10K.value in forms_to_fetch:
             time.sleep(self.rate_limit_delay)
             filing_10k = self.client.fetch_latest_10k(ticker, year=year)
             if filing_10k:
@@ -172,7 +179,7 @@ class HistoricalSECHarvester:
                     "cik": constituent.cik,
                     "company_name": constituent.company_name,
                     "gics_sector": constituent.gics_sector,
-                    "form": "10-K",
+                    "form": SECFormType.FORM_10K.value,
                     "year": year,
                     "accession_number": acc_num,
                     "filing_date": sections.get("filing_date"),
@@ -205,7 +212,7 @@ class HistoricalSECHarvester:
                 stats["filings_saved"].append(f"10K_{acc_num}")
 
         # 2. Form 10-Q
-        if "10-Q" in forms_to_fetch:
+        if SECFormType.FORM_10Q.value in forms_to_fetch:
             time.sleep(self.rate_limit_delay)
             filings_10q = self.client.fetch_10q_filings(ticker, year=year, limit=4)
             for q_filing in filings_10q:
@@ -225,7 +232,7 @@ class HistoricalSECHarvester:
                 stats["filings_saved"].append(f"10Q_{acc_num}")
 
         # 3. Form 8-K
-        if "8-K" in forms_to_fetch:
+        if SECFormType.FORM_8K.value in forms_to_fetch:
             from .disruption_gating import normalize_staged_8k_payload
 
             time.sleep(self.rate_limit_delay)
@@ -251,8 +258,8 @@ class HistoricalSECHarvester:
                 stats["8k_count"] += 1
                 stats["filings_saved"].append(f"8K_{acc_num}")
 
-        # 4. Form 4
-        if "4" in forms_to_fetch or "FORM4" in forms_to_fetch:
+        # 4. Form 4 (OPTIONAL_ABLATION — explicit opt-in via forms=["4"])
+        if SECFormType.FORM_4.value in forms_to_fetch:
             time.sleep(self.rate_limit_delay)
             filings_4 = self.client.fetch_form4_transactions(ticker, limit=10, year=year)
             if filings_4:
@@ -1158,8 +1165,7 @@ class EdgarWorker:
           never from the underlying `terminated_on` event date (preventing backward leakage).
         - Counterparties are validated via `validate_graph_payload(strict=True, source_text=...)`.
         """
-        clean_form = str(form_type or "").strip().upper()
-        if clean_form not in ("8-K", "8-K/A"):
+        if not is_termination_eligible_form(form_type):
             raise ValueError(
                 f"ADR-00033 Invariant #8 violation: relationship termination requires Form 8-K/8-K/A, "
                 f"got form_type={form_type!r}."

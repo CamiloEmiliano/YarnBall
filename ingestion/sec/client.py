@@ -3,7 +3,7 @@ SEC EDGAR Client Wrapper using `edgartools`.
 
 Provides standardized methods to:
 - Authenticate / set identity with SEC EDGAR
-- Fetch 10-K, 10-Q, 8-K, Form 4, and 13F filings
+- Fetch 10-K, 10-Q, 8-K, and opt-in Form 4 filings per `ingestion/sec/canon.py` (ADR-00045)
 - Extract structured sections (Item 1 Business, Item 1A Risk Factors, Exhibit 21 Subsidiaries)
 - Parse Exhibit 21 list of subsidiaries into structured records
 - CLI utility for targeted filing downloads
@@ -20,6 +20,8 @@ import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional
+
+from .canon import SECFormType
 
 try:
     os.environ.setdefault("EDGAR_LOCAL_DATA_DIR", "/tmp/edgar")
@@ -78,7 +80,7 @@ class EdgarClient:
             return None
 
         try:
-            filings = company.get_filings(form="10-K")
+            filings = company.get_filings(form=SECFormType.FORM_10K.value)
             if not filings:
                 return None
             if year:
@@ -113,7 +115,7 @@ class EdgarClient:
             "filing_date": str(getattr(filing, "filing_date", "")),
             "acceptance_datetime": self._extract_acceptance_datetime(filing),
             "report_date": str(getattr(filing, "report_date", "")),
-            "form": "10-K",
+            "form": SECFormType.FORM_10K.value,
             "item_1_business": "",
             "item_1a_risk_factors": "",
             "subsidiaries": [],
@@ -216,7 +218,7 @@ class EdgarClient:
 
         results = []
         try:
-            filings = company.get_filings(form="8-K")
+            filings = company.get_filings(form=SECFormType.FORM_8K.value)
             if not filings:
                 return []
             count = 0
@@ -228,7 +230,7 @@ class EdgarClient:
                     "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
                     "filing_date": filing_date_str,
                     "acceptance_datetime": self._extract_acceptance_datetime(filing),
-                    "form": "8-K",
+                    "form": SECFormType.FORM_8K.value,
                     "items": getattr(filing, "items", []),
                     "text": filing.text()[:10000] if hasattr(filing, "text") else "",
                 })
@@ -247,7 +249,7 @@ class EdgarClient:
 
         results = []
         try:
-            filings = company.get_filings(form="10-Q")
+            filings = company.get_filings(form=SECFormType.FORM_10Q.value)
             if not filings:
                 return []
             count = 0
@@ -260,7 +262,7 @@ class EdgarClient:
                     "filing_date": filing_date_str,
                     "acceptance_datetime": self._extract_acceptance_datetime(filing),
                     "report_date": str(getattr(filing, "report_date", "")),
-                    "form": "10-Q",
+                    "form": SECFormType.FORM_10Q.value,
                     "text": filing.text()[:15000] if hasattr(filing, "text") else "",
                 })
                 count += 1
@@ -278,7 +280,7 @@ class EdgarClient:
 
         results = []
         try:
-            filings = company.get_filings(form="4")
+            filings = company.get_filings(form=SECFormType.FORM_4.value)
             if not filings:
                 return []
             count = 0
@@ -289,7 +291,7 @@ class EdgarClient:
                 results.append({
                     "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
                     "filing_date": filing_date_str,
-                    "form": "4",
+                    "form": SECFormType.FORM_4.value,
                 })
                 count += 1
                 if count >= limit:
@@ -342,7 +344,7 @@ def download_filings_for_ticker(
                 "accession_number": sections.get("accession_number"),
                 "filing_date": sections.get("filing_date"),
                 "report_date": sections.get("report_date"),
-                "form": "10-K",
+                "form": SECFormType.FORM_10K.value,
                 "subsidiaries_count": stats["subsidiaries_count"],
             }, f, indent=2)
 

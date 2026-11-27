@@ -416,11 +416,6 @@ _SALIENT_KEYWORDS: Tuple[str, ...] = (
 )
 _SALIENT_PATTERN = re.compile("|".join(_SALIENT_KEYWORDS), re.IGNORECASE)
 
-_HIGH_SIGNAL_GLEANING_RE = re.compile(
-    r"\bitem\s*(?:1(?:\s*[-–—.\s]+business)?\b|1a\b|1\.01\b|1\.02\b|2\.01\b|8\.01\b)",
-    re.IGNORECASE,
-)
-
 
 def score_chunk_salience(text: str) -> int:
     """Count relational supply-chain/corporate cue matches for chunk priority ranking (ADR-00035)."""
@@ -437,13 +432,10 @@ def rank_salient_chunks(chunks: List[Any]) -> List[Any]:
 
 
 def is_high_signal_gleaning_section(section_name: Optional[str]) -> bool:
-    """Return True for high-signal SEC sections eligible for targeted 1-pass gleaning (ADR-00035 Section 4.4)."""
-    if not section_name:
-        return False
-    raw = str(section_name).strip()
-    if re.search(r"\bitem\s*1b\b", raw, re.IGNORECASE):
-        return False
-    return bool(_HIGH_SIGNAL_GLEANING_RE.search(raw))
+    """Return True for high-signal SEC sections eligible for targeted 1-pass gleaning (ADR-00035 / ADR-00045)."""
+    from .canon import is_high_signal_section
+
+    return is_high_signal_section(section_name)
 
 
 def should_glean_chunk(

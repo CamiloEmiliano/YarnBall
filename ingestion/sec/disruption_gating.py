@@ -18,7 +18,8 @@ import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 from pydantic import BaseModel, Field
 
-from retrieval.reporting import OperationalDisruptionCategory, SECForm8KItem
+from ingestion.sec.canon import SEC_8K_PRIORITY_TIERS, SECForm8KItem
+from retrieval.reporting import OperationalDisruptionCategory
 
 DEFAULT_MAX_FILING_CHARS: int = 50_000
 DEFAULT_SHOCK_MAGNITUDE_PCT: float = 100.0
@@ -82,61 +83,8 @@ _EXHIBIT_INDEX_RE = re.compile(
 )
 _SIGNATURES_HEADER_RE = re.compile(r"^\s*signatures?\s*$", re.IGNORECASE)
 
-# Canonical Priority Tiers (ADR-00014 Section 4.2)
-_TIER_ITEMS: Tuple[Tuple[int, Tuple[str, ...]], ...] = (
-    (
-        1,
-        (
-            SECForm8KItem.ITEM_1_05.value,
-            SECForm8KItem.ITEM_1_04.value,
-            SECForm8KItem.ITEM_1_03.value,
-            SECForm8KItem.ITEM_1_02.value,
-            SECForm8KItem.ITEM_2_05.value,
-            SECForm8KItem.ITEM_2_06.value,
-            SECForm8KItem.ITEM_2_04.value,
-        ),
-    ),
-    (
-        2,
-        (
-            SECForm8KItem.ITEM_1_01.value,
-            SECForm8KItem.ITEM_8_01.value,
-        ),
-    ),
-    (
-        3,
-        (
-            SECForm8KItem.ITEM_2_01.value,
-            SECForm8KItem.ITEM_2_02.value,
-            SECForm8KItem.ITEM_2_03.value,
-            SECForm8KItem.ITEM_7_01.value,
-        ),
-    ),
-    (
-        4,
-        (
-            SECForm8KItem.ITEM_3_01.value,
-            SECForm8KItem.ITEM_3_02.value,
-            SECForm8KItem.ITEM_3_03.value,
-            SECForm8KItem.ITEM_4_01.value,
-            SECForm8KItem.ITEM_4_02.value,
-            SECForm8KItem.ITEM_5_01.value,
-            SECForm8KItem.ITEM_5_02.value,
-            SECForm8KItem.ITEM_5_03.value,
-            SECForm8KItem.ITEM_5_04.value,
-            SECForm8KItem.ITEM_5_05.value,
-            SECForm8KItem.ITEM_5_06.value,
-            SECForm8KItem.ITEM_5_07.value,
-            SECForm8KItem.ITEM_5_08.value,
-            SECForm8KItem.ITEM_6_01.value,
-            SECForm8KItem.ITEM_6_02.value,
-            SECForm8KItem.ITEM_6_03.value,
-            SECForm8KItem.ITEM_6_04.value,
-            SECForm8KItem.ITEM_6_05.value,
-            SECForm8KItem.ITEM_9_01.value,
-        ),
-    ),
-)
+# Canonical Priority Tiers (ADR-00014 Section 4.2, consolidated in ingestion/sec/canon.py per ADR-00045)
+_TIER_ITEMS: Tuple[Tuple[int, Tuple[str, ...]], ...] = SEC_8K_PRIORITY_TIERS
 
 _ITEM_PRIORITY_INDEX: Dict[str, Tuple[int, int]] = {}
 _CODE_TO_CANONICAL_ITEM: Dict[str, str] = {}

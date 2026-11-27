@@ -46,86 +46,6 @@ def classify_provenance_tier(
 # 1. CONTROLLED CATEGORICAL TAXONOMIES (CLOSED ENUMS)
 # ==============================================================================
 
-class SECForm8KItem(str, Enum):
-    """Exhaustive statutory SEC Form 8-K Item canon across all 9 statutory sections."""
-    # Section 1: Registrant's Business and Operations
-    ITEM_1_01 = "Item 1.01"  # Entry into a Material Definitive Agreement
-    ITEM_1_02 = "Item 1.02"  # Termination of a Material Definitive Agreement
-    ITEM_1_03 = "Item 1.03"  # Bankruptcy or Receivership
-    ITEM_1_04 = "Item 1.04"  # Mine Safety - Reporting of Shutdowns & Violations
-    ITEM_1_05 = "Item 1.05"  # Material Cybersecurity Incidents
-    # Section 2: Financial Information
-    ITEM_2_01 = "Item 2.01"  # Completion of Acquisition or Disposition of Assets
-    ITEM_2_02 = "Item 2.02"  # Results of Operations and Financial Condition
-    ITEM_2_03 = "Item 2.03"  # Creation of a Direct Financial Obligation
-    ITEM_2_04 = "Item 2.04"  # Acceleration of Obligations (Debt/Credit Default)
-    ITEM_2_05 = "Item 2.05"  # Costs Associated with Exit/Disposal (Plant Closures)
-    ITEM_2_06 = "Item 2.06"  # Material Impairments (Asset/Plant Write-Offs)
-    # Section 3: Securities and Trading Markets
-    ITEM_3_01 = "Item 3.01"  # Notice of Delisting / Failure to Satisfy Listing Rule
-    ITEM_3_02 = "Item 3.02"  # Unregistered Sales of Equity Securities
-    ITEM_3_03 = "Item 3.03"  # Material Modification to Rights of Security Holders
-    # Section 4: Accountants and Financial Statements
-    ITEM_4_01 = "Item 4.01"  # Changes in Registrant's Certifying Accountant
-    ITEM_4_02 = "Item 4.02"  # Non-Reliance on Previously Issued Financial Statements
-    # Section 5: Corporate Governance and Management
-    ITEM_5_01 = "Item 5.01"  # Changes in Control of Registrant
-    ITEM_5_02 = "Item 5.02"  # Departure/Election of Directors or Principal Officers
-    ITEM_5_03 = "Item 5.03"  # Amendments to Articles of Incorporation or Bylaws
-    ITEM_5_04 = "Item 5.04"  # Temporary Suspension of Trading Under Benefit Plans
-    ITEM_5_05 = "Item 5.05"  # Amendments/Waivers to Code of Ethics
-    ITEM_5_06 = "Item 5.06"  # Change in Shell Company Status
-    ITEM_5_07 = "Item 5.07"  # Submission of Matters to a Vote of Security Holders
-    ITEM_5_08 = "Item 5.08"  # Shareholder Director Nominations
-    # Section 6: Asset-Backed Securities
-    ITEM_6_01 = "Item 6.01"  # ABS Informational and Computational Material
-    ITEM_6_02 = "Item 6.02"  # Change of Servicer or Trustee
-    ITEM_6_03 = "Item 6.03"  # Change in Credit Enhancement or External Support
-    ITEM_6_04 = "Item 6.04"  # Failure to Make a Required Distribution
-    ITEM_6_05 = "Item 6.05"  # Securities Act Updating Disclosure
-    # Section 7: Regulation FD
-    ITEM_7_01 = "Item 7.01"  # Regulation FD Disclosure
-    # Section 8: Other Material Events
-    ITEM_8_01 = "Item 8.01"  # Other Events (Statutory General Catch-All)
-    # Section 9: Financial Statements and Exhibits
-    ITEM_9_01 = "Item 9.01"  # Financial Statements and Exhibits
-
-
-SEC_ITEM_DESCRIPTIONS: Dict[str, str] = {
-    "Item 1.01": "Entry into a Material Definitive Agreement",
-    "Item 1.02": "Termination of a Material Definitive Agreement",
-    "Item 1.03": "Bankruptcy or Receivership",
-    "Item 1.04": "Mine Safety - Reporting of Shutdowns and Violations",
-    "Item 1.05": "Material Cybersecurity Incidents",
-    "Item 2.01": "Completion of Acquisition or Disposition of Assets",
-    "Item 2.02": "Results of Operations and Financial Condition",
-    "Item 2.03": "Creation of a Direct Financial Obligation",
-    "Item 2.04": "Acceleration of Obligations (Debt/Credit Default)",
-    "Item 2.05": "Costs Associated with Exit/Disposal Activities (Plant Closures)",
-    "Item 2.06": "Material Impairments (Asset/Plant Write-Offs)",
-    "Item 3.01": "Notice of Delisting or Failure to Satisfy a Continued Listing Rule",
-    "Item 3.02": "Unregistered Sales of Equity Securities",
-    "Item 3.03": "Material Modification to Rights of Security Holders",
-    "Item 4.01": "Changes in Registrant's Certifying Accountant",
-    "Item 4.02": "Non-Reliance on Previously Issued Financial Statements",
-    "Item 5.01": "Changes in Control of Registrant",
-    "Item 5.02": "Departure of Directors or Certain Officers; Election of Directors",
-    "Item 5.03": "Amendments to Articles of Incorporation or Bylaws",
-    "Item 5.04": "Temporary Suspension of Trading Under Employee Benefit Plans",
-    "Item 5.05": "Amendments to the Registrant's Code of Ethics",
-    "Item 5.06": "Change in Shell Company Status",
-    "Item 5.07": "Submission of Matters to a Vote of Security Holders",
-    "Item 5.08": "Shareholder Director Nominations",
-    "Item 6.01": "ABS Informational and Computational Material",
-    "Item 6.02": "Change of Servicer or Trustee",
-    "Item 6.03": "Change in Credit Enhancement or External Support",
-    "Item 6.04": "Failure to Make a Required Distribution",
-    "Item 6.05": "Securities Act Updating Disclosure",
-    "Item 7.01": "Regulation FD Disclosure",
-    "Item 8.01": "Other Events",
-    "Item 9.01": "Financial Statements and Exhibits",
-}
-
 
 class OperationalDisruptionCategory(str, Enum):
     """Physical or commercial mechanism transmitting operational risk through the supply network."""
@@ -157,6 +77,11 @@ class OperationalDisruptionCategory(str, Enum):
     # Allocation & Unclassified
     VENDOR_COMPONENT_ALLOCATION_CURTAILMENT = "VENDOR_COMPONENT_ALLOCATION_CURTAILMENT"
     OTHER_UNCLASSIFIED_MATERIAL_HALT = "OTHER_UNCLASSIFIED_MATERIAL_HALT"
+
+
+# Re-exported from the canonical SEC EDGAR registry (ADR-00045) after OperationalDisruptionCategory
+# is bound so ingestion.sec.disruption_gating never encounters circular initialization.
+from ingestion.sec.canon import SECForm8KItem, SEC_ITEM_DESCRIPTIONS  # noqa: E402,F401
 
 
 class DependencyDomain(str, Enum):

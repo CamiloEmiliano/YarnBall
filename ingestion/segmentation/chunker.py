@@ -15,6 +15,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Pattern, Tuple
 
+from ingestion.sec.canon import SECFormType, get_section_patterns, normalize_form_type
+
 
 @dataclass
 class FilingMetadata:
@@ -23,7 +25,7 @@ class FilingMetadata:
     cik: str
     ticker: Optional[str] = None
     company_name: Optional[str] = None
-    form_type: str = "10-K"
+    form_type: str = SECFormType.FORM_10K.value
     period: Optional[str] = None
     filing_date: Optional[str] = None
     accession_number: Optional[str] = None
@@ -38,7 +40,7 @@ class FilingMetadata:
         if self.company_name:
             self.company_name = self.company_name.strip()
         if self.form_type:
-            self.form_type = self.form_type.strip().upper()
+            self.form_type = normalize_form_type(self.form_type, default=SECFormType.FORM_10K.value)
         if self.accession_number:
             self.accession_number = str(self.accession_number).strip()
         if self.doc_id:
@@ -82,103 +84,8 @@ class FilingChunk:
     metadata: FilingMetadata
 
 
-# Standard SEC Form 10-K, 10-Q, 8-K Section Patterns
-DEFAULT_SECTION_PATTERNS: List[Tuple[str, Pattern]] = [
-    # Form 10-K / 10-Q Core Sections
-    (
-        "Item 1 - Business",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+1[.\s–—\-]+BUSINESS\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 1A - Risk Factors",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+1A[.\s–—\-]+RISK\s+FACTORS\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 1B - Unresolved Staff Comments",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+1B[.\s–—\-]+UNRESOLVED\s+STAFF\s+COMMENTS\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 2 - Properties",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+2[.\s–—\-]+PROPERTIES\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 3 - Legal Proceedings",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+3[.\s–—\-]+LEGAL\s+PROCEEDINGS\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 7 - Management Discussion and Analysis",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+7[.\s–—\-]+MANAGEMENT(?:'S)?\s+DISCUSSION\s+AND\s+ANALYSIS\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 7A - Quantitative and Qualitative Disclosures",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+7A[.\s–—\-]+QUANTITATIVE\s+AND\s+QUALITATIVE\s+DISCLOSURES\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 8 - Financial Statements",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+8[.\s–—\-]+FINANCIAL\s+STATEMENTS\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    # Form 8-K Material Current Event Sections
-    (
-        "Item 1.01 - Entry into Material Agreement",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+1\.01[.\s–—\-]+ENTRY\s+INTO\s+A\s+MATERIAL\s+DEFINITIVE\s+AGREEMENT\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 1.02 - Termination of Material Agreement",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+1\.02[.\s–—\-]+TERMINATION\s+OF\s+A\s+MATERIAL\s+DEFINITIVE\s+AGREEMENT\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 2.01 - Completion of Acquisition or Disposition",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+2\.01[.\s–—\-]+COMPLETION\s+OF\s+ACQUISITION\s+OR\s+DISPOSITION\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Item 8.01 - Other Events",
-        re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+8\.01[.\s–—\-]+OTHER\s+EVENTS\b)",
-            re.IGNORECASE,
-        ),
-    ),
-    # Exhibit 21 Subsidiaries
-    (
-        "Exhibit 21 - Subsidiaries",
-        re.compile(
-            r"(?:\n|^)\s*(?:EXHIBIT\s+21(?:\.1)?[.\s–—\-]+SUBSIDIARIES\b)",
-            re.IGNORECASE,
-        ),
-    ),
-]
+# Standard SEC Form 10-K, 10-Q, 8-K, 20-F & Exhibit 21 Section Patterns (ADR-00045 single source of truth)
+DEFAULT_SECTION_PATTERNS: List[Tuple[str, Pattern[str]]] = get_section_patterns()
 
 
 def estimate_token_count(text: str) -> int:

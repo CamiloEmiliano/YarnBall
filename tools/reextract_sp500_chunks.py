@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from ingestion.sec.canon import SECFormType, normalize_form_type
 from ingestion.sec.harvester import EdgarWorker
 from ingestion.sec.parser import extract_sec_relationships, rank_salient_chunks
 from ingestion.segmentation.chunker import FilingMetadata, FinancialSectionSegmenter
@@ -131,7 +132,10 @@ def run_sp500_chunk_reextraction(
                 company_name = str(meta.get("company_name") or ticker)
                 filing_date = str(meta.get("filing_date") or as_of_date)
                 acceptance_dt = meta.get("acceptance_datetime")
-                form_type = str(meta.get("form") or meta.get("form_type") or "10-K")
+                form_type = normalize_form_type(
+                    meta.get("form") or meta.get("form_type"),
+                    default=SECFormType.FORM_10K.value,
+                )
 
                 session_date, known_at_utc, _ = actionable_session(
                     acceptance_dt,
