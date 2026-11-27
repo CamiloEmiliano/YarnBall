@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00045
 - **Filename**: `ADR-00045-canonical-sec-edgar-filing-registry-----.md`
 - **Date**: 2026-11-27 08:28 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `ingestion` / `retrieval` / `ontology` / `tools` / `tests`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`72dd7c2`](../../ingestion/sec/canon.py), [`72dd7c2`](../../ingestion/sec/harvester.py), [`72dd7c2`](../../ingestion/sec/disruption_gating.py), [`72dd7c2`](../../ingestion/segmentation/chunker.py), [`72dd7c2`](../../retrieval/reporting.py), [`72dd7c2`](../../tests/ingestion/sec/test_sec_canon_integrity.py)
 
 ---
 
