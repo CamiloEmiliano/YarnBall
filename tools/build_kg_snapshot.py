@@ -219,9 +219,11 @@ def build_and_export_kg_snapshot(
 
                 ticker = str(meta.get("ticker") or dir_ticker).upper()
                 company_name = str(meta.get("company_name") or ticker)
+                gics_sector = str(meta.get("gics_sector") or "").strip() or None
                 cik = str(meta.get("cik") or "").zfill(10)
                 acc = str(meta.get("accession_number") or bundle_dir.name)
                 filing_date = str(meta.get("filing_date") or "")
+                acceptance_dt = meta.get("acceptance_datetime")
                 form_type = normalize_form_type(meta.get("form") or meta.get("form_type"), default=SECFormType.FORM_10K.value)
 
                 subs_path = bundle_dir / "subsidiaries.json"
@@ -236,6 +238,8 @@ def build_and_export_kg_snapshot(
                                 subsidiaries=subs,
                                 accession_number=acc,
                                 filing_date=filing_date,
+                                acceptance_datetime=acceptance_dt,
+                                form_type=form_type,
                             )
                             sec_subsidiaries_ingested += len(sub_edges)
                     except Exception as exc:
@@ -246,7 +250,14 @@ def build_and_export_kg_snapshot(
                     try:
                         graph_payload = json.loads(preextracted_path.read_text(encoding="utf-8"))
                         section_text = ""
-                        for txt_name in ("item_1_business.txt", "item_1a_risk_factors.txt"):
+                        for txt_name in (
+                            "item_1_business.txt",
+                            "item_1a_risk_factors.txt",
+                            "item_1c_cybersecurity.txt",
+                            "item_2_properties.txt",
+                            "item_3_legal_proceedings.txt",
+                            "item_7_mda.txt",
+                        ):
                             txt_path = bundle_dir / txt_name
                             if txt_path.is_file():
                                 section_text += txt_path.read_text(encoding="utf-8") + "\n"
@@ -259,20 +270,31 @@ def build_and_export_kg_snapshot(
                             form_type=form_type,
                             section="preextracted",
                             source_text=section_text or None,
+                            acceptance_datetime=acceptance_dt,
                         )
                         sec_edges_ingested += len(g_edges)
                     except Exception as exc:
                         logger.warning("Failed persisting pre-extracted graph in %s: %s", bundle_dir, exc)
                 elif extract_llm:
                     for section_label, txt_name in (
-                        ("Item 1 Business", "item_1_business.txt"),
-                        ("Item 1A Risk Factors", "item_1a_risk_factors.txt"),
+                        ("Item 1 - Business", "item_1_business.txt"),
+                        ("Item 1A - Risk Factors", "item_1a_risk_factors.txt"),
+                        ("Item 1C - Cybersecurity", "item_1c_cybersecurity.txt"),
+                        ("Item 2 - Properties", "item_2_properties.txt"),
+                        ("Item 3 - Legal Proceedings", "item_3_legal_proceedings.txt"),
+                        ("Item 7 - Management Discussion and Analysis", "item_7_mda.txt"),
                     ):
                         txt_path = bundle_dir / txt_name
                         if not txt_path.is_file():
                             continue
                         section_text = txt_path.read_text(encoding="utf-8")
-                        graph_payload = extract_sec_relationships(section_text, source_id=f"{acc}:{section_label}")
+                        graph_payload = extract_sec_relationships(
+                            section_text,
+                            source_id=f"{acc}:{section_label}",
+                            form_type=form_type,
+                            section_name=section_label,
+                            gics_sector=gics_sector,
+                        )
                         if graph_payload.get("nodes") or graph_payload.get("edges"):
                             _, g_edges = worker._persist_sec_graph_data(
                                 primary_name=company_name,
@@ -283,6 +305,7 @@ def build_and_export_kg_snapshot(
                                 form_type=form_type,
                                 section=section_label,
                                 source_text=section_text,
+                                acceptance_datetime=acceptance_dt,
                             )
                             sec_edges_ingested += len(g_edges)
 

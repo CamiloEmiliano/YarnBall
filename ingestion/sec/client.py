@@ -3,9 +3,10 @@ SEC EDGAR Client Wrapper using `edgartools`.
 
 Provides standardized methods to:
 - Authenticate / set identity with SEC EDGAR
-- Fetch 10-K, 10-Q, 8-K, and opt-in Form 4 filings per `ingestion/sec/canon.py` (ADR-00045)
-- Extract structured sections (Item 1 Business, Item 1A Risk Factors, Exhibit 21 Subsidiaries)
-- Parse Exhibit 21 list of subsidiaries into structured records
+- Fetch 10-K, 10-K/A, 10-Q, 10-Q/A, 8-K, 8-K/A, and opt-in Form 4 filings per `ingestion/sec/canon.py` (ADR-00045 / ADR-00046)
+- Extract structured 10-K/10-K/A sections (Items 1, 1A, 1C, 2, 3, 7, Exhibit 21)
+- Extract part-qualified 10-Q/10-Q/A narrative sections (Part I Items 2 & 3, Part II Items 1 & 1A)
+- Extract attached Form 8-K/8-K/A Exhibit 99.x press releases independently bounded at `DEFAULT_MAX_FILING_CHARS`
 - CLI utility for targeted filing downloads
 """
 
@@ -19,9 +20,10 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from .canon import SECFormType
+from .canon import SECFormType, normalize_form_type
+from .disruption_gating import DEFAULT_MAX_FILING_CHARS
 
 try:
     os.environ.setdefault("EDGAR_LOCAL_DATA_DIR", "/tmp/edgar")
@@ -73,6 +75,38 @@ class EdgarClient:
             logger.error(f"Failed to load SEC Company for '{ticker_or_cik}': {e}")
             return None
 
+    def fetch_10k_filings(
+        self,
+        ticker_or_cik: str,
+        year: Optional[int] = None,
+        *,
+        form_type: str = SECFormType.FORM_10K.value,
+        limit: int = 2,
+    ) -> List[Any]:
+        """Retrieve 10-K or 10-K/A filings for a company, optionally filtered by year (ADR-00046)."""
+        company = self.get_company(ticker_or_cik)
+        if not company:
+            return []
+
+        canonical_form = normalize_form_type(form_type, default=SECFormType.FORM_10K.value)
+        matched: List[Any] = []
+        try:
+            filings = company.get_filings(form=canonical_form)
+            if not filings:
+                return []
+            for filing in filings:
+                if year is not None:
+                    filing_date = str(getattr(filing, "filing_date", ""))
+                    report_date = str(getattr(filing, "report_date", ""))
+                    if str(year) not in filing_date and str(year) not in report_date:
+                        continue
+                matched.append(filing)
+                if len(matched) >= limit:
+                    break
+        except Exception as e:
+            logger.error(f"Error fetching {canonical_form} for '{ticker_or_cik}': {e}")
+        return matched
+
     def fetch_latest_10k(self, ticker_or_cik: str, year: Optional[int] = None) -> Optional[Any]:
         """Retrieve the latest or year-specific 10-K filing."""
         company = self.get_company(ticker_or_cik)
@@ -94,6 +128,50 @@ class EdgarClient:
             return None
 
     @staticmethod
+    def _coerce_section_text(value: Any) -> str:
+        """Safely coerce an edgartools section value into clean text without stringifying mock objects."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        text_fn = getattr(value, "text", None)
+        if callable(text_fn):
+            try:
+                rendered = text_fn()
+                if isinstance(rendered, str):
+                    return rendered.strip()
+            except Exception:
+                return ""
+        return ""
+
+    @classmethod
+    def _extract_report_item(
+        cls,
+        report_obj: Any,
+        attr_names: Tuple[str, ...],
+        item_keys: Tuple[str, ...],
+    ) -> str:
+        """Extract a single narrative item from an edgartools TenK/TenQ object using property + dict lookup."""
+        if report_obj is None:
+            return ""
+        for attr in attr_names:
+            try:
+                text = cls._coerce_section_text(getattr(report_obj, attr, None))
+                if text:
+                    return text
+            except Exception:
+                continue
+        if hasattr(report_obj, "__getitem__"):
+            for key in item_keys:
+                try:
+                    text = cls._coerce_section_text(report_obj[key])
+                    if text:
+                        return text
+                except Exception:
+                    continue
+        return ""
+
+    @staticmethod
     def _extract_acceptance_datetime(filing: Any) -> Optional[str]:
         """Extract EDGAR acceptance_datetime timestamp from an edgartools filing if present."""
         raw = getattr(filing, "acceptance_datetime", None)
@@ -104,20 +182,34 @@ class EdgarClient:
         if raw is None:
             return None
         if hasattr(raw, "isoformat"):
-            return str(raw.isoformat())
-        text = str(raw).strip()
-        return text or None
+            iso_val = raw.isoformat()
+            if isinstance(iso_val, str) and iso_val.strip():
+                return iso_val.strip()
+        if isinstance(raw, str):
+            text = raw.strip()
+            return text or None
+        return None
 
     def extract_10k_sections(self, filing: Any) -> Dict[str, Any]:
-        """Extract structured sections from a 10-K filing using edgartools TenK parser."""
+        """Extract structured sections from a 10-K or 10-K/A filing using edgartools TenK parser (ADR-00046)."""
+        raw_form = getattr(filing, "form", None)
+        canonical_form = (
+            normalize_form_type(raw_form, default=SECFormType.FORM_10K.value)
+            if isinstance(raw_form, str)
+            else SECFormType.FORM_10K.value
+        )
         result: Dict[str, Any] = {
             "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
             "filing_date": str(getattr(filing, "filing_date", "")),
             "acceptance_datetime": self._extract_acceptance_datetime(filing),
             "report_date": str(getattr(filing, "report_date", "")),
-            "form": SECFormType.FORM_10K.value,
+            "form": canonical_form,
             "item_1_business": "",
             "item_1a_risk_factors": "",
+            "item_1c_cybersecurity": "",
+            "item_2_properties": "",
+            "item_3_legal_proceedings": "",
+            "item_7_mda": "",
             "subsidiaries": [],
         }
 
@@ -125,35 +217,24 @@ class EdgarClient:
             return result
 
         try:
-            tenk = filing.obj()
-            if tenk:
-                # Extract Item 1 (Business)
-                try:
-                    if hasattr(tenk, "item_1") and tenk.item_1:
-                        result["item_1_business"] = str(tenk.item_1)
-                    elif hasattr(tenk, "__getitem__"):
-                        item1 = tenk["Item 1"] or tenk["Item 1."]
-                        if item1:
-                            result["item_1_business"] = str(item1)
-                except Exception as e:
-                    logger.debug(f"Item 1 extraction fallback: {e}")
+            tenk = filing.obj() if hasattr(filing, "obj") else None
+            if tenk is not None:
+                section_map: Tuple[Tuple[str, Tuple[str, ...], Tuple[str, ...]], ...] = (
+                    ("item_1_business", ("item_1", "business"), ("Item 1", "Item 1.")),
+                    ("item_1a_risk_factors", ("item_1a", "risk_factors"), ("Item 1A", "Item 1A.")),
+                    ("item_1c_cybersecurity", ("item_1c", "cybersecurity"), ("Item 1C", "Item 1C.")),
+                    ("item_2_properties", ("item_2", "properties"), ("Item 2", "Item 2.")),
+                    ("item_3_legal_proceedings", ("item_3", "legal_proceedings"), ("Item 3", "Item 3.")),
+                    ("item_7_mda", ("item_7", "management_discussion"), ("Item 7", "Item 7.")),
+                )
+                for result_key, attr_names, item_keys in section_map:
+                    result[result_key] = self._extract_report_item(tenk, attr_names, item_keys)
 
-                # Extract Item 1A (Risk Factors)
-                try:
-                    if hasattr(tenk, "item_1a") and tenk.item_1a:
-                        result["item_1a_risk_factors"] = str(tenk.item_1a)
-                    elif hasattr(tenk, "__getitem__"):
-                        item1a = tenk["Item 1A"] or tenk["Item 1A."]
-                        if item1a:
-                            result["item_1a_risk_factors"] = str(item1a)
-                except Exception as e:
-                    logger.debug(f"Item 1A extraction fallback: {e}")
-
-            # Extract Exhibit 21 (Subsidiaries)
+            # Extract Exhibit 21 (Subsidiaries) — captures delayed Exhibit 21 schedules on 10-K/A as well
             result["subsidiaries"] = self.extract_exhibit_21_subsidiaries(filing)
 
         except Exception as e:
-            logger.warning(f"Error extracting sections from 10-K filing: {e}")
+            logger.warning(f"Error extracting sections from {canonical_form} filing: {e}")
 
         return result
 
@@ -210,15 +291,103 @@ class EdgarClient:
                     results.append({"name": name, "jurisdiction": "Unknown"})
         return results
 
-    def fetch_recent_8k(self, ticker_or_cik: str, limit: int = 5, year: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Fetch recent or year-specific 8-K material event filings."""
+    _EXCLUDED_EXHIBIT_TYPES_RE = re.compile(
+        r"^(?:EX[- \t]*)?(?:101|104)(?:\b|[._-])|^(?:GRAPHIC|ZIP|EXCEL|XML|JSON|PDF)\b",
+        re.IGNORECASE,
+    )
+    _EXCLUDED_EXHIBIT_EXTS: Tuple[str, ...] = (
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".svg",
+        ".pdf",
+        ".zip",
+        ".xls",
+        ".xlsx",
+        ".xsd",
+        ".xml",
+    )
+    _EXHIBIT_99_TYPE_RE = re.compile(r"^EX[- \t]?99(?:\.(\d+))?\b", re.IGNORECASE)
+    _EXHIBIT_99_DESC_RE = re.compile(r"\bexhibit\s*99(?:\.(\d+))?\b", re.IGNORECASE)
+
+    def extract_exhibit_99_attachments(
+        self,
+        filing: Any,
+        *,
+        max_chars: int = DEFAULT_MAX_FILING_CHARS,
+    ) -> Dict[str, str]:
+        """Extract Exhibit 99.x narrative press-release attachments, each bounded independently (ADR-00046)."""
+        exhibits: Dict[str, str] = {}
+        if not filing:
+            return exhibits
+
+        try:
+            attachments = getattr(filing, "attachments", None)
+            if not attachments:
+                return exhibits
+            for att in attachments:
+                raw_type = getattr(att, "document_type", "")
+                doc_type = raw_type.strip().upper() if isinstance(raw_type, str) else ""
+                raw_desc = getattr(att, "description", "")
+                desc = raw_desc.strip() if isinstance(raw_desc, str) else ""
+                raw_doc = getattr(att, "document", "")
+                doc_name = raw_doc.strip().lower() if isinstance(raw_doc, str) else ""
+
+                if doc_type and self._EXCLUDED_EXHIBIT_TYPES_RE.match(doc_type):
+                    continue
+                if doc_name and doc_name.endswith(self._EXCLUDED_EXHIBIT_EXTS):
+                    continue
+
+                type_match = self._EXHIBIT_99_TYPE_RE.match(doc_type) if doc_type else None
+                desc_match = self._EXHIBIT_99_DESC_RE.search(desc) if desc else None
+                is_press_release = not doc_type and "press release" in desc.lower()
+                if not type_match and not desc_match and not is_press_release:
+                    continue
+
+                if type_match:
+                    suffix = type_match.group(1)
+                    exhibit_key = f"EX-99.{suffix}" if suffix else "EX-99"
+                elif desc_match:
+                    suffix = desc_match.group(1)
+                    exhibit_key = f"EX-99.{suffix}" if suffix else "EX-99.1"
+                else:
+                    exhibit_key = "EX-99.1"
+
+                text = self._coerce_section_text(att)
+                if not text:
+                    continue
+                bounded = text[:max_chars] if max_chars > 0 else text
+                if exhibit_key in exhibits:
+                    suffix_idx = 2
+                    while f"{exhibit_key}_{suffix_idx}" in exhibits:
+                        suffix_idx += 1
+                    exhibit_key = f"{exhibit_key}_{suffix_idx}"
+                exhibits[exhibit_key] = bounded
+        except Exception as e:
+            logger.debug(f"Exhibit 99.x extraction error: {e}")
+
+        return exhibits
+
+    def fetch_recent_8k(
+        self,
+        ticker_or_cik: str,
+        limit: int = 5,
+        year: Optional[int] = None,
+        *,
+        form_type: str = SECFormType.FORM_8K.value,
+        include_exhibits: bool = True,
+        max_chars: int = DEFAULT_MAX_FILING_CHARS,
+    ) -> List[Dict[str, Any]]:
+        """Fetch recent or year-specific Form 8-K / 8-K/A filings with attached Exhibit 99.x press releases."""
         company = self.get_company(ticker_or_cik)
         if not company:
             return []
 
-        results = []
+        canonical_form = normalize_form_type(form_type, default=SECFormType.FORM_8K.value)
+        results: List[Dict[str, Any]] = []
         try:
-            filings = company.get_filings(form=SECFormType.FORM_8K.value)
+            filings = company.get_filings(form=canonical_form)
             if not filings:
                 return []
             count = 0
@@ -226,30 +395,121 @@ class EdgarClient:
                 filing_date_str = str(getattr(filing, "filing_date", ""))
                 if year and str(year) not in filing_date_str:
                     continue
-                results.append({
+                raw_text = self._coerce_section_text(filing)
+                bounded_text = raw_text[:max_chars] if max_chars > 0 else raw_text
+                exhibits = (
+                    self.extract_exhibit_99_attachments(filing, max_chars=max_chars)
+                    if include_exhibits
+                    else {}
+                )
+                raw_filing_form = getattr(filing, "form", None)
+                resolved_form = (
+                    normalize_form_type(raw_filing_form, default=canonical_form)
+                    if isinstance(raw_filing_form, str)
+                    else canonical_form
+                )
+                record: Dict[str, Any] = {
                     "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
                     "filing_date": filing_date_str,
                     "acceptance_datetime": self._extract_acceptance_datetime(filing),
-                    "form": SECFormType.FORM_8K.value,
+                    "form": resolved_form,
                     "items": getattr(filing, "items", []),
-                    "text": filing.text()[:10000] if hasattr(filing, "text") else "",
-                })
+                    "text": bounded_text,
+                    "exhibits": exhibits,
+                }
+                if "EX-99.1" in exhibits:
+                    record["exhibit_99_1"] = exhibits["EX-99.1"]
+                elif exhibits:
+                    record["exhibit_99_1"] = next(iter(exhibits.values()))
+                results.append(record)
                 count += 1
                 if count >= limit:
                     break
         except Exception as e:
-            logger.error(f"Error fetching 8-K for '{ticker_or_cik}': {e}")
+            logger.error(f"Error fetching {canonical_form} for '{ticker_or_cik}': {e}")
         return results
 
-    def fetch_10q_filings(self, ticker_or_cik: str, year: Optional[int] = None, limit: int = 4) -> List[Dict[str, Any]]:
-        """Fetch Form 10-Q quarterly reports for a company."""
+    def extract_10q_sections(
+        self,
+        filing: Any,
+        *,
+        max_fallback_chars: int = DEFAULT_MAX_FILING_CHARS,
+    ) -> Dict[str, Any]:
+        """Extract part-qualified narrative sections from a Form 10-Q or 10-Q/A filing (ADR-00046)."""
+        raw_form = getattr(filing, "form", None)
+        canonical_form = (
+            normalize_form_type(raw_form, default=SECFormType.FORM_10Q.value)
+            if isinstance(raw_form, str)
+            else SECFormType.FORM_10Q.value
+        )
+        result: Dict[str, Any] = {
+            "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
+            "filing_date": str(getattr(filing, "filing_date", "")),
+            "acceptance_datetime": self._extract_acceptance_datetime(filing),
+            "report_date": str(getattr(filing, "report_date", "")),
+            "form": canonical_form,
+            "part1_item2_mda": "",
+            "part1_item3_market_risk": "",
+            "part2_item1_legal_proceedings": "",
+            "part2_item1a_risk_factors": "",
+            "text": "",
+        }
+        if not filing:
+            return result
+
+        try:
+            tenq = filing.obj() if hasattr(filing, "obj") else None
+            if tenq is not None:
+                # Strictly part-qualified keys so Part I Item 1 (GAAP tables) never collides with Part II Item 1 (Legal)
+                section_map: Tuple[Tuple[str, Tuple[str, ...], Tuple[str, ...]], ...] = (
+                    ("part1_item2_mda", ("part1_item2", "management_discussion"), ("Part I, Item 2", "part_i_item_2")),
+                    ("part1_item3_market_risk", ("part1_item3",), ("Part I, Item 3", "part_i_item_3")),
+                    ("part2_item1_legal_proceedings", ("part2_item1",), ("Part II, Item 1", "part_ii_item_1")),
+                    ("part2_item1a_risk_factors", ("part2_item1a", "risk_factors"), ("Part II, Item 1A", "part_ii_item_1a")),
+                )
+                for result_key, attr_names, item_keys in section_map:
+                    result[result_key] = self._extract_report_item(tenq, attr_names, item_keys)
+        except Exception as e:
+            logger.warning(f"Error extracting sections from {canonical_form} filing: {e}")
+
+        composed_parts: List[str] = []
+        labeled_sections: Tuple[Tuple[str, str], ...] = (
+            ("part1_item2_mda", "PART I, ITEM 2 - MANAGEMENT'S DISCUSSION AND ANALYSIS"),
+            ("part1_item3_market_risk", "PART I, ITEM 3 - QUANTITATIVE AND QUALITATIVE DISCLOSURES ABOUT MARKET RISK"),
+            ("part2_item1_legal_proceedings", "PART II, ITEM 1 - LEGAL PROCEEDINGS"),
+            ("part2_item1a_risk_factors", "PART II, ITEM 1A - RISK FACTORS"),
+        )
+        for key, heading in labeled_sections:
+            sec_text = result[key]
+            if sec_text:
+                composed_parts.append(f"{heading}\n\n{sec_text}")
+
+        if composed_parts:
+            result["text"] = "\n\n".join(composed_parts)
+        else:
+            fallback_raw = self._coerce_section_text(filing)
+            result["text"] = fallback_raw[:max_fallback_chars] if max_fallback_chars > 0 else fallback_raw
+
+        return result
+
+    def fetch_10q_filings(
+        self,
+        ticker_or_cik: str,
+        year: Optional[int] = None,
+        limit: int = 4,
+        *,
+        form_type: str = SECFormType.FORM_10Q.value,
+        max_fallback_chars: int = DEFAULT_MAX_FILING_CHARS,
+    ) -> List[Dict[str, Any]]:
+        """Fetch Form 10-Q or 10-Q/A quarterly reports with part-qualified narrative section extraction."""
         company = self.get_company(ticker_or_cik)
         if not company:
             return []
 
-        results = []
+        canonical_form = normalize_form_type(form_type, default=SECFormType.FORM_10Q.value)
+        results: List[Dict[str, Any]] = []
         try:
-            filings = company.get_filings(form=SECFormType.FORM_10Q.value)
+            filings = company.get_filings(form=canonical_form)
             if not filings:
                 return []
             count = 0
@@ -257,19 +517,17 @@ class EdgarClient:
                 filing_date_str = str(getattr(filing, "filing_date", ""))
                 if year and str(year) not in filing_date_str:
                     continue
-                results.append({
-                    "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
-                    "filing_date": filing_date_str,
-                    "acceptance_datetime": self._extract_acceptance_datetime(filing),
-                    "report_date": str(getattr(filing, "report_date", "")),
-                    "form": SECFormType.FORM_10Q.value,
-                    "text": filing.text()[:15000] if hasattr(filing, "text") else "",
-                })
+                extracted = self.extract_10q_sections(filing, max_fallback_chars=max_fallback_chars)
+                if not extracted.get("form"):
+                    extracted["form"] = canonical_form
+                elif extracted["form"] == SECFormType.FORM_10Q.value and canonical_form == SECFormType.FORM_10QA.value:
+                    extracted["form"] = canonical_form
+                results.append(extracted)
                 count += 1
                 if count >= limit:
                     break
         except Exception as e:
-            logger.error(f"Error fetching 10-Q for '{ticker_or_cik}': {e}")
+            logger.error(f"Error fetching {canonical_form} for '{ticker_or_cik}': {e}")
         return results
 
     def fetch_form4_transactions(self, ticker_or_cik: str, limit: int = 20, year: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -343,18 +601,23 @@ def download_filings_for_ticker(
                 "ticker": clean_ticker,
                 "accession_number": sections.get("accession_number"),
                 "filing_date": sections.get("filing_date"),
+                "acceptance_datetime": sections.get("acceptance_datetime"),
                 "report_date": sections.get("report_date"),
-                "form": SECFormType.FORM_10K.value,
+                "form": sections.get("form") or SECFormType.FORM_10K.value,
                 "subsidiaries_count": stats["subsidiaries_count"],
             }, f, indent=2)
 
-        if sections.get("item_1_business"):
-            with open(filing_dir / "item_1_business.txt", "w", encoding="utf-8") as f:
-                f.write(sections["item_1_business"])
-
-        if sections.get("item_1a_risk_factors"):
-            with open(filing_dir / "item_1a_risk_factors.txt", "w", encoding="utf-8") as f:
-                f.write(sections["item_1a_risk_factors"])
+        for section_key, filename in (
+            ("item_1_business", "item_1_business.txt"),
+            ("item_1a_risk_factors", "item_1a_risk_factors.txt"),
+            ("item_1c_cybersecurity", "item_1c_cybersecurity.txt"),
+            ("item_2_properties", "item_2_properties.txt"),
+            ("item_3_legal_proceedings", "item_3_legal_proceedings.txt"),
+            ("item_7_mda", "item_7_mda.txt"),
+        ):
+            if sections.get(section_key):
+                with open(filing_dir / filename, "w", encoding="utf-8") as f:
+                    f.write(sections[section_key])
 
         if sections.get("subsidiaries"):
             with open(filing_dir / "exhibit_21_subsidiaries.json", "w", encoding="utf-8") as f:

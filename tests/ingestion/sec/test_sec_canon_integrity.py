@@ -125,14 +125,17 @@ def test_termination_eligibility_strict_adr00033() -> None:
 
 
 def test_default_harvest_forms_domain1_active_only() -> None:
-    """ADR-00045 Invariant #7: Default Domain-1 batch forms exclude Form 4, PLANNED, and OPTIONAL_ABLATION."""
+    """ADR-00045 Invariant #7 / ADR-00046: Default Domain-1 batch forms cover all 6 core active forms."""
     defaults = get_default_harvest_forms()
-    assert defaults == ("10-K", "10-Q", "8-K")
+    assert defaults == ("10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A")
     for form_code in defaults:
         spec = canon.get_form_spec(form_code)
         assert spec is not None
         assert spec.status == SECFormStatus.ACTIVE
         assert spec.graph_layer == SECGraphLayer.DOMAIN1_OPERATIONAL
+    assert SEC_EXHIBIT_CANON["Exhibit 99.1"].status == SECFormStatus.ACTIVE
+    assert "Exhibit 99.1" in SEC_FORM_CANON[SECFormType.FORM_8K].tracked_exhibits
+    assert "Exhibit 99.1" in SEC_FORM_CANON[SECFormType.FORM_8KA].tracked_exhibits
 
 
 def test_ontology_provenance_confidence_parity_without_cycle() -> None:
@@ -249,6 +252,7 @@ def test_normalize_form_type_and_harvester_default_forms(tmp_path: Path) -> None
 
     mock_client = MagicMock()
     mock_client.fetch_latest_10k.return_value = None
+    mock_client.fetch_10k_filings.return_value = []
     mock_client.fetch_10q_filings.return_value = []
     mock_client.fetch_recent_8k.return_value = []
     mock_client.fetch_form4_transactions.return_value = []
@@ -264,8 +268,9 @@ def test_normalize_form_type_and_harvester_default_forms(tmp_path: Path) -> None
 
     harvester.harvest_company_year(constituent, year=2024)
     mock_client.fetch_latest_10k.assert_called_once()
-    mock_client.fetch_10q_filings.assert_called_once()
-    mock_client.fetch_recent_8k.assert_called_once()
+    mock_client.fetch_10k_filings.assert_called_once()
+    assert mock_client.fetch_10q_filings.call_count == 2  # 10-Q + 10-Q/A
+    assert mock_client.fetch_recent_8k.call_count == 2  # 8-K + 8-K/A
     mock_client.fetch_form4_transactions.assert_not_called()
 
     # Explicit opt-in still invokes Form 4 fetcher cleanly.

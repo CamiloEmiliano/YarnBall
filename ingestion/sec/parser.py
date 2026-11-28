@@ -431,11 +431,15 @@ def rank_salient_chunks(chunks: List[Any]) -> List[Any]:
     return [chunk for _, chunk in indexed]
 
 
-def is_high_signal_gleaning_section(section_name: Optional[str]) -> bool:
-    """Return True for high-signal SEC sections eligible for targeted 1-pass gleaning (ADR-00035 / ADR-00045)."""
+def is_high_signal_gleaning_section(
+    section_name: Optional[str],
+    *,
+    gics_sector: Optional[str] = None,
+) -> bool:
+    """Return True for high-signal SEC sections eligible for targeted 1-pass gleaning (ADR-00035 / ADR-00045 / ADR-00046)."""
     from .canon import is_high_signal_section
 
-    return is_high_signal_section(section_name)
+    return is_high_signal_section(section_name, gics_sector=gics_sector)
 
 
 def should_glean_chunk(
@@ -446,8 +450,9 @@ def should_glean_chunk(
     *,
     max_new_tokens: int = 512,
     enabled: Optional[bool] = None,
+    gics_sector: Optional[str] = None,
 ) -> bool:
-    """Determine whether a chunk qualifies for targeted 1-pass gleaning (ADR-00035 Section 4.4)."""
+    """Determine whether a chunk qualifies for targeted 1-pass gleaning (ADR-00035 / ADR-00046)."""
     if enabled is None:
         env_val = os.getenv("ENABLE_TARGETED_GLEANING", "1").strip().lower()
         is_enabled = env_val not in ("0", "false", "no", "off")
@@ -456,7 +461,7 @@ def should_glean_chunk(
 
     if not is_enabled or runaway_detected:
         return False
-    if not is_high_signal_gleaning_section(section_name):
+    if not is_high_signal_gleaning_section(section_name, gics_sector=gics_sector):
         return False
     token_threshold = int(0.85 * max_new_tokens)
     return pass1_valid_edge_count >= 1 or int(generated_tokens) >= token_threshold
@@ -530,6 +535,7 @@ def extract_sec_relationships(
     max_tokens: int = 800,
     overlap_tokens: int = 120,
     enable_gleaning: Optional[bool] = None,
+    gics_sector: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Segment full SEC section text without truncation, extract per chunk, glean, and merge (ADR-00035)."""
     del max_chars  # Intentionally unused: ADR-00035 Invariant #4 forbids character-budget truncation.
@@ -621,6 +627,7 @@ def extract_sec_relationships(
             getattr(pass1_resp, "generated_tokens", 0),
             bool(getattr(pass1_resp, "runaway_detected", False)),
             enabled=enable_gleaning,
+            gics_sector=gics_sector,
         ):
             glean_prompt = _format_gleaning_prompt(chunk.full_prompt_text, pass1_valid.get("edges", []))
             try:

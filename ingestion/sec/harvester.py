@@ -136,13 +136,134 @@ class HistoricalSECHarvester:
 
         return summary
 
+    _STAGED_10K_SECTION_FILES: Tuple[Tuple[str, str], ...] = (
+        ("item_1_business", "item_1_business.txt"),
+        ("item_1a_risk_factors", "item_1a_risk_factors.txt"),
+        ("item_1c_cybersecurity", "item_1c_cybersecurity.txt"),
+        ("item_2_properties", "item_2_properties.txt"),
+        ("item_3_legal_proceedings", "item_3_legal_proceedings.txt"),
+        ("item_7_mda", "item_7_mda.txt"),
+    )
+    _STAGED_10Q_SECTION_FILES: Tuple[Tuple[str, str], ...] = (
+        ("part1_item2_mda", "part1_item2_mda.txt"),
+        ("part1_item3_market_risk", "part1_item3_market_risk.txt"),
+        ("part2_item1_legal_proceedings", "part2_item1_legal_proceedings.txt"),
+        ("part2_item1a_risk_factors", "part2_item1a_risk_factors.txt"),
+    )
+
+    def _stage_10k_bundle(
+        self,
+        acc_dir: Path,
+        sections: Dict[str, Any],
+        constituent: SP500Constituent,
+        year: int,
+        form_code: str,
+    ) -> int:
+        """Persist 10-K / 10-K/A metadata, narrative sections, and Exhibit 21 subsidiaries to disk."""
+        acc_dir.mkdir(parents=True, exist_ok=True)
+        ticker = constituent.ticker.upper()
+        subs = sections.get("subsidiaries", [])
+        populated_sections = [
+            key for key, _ in self._STAGED_10K_SECTION_FILES if sections.get(key)
+        ]
+        meta = {
+            "ticker": ticker,
+            "cik": constituent.cik,
+            "company_name": constituent.company_name,
+            "gics_sector": constituent.gics_sector,
+            "form": form_code,
+            "year": year,
+            "accession_number": sections.get("accession_number", "UNKNOWN"),
+            "filing_date": sections.get("filing_date"),
+            "acceptance_datetime": sections.get("acceptance_datetime"),
+            "report_date": sections.get("report_date"),
+            "sections_present": populated_sections,
+            "subsidiaries_count": len(subs),
+        }
+        with open(acc_dir / "metadata.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+
+        for section_key, filename in self._STAGED_10K_SECTION_FILES:
+            text_val = sections.get(section_key, "")
+            if text_val:
+                with open(acc_dir / filename, "w", encoding="utf-8") as f:
+                    f.write(text_val)
+
+        if subs:
+            with open(acc_dir / "subsidiaries.json", "w", encoding="utf-8") as f:
+                json.dump(subs, f, indent=2)
+
+        return len(subs)
+
+    def _stage_10q_bundle(
+        self,
+        acc_dir: Path,
+        q_filing: Dict[str, Any],
+        constituent: SP500Constituent,
+        year: int,
+        form_code: str,
+    ) -> None:
+        """Persist 10-Q / 10-Q/A metadata, composed quarterly narrative, and part-qualified sections."""
+        acc_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            **q_filing,
+            "ticker": q_filing.get("ticker") or constituent.ticker.upper(),
+            "cik": q_filing.get("cik") or constituent.cik,
+            "company_name": q_filing.get("company_name") or constituent.company_name,
+            "gics_sector": q_filing.get("gics_sector") or constituent.gics_sector,
+            "form": form_code,
+            "year": year,
+        }
+        with open(acc_dir / "metadata.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+        q_text = q_filing.get("text", "")
+        if q_text:
+            with open(acc_dir / "quarterly_text.txt", "w", encoding="utf-8") as f:
+                f.write(q_text)
+
+        for section_key, filename in self._STAGED_10Q_SECTION_FILES:
+            sec_text = q_filing.get(section_key, "")
+            if sec_text:
+                with open(acc_dir / filename, "w", encoding="utf-8") as f:
+                    f.write(sec_text)
+
+    def _stage_8k_bundle(
+        self,
+        acc_dir: Path,
+        k_filing: Dict[str, Any],
+        constituent: SP500Constituent,
+        form_code: str,
+    ) -> bool:
+        """Normalize and persist a Form 8-K or 8-K/A envelope including Exhibit 99.x attachments."""
+        from .disruption_gating import normalize_staged_8k_payload
+
+        acc_dir.mkdir(parents=True, exist_ok=True)
+        ticker = constituent.ticker.upper()
+        canonical_8k = normalize_staged_8k_payload(
+            {
+                **k_filing,
+                "cik": k_filing.get("cik") or constituent.cik,
+                "ticker": k_filing.get("ticker") or ticker,
+                "company_name": k_filing.get("company_name") or constituent.company_name,
+                "form_type": normalize_form_type(k_filing.get("form") or k_filing.get("form_type"), default=form_code),
+                "filing_timestamp": k_filing.get("filing_timestamp") or k_filing.get("acceptance_datetime"),
+            },
+            filing_path=acc_dir / "form8k_events.json",
+            require_identity=False,
+        )
+        with open(acc_dir / "form8k_events.json", "w", encoding="utf-8") as f:
+            json.dump(canonical_8k, f, indent=2)
+
+        return bool(canonical_8k.get("exhibit_texts"))
+
     def harvest_company_year(
         self,
         constituent: SP500Constituent,
         year: int,
         forms: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Harvest all requested filings for a specific company and fiscal year."""
+        """Harvest all requested filings for a specific company and fiscal year (strictly honoring `forms`)."""
         requested = forms if forms is not None else list(get_default_harvest_forms())
         forms_to_fetch = [normalize_form_type(f) for f in requested]
         ticker = constituent.ticker.upper()
@@ -156,8 +277,12 @@ class HistoricalSECHarvester:
             "gics_sector": constituent.gics_sector,
             "year": year,
             "10k_downloaded": False,
+            "10ka_count": 0,
             "10q_count": 0,
+            "10qa_count": 0,
             "8k_count": 0,
+            "8ka_count": 0,
+            "exhibit_99_1_count": 0,
             "form4_count": 0,
             "subsidiaries_count": 0,
             "filings_saved": [],
@@ -171,45 +296,40 @@ class HistoricalSECHarvester:
                 sections = self.client.extract_10k_sections(filing_10k)
                 acc_num = sections.get("accession_number", "UNKNOWN")
                 acc_dir = company_year_dir / f"10K_{acc_num}"
-                acc_dir.mkdir(parents=True, exist_ok=True)
-
-                # Save 10-K metadata
-                meta = {
-                    "ticker": ticker,
-                    "cik": constituent.cik,
-                    "company_name": constituent.company_name,
-                    "gics_sector": constituent.gics_sector,
-                    "form": SECFormType.FORM_10K.value,
-                    "year": year,
-                    "accession_number": acc_num,
-                    "filing_date": sections.get("filing_date"),
-                    "report_date": sections.get("report_date"),
-                    "subsidiaries_count": len(sections.get("subsidiaries", [])),
-                }
-                with open(acc_dir / "metadata.json", "w", encoding="utf-8") as f:
-                    json.dump(meta, f, indent=2)
-
-                # Save Item 1 (Business)
-                item1 = sections.get("item_1_business", "")
-                if item1:
-                    with open(acc_dir / "item_1_business.txt", "w", encoding="utf-8") as f:
-                        f.write(item1)
-
-                # Save Item 1A (Risk Factors)
-                item1a = sections.get("item_1a_risk_factors", "")
-                if item1a:
-                    with open(acc_dir / "item_1a_risk_factors.txt", "w", encoding="utf-8") as f:
-                        f.write(item1a)
-
-                # Save Exhibit 21 (Subsidiaries)
-                subs = sections.get("subsidiaries", [])
-                if subs:
-                    with open(acc_dir / "subsidiaries.json", "w", encoding="utf-8") as f:
-                        json.dump(subs, f, indent=2)
-
+                sub_count = self._stage_10k_bundle(
+                    acc_dir=acc_dir,
+                    sections=sections,
+                    constituent=constituent,
+                    year=year,
+                    form_code=SECFormType.FORM_10K.value,
+                )
                 stats["10k_downloaded"] = True
-                stats["subsidiaries_count"] = len(subs)
+                stats["subsidiaries_count"] += sub_count
                 stats["filings_saved"].append(f"10K_{acc_num}")
+
+        # 1b. Form 10-K/A (amendments stamped at amendment acceptance_datetime)
+        if SECFormType.FORM_10KA.value in forms_to_fetch:
+            time.sleep(self.rate_limit_delay)
+            filings_10ka = self.client.fetch_10k_filings(
+                ticker,
+                year=year,
+                form_type=SECFormType.FORM_10KA.value,
+                limit=2,
+            )
+            for filing_10ka in filings_10ka:
+                sections = self.client.extract_10k_sections(filing_10ka)
+                acc_num = sections.get("accession_number", "UNKNOWN")
+                acc_dir = company_year_dir / f"10KA_{acc_num}"
+                sub_count = self._stage_10k_bundle(
+                    acc_dir=acc_dir,
+                    sections=sections,
+                    constituent=constituent,
+                    year=year,
+                    form_code=SECFormType.FORM_10KA.value,
+                )
+                stats["10ka_count"] += 1
+                stats["subsidiaries_count"] += sub_count
+                stats["filings_saved"].append(f"10KA_{acc_num}")
 
         # 2. Form 10-Q
         if SECFormType.FORM_10Q.value in forms_to_fetch:
@@ -218,45 +338,78 @@ class HistoricalSECHarvester:
             for q_filing in filings_10q:
                 acc_num = q_filing.get("accession_number", "UNKNOWN")
                 acc_dir = company_year_dir / f"10Q_{acc_num}"
-                acc_dir.mkdir(parents=True, exist_ok=True)
-
-                with open(acc_dir / "metadata.json", "w", encoding="utf-8") as f:
-                    json.dump(q_filing, f, indent=2)
-
-                q_text = q_filing.get("text", "")
-                if q_text:
-                    with open(acc_dir / "quarterly_text.txt", "w", encoding="utf-8") as f:
-                        f.write(q_text)
-
+                self._stage_10q_bundle(
+                    acc_dir=acc_dir,
+                    q_filing=q_filing,
+                    constituent=constituent,
+                    year=year,
+                    form_code=SECFormType.FORM_10Q.value,
+                )
                 stats["10q_count"] += 1
                 stats["filings_saved"].append(f"10Q_{acc_num}")
 
+        # 2b. Form 10-Q/A
+        if SECFormType.FORM_10QA.value in forms_to_fetch:
+            time.sleep(self.rate_limit_delay)
+            filings_10qa = self.client.fetch_10q_filings(
+                ticker,
+                year=year,
+                limit=4,
+                form_type=SECFormType.FORM_10QA.value,
+            )
+            for qa_filing in filings_10qa:
+                acc_num = qa_filing.get("accession_number", "UNKNOWN")
+                acc_dir = company_year_dir / f"10QA_{acc_num}"
+                self._stage_10q_bundle(
+                    acc_dir=acc_dir,
+                    q_filing=qa_filing,
+                    constituent=constituent,
+                    year=year,
+                    form_code=SECFormType.FORM_10QA.value,
+                )
+                stats["10qa_count"] += 1
+                stats["filings_saved"].append(f"10QA_{acc_num}")
+
         # 3. Form 8-K
         if SECFormType.FORM_8K.value in forms_to_fetch:
-            from .disruption_gating import normalize_staged_8k_payload
-
             time.sleep(self.rate_limit_delay)
             filings_8k = self.client.fetch_recent_8k(ticker, limit=5, year=year)
             for k_filing in filings_8k:
                 acc_num = k_filing.get("accession_number", "UNKNOWN")
                 acc_dir = company_year_dir / f"8K_{acc_num}"
-                acc_dir.mkdir(parents=True, exist_ok=True)
-
-                canonical_8k = normalize_staged_8k_payload(
-                    {
-                        **k_filing,
-                        "cik": k_filing.get("cik") or constituent.cik,
-                        "ticker": k_filing.get("ticker") or ticker,
-                        "company_name": k_filing.get("company_name") or constituent.company_name,
-                    },
-                    filing_path=acc_dir / "form8k_events.json",
-                    require_identity=False,
+                has_exhibit = self._stage_8k_bundle(
+                    acc_dir=acc_dir,
+                    k_filing=k_filing,
+                    constituent=constituent,
+                    form_code=SECFormType.FORM_8K.value,
                 )
-                with open(acc_dir / "form8k_events.json", "w", encoding="utf-8") as f:
-                    json.dump(canonical_8k, f, indent=2)
-
                 stats["8k_count"] += 1
+                if has_exhibit:
+                    stats["exhibit_99_1_count"] += 1
                 stats["filings_saved"].append(f"8K_{acc_num}")
+
+        # 3b. Form 8-K/A
+        if SECFormType.FORM_8KA.value in forms_to_fetch:
+            time.sleep(self.rate_limit_delay)
+            filings_8ka = self.client.fetch_recent_8k(
+                ticker,
+                limit=5,
+                year=year,
+                form_type=SECFormType.FORM_8KA.value,
+            )
+            for ka_filing in filings_8ka:
+                acc_num = ka_filing.get("accession_number", "UNKNOWN")
+                acc_dir = company_year_dir / f"8KA_{acc_num}"
+                has_exhibit = self._stage_8k_bundle(
+                    acc_dir=acc_dir,
+                    k_filing=ka_filing,
+                    constituent=constituent,
+                    form_code=SECFormType.FORM_8KA.value,
+                )
+                stats["8ka_count"] += 1
+                if has_exhibit:
+                    stats["exhibit_99_1_count"] += 1
+                stats["filings_saved"].append(f"8KA_{acc_num}")
 
         # 4. Form 4 (OPTIONAL_ABLATION — explicit opt-in via forms=["4"])
         if SECFormType.FORM_4.value in forms_to_fetch:
@@ -346,21 +499,80 @@ class EdgarWorker:
         self.driver = memgraph_driver or get_memgraph_driver()
         self.client = EdgarClient()
         self.linker = EdgarEntityLinker(pg_conn=self.pg_conn)
+        self._gics_sector_index: Optional[Tuple[Dict[str, str], Dict[str, str]]] = None
+
+    def _resolve_gics_sector(
+        self,
+        *,
+        ticker: Optional[str] = None,
+        cik: Optional[str] = None,
+    ) -> Optional[str]:
+        """Resolve an S&P 500 issuer's GICS sector from the static offline registry for sector-aware gleaning."""
+        if self._gics_sector_index is None:
+            by_ticker: Dict[str, str] = {}
+            by_cik: Dict[str, str] = {}
+            reg_path = Path(__file__).resolve().parents[2] / "data" / "sp500_constituents_historical.json"
+            if reg_path.is_file():
+                try:
+                    rows = json.loads(reg_path.read_text(encoding="utf-8"))
+                    if isinstance(rows, list):
+                        for row in rows:
+                            if not isinstance(row, dict):
+                                continue
+                            sec = str(row.get("gics_sector") or "").strip()
+                            if not sec:
+                                continue
+                            t = str(row.get("ticker") or "").strip().upper()
+                            c_digits = re.sub(r"\D", "", str(row.get("cik") or ""))
+                            c = c_digits.zfill(10) if c_digits else ""
+                            if t and t not in by_ticker:
+                                by_ticker[t] = sec
+                            if c and c not in by_cik:
+                                by_cik[c] = sec
+                except Exception:
+                    pass
+            self._gics_sector_index = (by_ticker, by_cik)
+
+        by_ticker, by_cik = self._gics_sector_index
+        clean_ticker = str(ticker or "").strip().upper()
+        if clean_ticker and clean_ticker in by_ticker:
+            return by_ticker[clean_ticker]
+        clean_cik = re.sub(r"\D", "", str(cik or ""))
+        if clean_cik:
+            padded = clean_cik.zfill(10)
+            if padded in by_cik:
+                return by_cik[padded]
+        return None
 
     def process_company_10k(
         self,
         ticker_or_cik: str,
         year: Optional[int] = None,
+        *,
+        form_type: str = SECFormType.FORM_10K.value,
+        gics_sector: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Ingest, extract, and persist a company's 10-K filing into PostgreSQL and Memgraph."""
-        logger.info(f"Processing 10-K for {ticker_or_cik} (Year: {year or 'latest'})")
+        """Ingest, extract, and persist a company's 10-K or 10-K/A filing into PostgreSQL and Memgraph."""
+        canonical_form = normalize_form_type(form_type, default=SECFormType.FORM_10K.value)
+        logger.info(f"Processing {canonical_form} for {ticker_or_cik} (Year: {year or 'latest'})")
 
-        filing = self.client.fetch_latest_10k(ticker_or_cik, year=year)
+        if canonical_form == SECFormType.FORM_10KA.value:
+            amendments = self.client.fetch_10k_filings(
+                ticker_or_cik,
+                year=year,
+                form_type=canonical_form,
+                limit=1,
+            )
+            filing = amendments[0] if amendments else None
+        else:
+            filing = self.client.fetch_latest_10k(ticker_or_cik, year=year)
+
         if not filing:
-            logger.warning(f"No 10-K filing found for {ticker_or_cik}")
+            logger.warning(f"No {canonical_form} filing found for {ticker_or_cik}")
             return {"status": "not_found", "nodes": 0, "edges": 0}
 
         sections = self.client.extract_10k_sections(filing)
+        effective_form = normalize_form_type(sections.get("form"), default=canonical_form)
         acc_num = sections.get("accession_number", "UNKNOWN")
         filing_date_str = sections.get("filing_date") or datetime.utcnow().strftime("%Y-%m-%d")
         acceptance_dt_str = sections.get("acceptance_datetime")
@@ -370,16 +582,32 @@ class EdgarWorker:
         cik = primary_entity["cik"] if primary_entity else getattr(filing, "cik", "")
         primary_name = primary_entity["company_name"] if primary_entity else ticker_or_cik
         ticker = primary_entity["ticker"] if primary_entity else ticker_or_cik
+        resolved_sector = gics_sector or self._resolve_gics_sector(ticker=ticker, cik=cik)
+
+        section_specs: Tuple[Tuple[str, str, str], ...] = (
+            ("item_1_business", "Item 1 - Business", "Item 1"),
+            ("item_1a_risk_factors", "Item 1A - Risk Factors", "Item 1A"),
+            ("item_1c_cybersecurity", "Item 1C - Cybersecurity", "Item 1C"),
+            ("item_2_properties", "Item 2 - Properties", "Item 2"),
+            ("item_3_legal_proceedings", "Item 3 - Legal Proceedings", "Item 3"),
+            ("item_7_mda", "Item 7 - Management Discussion and Analysis", "Item 7"),
+        )
+        subs = sections.get("subsidiaries", [])
+        items_present = [short_label for key, _, short_label in section_specs if sections.get(key)]
+        if subs:
+            items_present.append("Exhibit 21")
+        if not items_present:
+            items_present = ["Item 1", "Item 1A", "Exhibit 21"]
 
         if self.pg_conn:
             self._record_filing_queue(
                 accession_number=acc_num,
                 cik=cik,
                 ticker=ticker,
-                form_type="10-K",
+                form_type=effective_form,
                 filing_date=filing_date_str,
                 report_date=report_date_str,
-                items_present=["Item 1", "Item 1A", "Exhibit 21"],
+                items_present=items_present,
                 status="processing",
             )
 
@@ -387,7 +615,6 @@ class EdgarWorker:
         extracted_edges = []
 
         # 1. Process Exhibit 21 Subsidiaries
-        subs = sections.get("subsidiaries", [])
         if subs:
             sub_nodes, sub_edges = self._persist_subsidiaries(
                 parent_cik=cik,
@@ -397,11 +624,12 @@ class EdgarWorker:
                 accession_number=acc_num,
                 filing_date=filing_date_str,
                 acceptance_datetime=acceptance_dt_str,
+                form_type=effective_form,
             )
             extracted_nodes.extend(sub_nodes)
             extracted_edges.extend(sub_edges)
 
-        # 2. Segment and extract relationships from Item 1 Business, Item 1A Risk Factors, & Item 7 MD&A (ADR-00035)
+        # 2. Segment and extract relationships across all 6 core 10-K/10-K/A sections (ADR-00035 / ADR-00046)
         from ingestion.sec.parser import rank_salient_chunks
         from ingestion.segmentation.chunker import FilingMetadata, FinancialSectionSegmenter
         from knowledge_graph.chunk_store import DocumentChunkRecord, store_document_chunks
@@ -420,18 +648,13 @@ class EdgarWorker:
             cik=cik or "0000000000",
             ticker=ticker,
             company_name=primary_name,
-            form_type="10-K",
+            form_type=effective_form,
             period=report_date_str,
             filing_date=filing_date_str,
             accession_number=acc_num,
         )
 
-        section_specs = (
-            ("item_1_business", "Item 1 - Business"),
-            ("item_1a_risk_factors", "Item 1A - Risk Factors"),
-            ("item_7_mda", "Item 7 - Management Discussion and Analysis"),
-        )
-        for section_key, section_label in section_specs:
+        for section_key, section_label, _ in section_specs:
             section_text = sections.get(section_key, "")
             if not section_text:
                 continue
@@ -475,9 +698,10 @@ class EdgarWorker:
                             cik=cik,
                             ticker=ticker,
                             company_name=primary_name,
-                            form_type="10-K",
+                            form_type=effective_form,
                             filing_date=filing_date_str,
                             section_name=chunk.section_name,
+                            gics_sector=resolved_sector,
                         )
                     except TypeError:
                         try:
@@ -518,7 +742,7 @@ class EdgarWorker:
                 graph_data=graph_data,
                 accession_number=acc_num,
                 filing_date=filing_date_str,
-                form_type="10-K",
+                form_type=effective_form,
                 section=section_label,
                 source_text=section_text,
                 acceptance_datetime=acceptance_dt_str,
@@ -536,10 +760,11 @@ class EdgarWorker:
             )
 
         logger.info(
-            f"Completed 10-K processing for {ticker_or_cik}: {len(extracted_nodes)} nodes, {len(extracted_edges)} edges"
+            f"Completed {effective_form} processing for {ticker_or_cik}: {len(extracted_nodes)} nodes, {len(extracted_edges)} edges"
         )
         return {
             "status": "completed",
+            "form_type": effective_form,
             "accession_number": acc_num,
             "nodes": len(extracted_nodes),
             "edges": len(extracted_edges),
@@ -554,9 +779,12 @@ class EdgarWorker:
         accession_number: str,
         filing_date: str,
         acceptance_datetime: Optional[str] = None,
+        form_type: str = SECFormType.FORM_10K.value,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """Persist Exhibit 21 subsidiaries to PostgreSQL sec_subsidiaries and Memgraph."""
         from retrieval.temporal import actionable_session
+
+        canonical_form = normalize_form_type(form_type, default=SECFormType.FORM_10K.value)
 
         nodes = []
         edges = []
@@ -689,7 +917,7 @@ class EdgarWorker:
                         evidence_status="chunked",
                         source_type="sec_filing",
                         accession_number=accession_number,
-                        form_type="10-K",
+                        form_type=canonical_form,
                         section="Exhibit 21 - Subsidiaries",
                         fiscal_year=fiscal_year,
                         properties={"jurisdiction": jur},
@@ -733,7 +961,7 @@ class EdgarWorker:
                         r.evidence_chunk_ids = $evidence_chunk_ids,
                         r.evidence_status = 'chunked',
                         r.is_temporal_unanchored = (coalesce(r.valid_from, $valid_from) IS NULL),
-                        r.form_type = '10-K',
+                        r.form_type = $form_type,
                         r.accession_number = $acc_num,
                         r.jurisdiction = $jurisdiction
                     """,
@@ -744,6 +972,7 @@ class EdgarWorker:
                     known_at=known_at_iso,
                     known_at_imputed=known_at_imputed,
                     evidence_chunk_ids=ex21_chunk_ids,
+                    form_type=canonical_form,
                     acc_num=accession_number,
                     jurisdiction=sub.get("jurisdiction", "Unknown"),
                 )

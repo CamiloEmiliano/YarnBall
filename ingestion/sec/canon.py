@@ -173,9 +173,24 @@ SEC_FORM_CANON: Dict[SECFormType, SECFormSpec] = {
         tracked_exhibits=("Exhibit 21",),
         provenance_key="SEC_10K_ITEM1",
         base_confidence=0.98,
-        roadmap_phase="Phase 1",
+        roadmap_phase="Phase 1 / 2a",
         sector_scope="All 11 S&P 500 GICS sectors",
-        description="Annual report covering Item 1 Business, Item 1A Risks, Item 2 Properties, Item 7 MD&A, and Exhibit 21.",
+        description="Annual report covering Items 1, 1A, 1C, 2, 3, 7 MD&A, and Exhibit 21.",
+    ),
+    SECFormType.FORM_10KA: SECFormSpec(
+        form_type=SECFormType.FORM_10KA,
+        category=SECFormCategory.CORE_PERIODIC,
+        graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
+        ingestion_mode=SECIngestionMode.HYBRID,
+        status=SECFormStatus.ACTIVE,
+        default_batch_harvest=True,
+        allow_contract_termination=False,
+        tracked_exhibits=("Exhibit 21",),
+        provenance_key="SEC_10K_ITEM1",
+        base_confidence=0.98,
+        roadmap_phase="Phase 2a",
+        sector_scope="All 11 S&P 500 GICS sectors",
+        description="Amended annual report capturing restatements, delayed Exhibit 21 schedules, and Part III updates.",
     ),
     SECFormType.FORM_10Q: SECFormSpec(
         form_type=SECFormType.FORM_10Q,
@@ -188,9 +203,24 @@ SEC_FORM_CANON: Dict[SECFormType, SECFormSpec] = {
         tracked_exhibits=(),
         provenance_key="SEC_10Q",
         base_confidence=0.95,
-        roadmap_phase="Phase 1",
+        roadmap_phase="Phase 1 / 2a",
         sector_scope="All 11 S&P 500 GICS sectors",
-        description="Quarterly report disclosing segment updates, supply shifts, litigation, and risk updates.",
+        description="Quarterly report disclosing part-qualified MD&A, market risk, legal proceedings, and risk updates.",
+    ),
+    SECFormType.FORM_10QA: SECFormSpec(
+        form_type=SECFormType.FORM_10QA,
+        category=SECFormCategory.CORE_PERIODIC,
+        graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
+        ingestion_mode=SECIngestionMode.HYBRID,
+        status=SECFormStatus.ACTIVE,
+        default_batch_harvest=True,
+        allow_contract_termination=False,
+        tracked_exhibits=(),
+        provenance_key="SEC_10Q",
+        base_confidence=0.95,
+        roadmap_phase="Phase 2a",
+        sector_scope="All 11 S&P 500 GICS sectors",
+        description="Amended quarterly report stamped strictly at amendment known_at.",
     ),
     SECFormType.FORM_8K: SECFormSpec(
         form_type=SECFormType.FORM_8K,
@@ -200,12 +230,12 @@ SEC_FORM_CANON: Dict[SECFormType, SECFormSpec] = {
         status=SECFormStatus.ACTIVE,
         default_batch_harvest=True,
         allow_contract_termination=True,
-        tracked_exhibits=(),
+        tracked_exhibits=("Exhibit 99.1",),
         provenance_key="SEC_8K",
         base_confidence=0.95,
-        roadmap_phase="Phase 1",
+        roadmap_phase="Phase 1 / 2a",
         sector_scope="All 11 S&P 500 GICS sectors",
-        description="Current report disclosing material agreements, operational halts, cyber incidents, and terminations.",
+        description="Current report and Exhibit 99.1 disclosures covering material agreements, operational halts, cyber incidents, and terminations.",
     ),
     SECFormType.FORM_8KA: SECFormSpec(
         form_type=SECFormType.FORM_8KA,
@@ -213,44 +243,14 @@ SEC_FORM_CANON: Dict[SECFormType, SECFormSpec] = {
         graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
         ingestion_mode=SECIngestionMode.TEXT_LLM_EXTRACTION,
         status=SECFormStatus.ACTIVE,
-        default_batch_harvest=False,
+        default_batch_harvest=True,
         allow_contract_termination=True,
-        tracked_exhibits=(),
+        tracked_exhibits=("Exhibit 99.1",),
         provenance_key="SEC_8K",
         base_confidence=0.95,
-        roadmap_phase="Phase 1",
+        roadmap_phase="Phase 1 / 2a",
         sector_scope="All 11 S&P 500 GICS sectors",
-        description="Amended Form 8-K correcting material event facts or contract termination dates at amendment known_at.",
-    ),
-    SECFormType.FORM_10KA: SECFormSpec(
-        form_type=SECFormType.FORM_10KA,
-        category=SECFormCategory.CORE_PERIODIC,
-        graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
-        ingestion_mode=SECIngestionMode.HYBRID,
-        status=SECFormStatus.PLANNED,
-        default_batch_harvest=False,
-        allow_contract_termination=False,
-        tracked_exhibits=("Exhibit 21",),
-        provenance_key="SEC_10K_ITEM1",
-        base_confidence=0.98,
-        roadmap_phase="Phase 2a",
-        sector_scope="All 11 S&P 500 GICS sectors",
-        description="Amended annual report capturing restatements, delayed Exhibit 21 schedules, and Part III updates.",
-    ),
-    SECFormType.FORM_10QA: SECFormSpec(
-        form_type=SECFormType.FORM_10QA,
-        category=SECFormCategory.CORE_PERIODIC,
-        graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
-        ingestion_mode=SECIngestionMode.HYBRID,
-        status=SECFormStatus.PLANNED,
-        default_batch_harvest=False,
-        allow_contract_termination=False,
-        tracked_exhibits=(),
-        provenance_key="SEC_10Q",
-        base_confidence=0.95,
-        roadmap_phase="Phase 2a",
-        sector_scope="All 11 S&P 500 GICS sectors",
-        description="Amended quarterly report stamped strictly at amendment known_at.",
+        description="Amended Form 8-K correcting material event facts, Exhibit 99.1 disclosures, or contract termination dates at amendment known_at.",
     ),
     SECFormType.FORM_10: SECFormSpec(
         form_type=SECFormType.FORM_10,
@@ -677,13 +677,13 @@ SEC_EXHIBIT_CANON: Dict[str, SECExhibitSpec] = {
     ),
     "Exhibit 99.1": SECExhibitSpec(
         exhibit_key="Exhibit 99.1",
-        status=SECFormStatus.PLANNED,
+        status=SECFormStatus.ACTIVE,
         applicable_forms=(SECFormType.FORM_8K, SECFormType.FORM_8KA, SECFormType.FORM_6K, SECFormType.FORM_10),
         ingestion_mode=SECIngestionMode.TEXT_LLM_EXTRACTION,
         provenance_key=None,
         base_confidence=0.95,
         roadmap_phase="Phase 2a / 2c",
-        description="Attached operational press releases on Form 8-K/6-K and spin-off Information Statements on Form 10.",
+        description="Attached operational press releases on Form 8-K/8-K/A/6-K and spin-off Information Statements on Form 10.",
     ),
     "Exhibit 10": SECExhibitSpec(
         exhibit_key="Exhibit 10",
@@ -933,11 +933,14 @@ SEC_SECTION_CANON: Tuple[SECSectionSpec, ...] = (
         header_pattern=re.compile(r"(?:\n|^)\s*(?:ITEM\s+1[.\s–—\-]+BUSINESS\b)", re.IGNORECASE),
         applicable_forms=_PERIODIC_FORMS,
         high_signal_gleaning=True,
-        gleaning_match_pattern=re.compile(r"\bitem\s*1(?:\s*[-–—.\s]+business)?(?![a-z0-9.])\b", re.IGNORECASE),
+        gleaning_match_pattern=re.compile(r"(?:^\s*item\s*1\s*$|\bitem\s*1\s*[-–—.\s]+business\b)", re.IGNORECASE),
     ),
     SECSectionSpec(
         canonical_name="Item 1A - Risk Factors",
-        header_pattern=re.compile(r"(?:\n|^)\s*(?:ITEM\s+1A[.\s–—\-]+RISK\s+FACTORS\b)", re.IGNORECASE),
+        header_pattern=re.compile(
+            r"(?:\n|^)\s*(?:(?:PART\s+II[,\s–—\-]+)?ITEM\s+1A[.\s–—\-]+RISK\s+FACTORS\b)",
+            re.IGNORECASE,
+        ),
         applicable_forms=_PERIODIC_FORMS,
         high_signal_gleaning=True,
         gleaning_match_pattern=re.compile(r"\bitem\s*1a\b", re.IGNORECASE),
@@ -964,10 +967,17 @@ SEC_SECTION_CANON: Tuple[SECSectionSpec, ...] = (
         applicable_forms=_PERIODIC_FORMS,
         high_signal_gleaning=False,
         sector_gleaning_only=("Real Estate",),
+        gleaning_match_pattern=re.compile(
+            r"(?:^\s*item\s*2\s*$|\bitem\s*2\s*[-–—.\s]+properties\b)",
+            re.IGNORECASE,
+        ),
     ),
     SECSectionSpec(
         canonical_name="Item 3 - Legal Proceedings",
-        header_pattern=re.compile(r"(?:\n|^)\s*(?:ITEM\s+3[.\s–—\-]+LEGAL\s+PROCEEDINGS\b)", re.IGNORECASE),
+        header_pattern=re.compile(
+            r"(?:\n|^)\s*(?:(?:ITEM\s+3|PART\s+II[,\s–—\-]+ITEM\s+1)[.\s–—\-]+LEGAL\s+PROCEEDINGS\b)",
+            re.IGNORECASE,
+        ),
         applicable_forms=_PERIODIC_FORMS,
         high_signal_gleaning=False,
     ),
@@ -977,21 +987,29 @@ SEC_SECTION_CANON: Tuple[SECSectionSpec, ...] = (
         applicable_forms=_PERIODIC_FORMS,
         high_signal_gleaning=False,
         sector_gleaning_only=("Materials", "Energy"),
+        gleaning_match_pattern=re.compile(
+            r"(?:^\s*item\s*4\s*$|\bitem\s*4\s*[-–—.\s]+mine\s+safety\b|\bmine\s+safety\b)",
+            re.IGNORECASE,
+        ),
     ),
     SECSectionSpec(
         canonical_name="Item 7 - Management Discussion and Analysis",
         header_pattern=re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+7[.\s–—\-]+MANAGEMENT(?:'S)?\s+DISCUSSION\s+AND\s+ANALYSIS\b)",
+            r"(?:\n|^)\s*(?:(?:ITEM\s+7|PART\s+I[,\s–—\-]+ITEM\s+2)[.\s–—\-]+MANAGEMENT(?:'S)?\s+DISCUSSION\s+AND\s+ANALYSIS\b)",
             re.IGNORECASE,
         ),
         applicable_forms=_PERIODIC_FORMS,
         high_signal_gleaning=False,
         sector_gleaning_only=("Financials",),
+        gleaning_match_pattern=re.compile(
+            r"(?:\bitem\s*7\b(?!a\b)(?!\.\d)|\bpart\s*i\s*,?\s*item\s*2\b.*\b(?:management|md&a)\b|\bmanagement(?:'s)?\s+discussion\s+and\s+analysis\b)",
+            re.IGNORECASE,
+        ),
     ),
     SECSectionSpec(
         canonical_name="Item 7A - Quantitative and Qualitative Disclosures",
         header_pattern=re.compile(
-            r"(?:\n|^)\s*(?:ITEM\s+7A[.\s–—\-]+QUANTITATIVE\s+AND\s+QUALITATIVE\s+DISCLOSURES\b)",
+            r"(?:\n|^)\s*(?:(?:ITEM\s+7A|PART\s+I[,\s–—\-]+ITEM\s+3)[.\s–—\-]+QUANTITATIVE\s+AND\s+QUALITATIVE\s+DISCLOSURES\b)",
             re.IGNORECASE,
         ),
         applicable_forms=_PERIODIC_FORMS,
@@ -1227,15 +1245,24 @@ def get_section_patterns(form_type: Optional[str] = None) -> List[Tuple[str, Pat
     ]
 
 
-def is_high_signal_section(section_name: Optional[str]) -> bool:
-    """Return True when `section_name` qualifies for targeted Pass-2 gleaning (ADR-00035 / ADR-00045)."""
+def is_high_signal_section(
+    section_name: Optional[str],
+    *,
+    gics_sector: Optional[str] = None,
+) -> bool:
+    """Return True when `section_name` qualifies for targeted Pass-2 gleaning (ADR-00035 / ADR-00045 / ADR-00046)."""
     if not section_name:
         return False
     raw = str(section_name).strip()
     if _ITEM_1B_EXCLUSION_RE.search(raw):
         return False
+    norm_sector = str(gics_sector).strip().lower() if gics_sector else ""
     for spec in SEC_SECTION_CANON:
-        if not spec.high_signal_gleaning:
+        sector_allowed = bool(
+            norm_sector
+            and any(sec.strip().lower() == norm_sector for sec in spec.sector_gleaning_only)
+        )
+        if not spec.high_signal_gleaning and not sector_allowed:
             continue
         if raw.lower() == spec.canonical_name.lower():
             return True

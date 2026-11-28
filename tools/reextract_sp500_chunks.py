@@ -130,6 +130,7 @@ def run_sp500_chunk_reextraction(
                     continue
 
                 company_name = str(meta.get("company_name") or ticker)
+                gics_sector = str(meta.get("gics_sector") or "").strip() or None
                 filing_date = str(meta.get("filing_date") or as_of_date)
                 acceptance_dt = meta.get("acceptance_datetime")
                 form_type = normalize_form_type(
@@ -158,6 +159,9 @@ def run_sp500_chunk_reextraction(
                 for section_label, txt_name in (
                     ("Item 1 - Business", "item_1_business.txt"),
                     ("Item 1A - Risk Factors", "item_1a_risk_factors.txt"),
+                    ("Item 1C - Cybersecurity", "item_1c_cybersecurity.txt"),
+                    ("Item 2 - Properties", "item_2_properties.txt"),
+                    ("Item 3 - Legal Proceedings", "item_3_legal_proceedings.txt"),
                     ("Item 7 - Management Discussion and Analysis", "item_7_mda.txt"),
                 ):
                     txt_path = bundle_dir / txt_name
@@ -212,6 +216,7 @@ def run_sp500_chunk_reextraction(
                         filing_date=filing_date,
                         section_name=section_label,
                         model_client=model_client,
+                        gics_sector=gics_sector,
                     )
                     if worker is not None and (extracted.get("nodes") or extracted.get("edges")):
                         _, persisted = worker._persist_sec_graph_data(
