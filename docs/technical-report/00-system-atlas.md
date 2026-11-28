@@ -266,7 +266,7 @@ At the physical Python import level, however, the repository is **not** a strict
 | `curation` | 10 | MinHash LSH, SemDeDup, Facility Location coresets & Dataset Cartography | *(none: pure leaf)* | `sft_pipeline` | Ch. 4 |
 | `embedding` | 2 | Asymmetric `qwen3-embedding` (`1024`-d + MRL projection), norm guards, Ollama CPU/GPU control & pluggable `RerankerPort` | `sft_pipeline` | `explorer`, `ingestion`, `knowledge_graph`, `retrieval`, `sft_pipeline`, `streaming`, `tools` | Ch. 2 |
 | `explorer` | 2 | Read-only FastAPI Workbench backend & static SPA (`index.html`, `app.js`, `styles.css`) | `embedding`, `ingestion`, `retrieval`, `sft_pipeline`, `tools` | *(none: pure shell)* | Ch. 3 |
-| `ingestion` | 22 | SEC EDGAR (`10-K`/`10-Q`/`8-K`/`Ex.21` + `canon.py`), `800`-tok chunker, 8-K gate, market CAR, news & transcripts | `contagion`, `embedding`, `knowledge_graph`, `ontology`, `retrieval`, `sft_pipeline`, `streaming`, `tools`, `universe` | `explorer`, `knowledge_graph`, `retrieval`, `sft_pipeline`, `tools` | Ch. 1 |
+| `ingestion` | 23 | SEC EDGAR (`10-K`/`10-Q`/`8-K`/`Ex.10`/`Ex.21`/`XBRL` + `canon.py`), `800`-tok chunker, 8-K gate, market CAR, news & transcripts | `contagion`, `embedding`, `knowledge_graph`, `ontology`, `retrieval`, `sft_pipeline`, `streaming`, `tools`, `universe` | `explorer`, `knowledge_graph`, `retrieval`, `sft_pipeline`, `tools` | Ch. 1 |
 | `knowledge_graph` | 14 | Durable Postgres ledger, RAM Memgraph driver/hydrator, Union-Find resolver, chunks, SCD2 vectors, Leiden communities & form-ablation scorecard | `contagion`, `embedding`, `ingestion`, `ontology`, `retrieval`, `sft_pipeline`, `streaming`, `tools`, `universe` | `ingestion`, `ontology`, `retrieval`, `sft_pipeline`, `streaming`, `synthesis`, `tools` | Ch. 2 |
 | `ontology` | 8 | 20-class / 26-predicate TBox, 5-axis reification, clause hedge/negation compiler, `Tier4OntologyGate` & convergence | `knowledge_graph`, `sft_pipeline` | `ingestion`, `knowledge_graph`, `retrieval`, `sft_pipeline` | Ch. 2 |
 | `retrieval` | 13 | Single `query_bi` facade, `PiTContext`, `SubgraphStorePort`, `HybridSeeder`, RRF, Cypher AST guardrails & reporting | `contagion`, `embedding`, `ingestion`, `knowledge_graph`, `ontology`, `sft_pipeline` | `explorer`, `ingestion`, `knowledge_graph`, `synthesis`, `tools` | Ch. 3 |
@@ -386,7 +386,7 @@ flowchart TD
 | `memgraph` | `memgraph/memgraph-mage:latest` | `7687` | Pure in-memory OpenCypher projection (no persistent volume; rebuilt from Postgres on startup). |
 | `memgraph_lab` | `memgraph/lab:latest` | `3000` | Visual Cypher inspection UI attached to `memgraph:7687`. |
 | `kafka` | `confluentinc/cp-kafka:latest` | `9092` | Single-node KRaft broker/controller transporting live ingestion events and `<topic>.dlt` dead letters. |
-| `db_init` | Root `Dockerfile` (`python -m tools.init_db`) | None | One-shot startup sidecar initializing all 15 PostgreSQL tables, extensions, and `embedding_schema_metadata`. |
+| `db_init` | Root `Dockerfile` (`python -m tools.init_db`) | None | One-shot startup sidecar initializing all 16 PostgreSQL tables, extensions, and `embedding_schema_metadata`. |
 | `memgraph_hydrator` | Root `Dockerfile` (`python -m tools.hydrate_memgraph`) | None | One-shot startup sidecar replaying `kg_nodes` and `kg_edges` into Memgraph RAM after `db_init`. |
 | `finnhub_scheduler` | Root `Dockerfile` (`python -m tools.scheduler`) | None | APScheduler daemon polling live Finnhub feeds (`60 req/min` `TokenBucket`) into Kafka. |
 | `stream_consumer` | Root `Dockerfile` (`python -m streaming.consumer`) | None | Kafka consumer persisting deduplicated raw payloads and dense news embeddings into PostgreSQL. |
@@ -399,7 +399,7 @@ flowchart TD
 
 | Command | Module | Purpose |
 | :--- | :--- | :--- |
-| `python -m tools.init_db` | [`tools/init_db.py`](../../tools/init_db.py) | Initialize PostgreSQL extensions (`vector`, `pg_trgm`) and all 15 durable schema tables. |
+| `python -m tools.init_db` | [`tools/init_db.py`](../../tools/init_db.py) | Initialize PostgreSQL extensions (`vector`, `pg_trgm`) and all 16 durable schema tables. |
 | `python -m tools.hydrate_memgraph` | [`tools/hydrate_memgraph.py`](../../tools/hydrate_memgraph.py) | Deterministic boot/manual hydration of in-memory Memgraph from PostgreSQL `kg_nodes` and `kg_edges`. |
 | `python -m tools.build_kg_snapshot` | [`tools/build_kg_snapshot.py`](../../tools/build_kg_snapshot.py) | Resolve entities, partition PiT Leiden communities, and export offline Parquet snapshots (`nodes`, `edges`, `chunks`, `communities`). |
 | `python -m tools.reextract_sp500_chunks` | [`tools/reextract_sp500_chunks.py`](../../tools/reextract_sp500_chunks.py) | Resumable checkpointed 800-token SEC section chunking and Pass-2 gleaning across S&P 500 filings. |
@@ -414,7 +414,7 @@ flowchart TD
 
 #### 1. PostgreSQL Durable Tables ([`tools/init_db.py`](../../tools/init_db.py))
 
-**Table 0.8:** *PostgreSQL Durable Schema Map (15 Tables, Primary Keys, Indexes, and Architectural Roles).*
+**Table 0.8:** *PostgreSQL Durable Schema Map (16 Tables, Primary Keys, Indexes, and Architectural Roles).*
 
 | Table Name | Primary Key | Key Columns & Indexes | Architectural Role |
 | :--- | :--- | :--- | :--- |
@@ -430,6 +430,7 @@ flowchart TD
 | `sec_companies` | `cik` (`VARCHAR(10)`) | `ticker`, `company_name`, `normalized_name` (`pg_trgm` GIN), `sic`, `is_sp500` | Master SEC registrant directory backing Tier 1–3 entity linking. |
 | `sec_subsidiaries` | `id` (`SERIAL`) | `parent_cik` (FK `-> sec_companies`), `subsidiary_name`, `normalized_name` (`pg_trgm` GIN), `jurisdiction`, `source_filing_acc` | Form 10-K `Exhibit 21` operating subsidiaries backing Tier 4 entity linking & CIK rollup. |
 | `sec_filings_queue` | `accession_number` | `cik`, `ticker`, `form_type`, `filing_date`, `report_date`, `items_present` (`JSONB`), `status`, `extracted_nodes`, `extracted_edges` | Ingestion state tracker for SEC EDGAR filings. |
+| `sec_xbrl_priors` | `(cik, metric_name, period_end, accession_number)` | `ticker`, `gics_sector`, `valid_from`, `known_at`, `metric_value`, `inventory_usd`, `cogs_annualized_usd`; index on `(cik, metric_name, valid_from DESC)` | Offline Point-in-Time XBRL Days Inventory Outstanding (`DIO`) & ASC 280 major-customer concentration priors. |
 | `sp500_historical_constituents` | `id` (`SERIAL`) | `ticker`, `cik`, `gics_sector`, `date_added`, `date_removed`, `is_current`, `listing_exchange` | Survivorship-free S&P 500 point-in-time index membership table *(paired with `sp500_stock_splits` in proposed [ADR-00039](../decisions/ADR-00039-sp500-pit-stock-split-corporate-actions-.md))*. |
 | `financial_news_queue` | `id` (`SERIAL`) | `source_hash` (`UNIQUE`), `raw_text`, `published_at`, `ticker_symbols` (`JSONB`), `embedding` (`vector(1024)`), `status` | Deduplicated raw news staging queue and dense passage search index. |
 | `domain_status` | `domain` | `consecutive_failures`, `status` (`allowed` / blacklisted), `updated_at` | Self-learning publisher HTTP failure circuit breaker. |

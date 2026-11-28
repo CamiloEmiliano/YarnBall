@@ -25,6 +25,246 @@ from typing import Any, Dict, List, Optional, Tuple
 from .canon import SECFormType, normalize_form_type
 from .disruption_gating import DEFAULT_MAX_FILING_CHARS
 
+# ==============================================================================
+# Operational Exhibit 10 Classification & Clause Windowing (ADR-00048)
+# ==============================================================================
+
+_EXCLUDED_EXHIBIT_TYPES_RE = re.compile(
+    r"^(?:EX[- \t]*)?(?:101|104)(?:\b|[._-])|^(?:GRAPHIC|ZIP|EXCEL|XML|JSON|PDF)\b",
+    re.IGNORECASE,
+)
+_EXCLUDED_EXHIBIT_EXTS: Tuple[str, ...] = (
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".svg",
+    ".pdf",
+    ".zip",
+    ".xls",
+    ".xlsx",
+    ".xsd",
+    ".xml",
+)
+
+_EXHIBIT_10_TYPE_RE = re.compile(r"^EX[- \t]?10(?:\.(\d+))?\b", re.IGNORECASE)
+_EXHIBIT_10_DESC_RE = re.compile(r"\bexhibit\s*10(?:\.(\d+))?\b", re.IGNORECASE)
+
+_EX10_EXCLUSION_STOPLIST_RE = re.compile(
+    r"(?:"
+    r"\bemployment\b|"
+    r"\bseverance\b|"
+    r"\bchange[\s-]+in[\s-]+control\b|"
+    r"\bincentive\s+plan\b|"
+    r"\bequity\s+(?:incentive\s+)?plan\b|"
+    r"\bstock\s+option\b|"
+    r"\brestricted\s+stock\b|"
+    r"\brsus?\b|"
+    r"\bpsus?\b|"
+    r"\bbonus\s+plan\b|"
+    r"\bdeferred\s+compensation\b|"
+    r"\bdirector\s+compensation\b|"
+    r"\bexecutive\s+compensation\b|"
+    r"\bnon-employee\s+director\b|"
+    r"\bindemnification\b|"
+    r"\bretirement\b|"
+    r"\bpension\b|"
+    r"\bcredit\s+agreement\b|"
+    r"\bloan\s+agreement\b|"
+    r"\bpromissory\s+note\b|"
+    r"\bindenture\b|"
+    r"\bunderwriting\b|"
+    r"\bregistration\s+rights\b|"
+    r"\bvoting\s+agreement\b|"
+    r"\bstockholders?\s+agreement\b|"
+    r"\bshareholders?\s+agreement\b|"
+    r"\bshare\s+repurchase\b|"
+    r"\bstock\s+purchase\s+plan\b|"
+    r"\b(?:share|stock|note|securities)\s+purchase\s+agreement\b|"
+    r"\boffer\s+letter\b"
+    r")",
+    re.IGNORECASE,
+)
+
+_EX10_OPERATIONAL_ALLOWLIST: Tuple[Tuple[str, re.Pattern[str]], ...] = (
+    (
+        "SUPPLY_MANUFACTURING",
+        re.compile(
+            r"\b(?:supply|manufacturing|foundry|wafer|contract\s+manufacturing|procurement|capacity\s+reservation|fabrication)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "PHARMA_LICENSING_CDMO",
+        re.compile(
+            r"\b(?:cdmo|collaboration|co-?development|licens(?:e|ing)|clinical\s+supply|commercial\s+supply)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "ENERGY_PIPELINE_PPA",
+        re.compile(
+            r"\b(?:off[-\s]?take|power\s+purchase|ppa|pipeline|gathering|terminal|lng|interconnection|transmission)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "COMMERCIAL_DISTRIBUTION_PBM",
+        re.compile(
+            r"\b(?:distribution|pharmacy\s+benefit|pbm|co[-\s]?brand(?:ed)?|purchase\s+agreement)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "CLOUD_INFRA_LOGISTICS",
+        re.compile(
+            r"\b(?:cloud\s+services?|data\s+center|colocation|hosting|logistics|freight|charter|transportation)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "TSA_JOINT_VENTURE",
+        re.compile(
+            r"\b(?:transition\s+services|tsa|joint\s+venture|strategic\s+alliance)\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+
+_EX10_BODY_SECTION_START_RE = re.compile(
+    r"^\s*(?:(?:ARTICLE|SECTION)\s+[IVX0-9]+|\d+\.\s+[A-Z][A-Z0-9\s,&/-]{2,})",
+    re.IGNORECASE,
+)
+_EX10_SIGNATURE_TAIL_RE = re.compile(
+    r"(?:\n|^)\s*(?:IN\s+WITNESS\s+WHEREOF\b|SIGNATURES?\s*$)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_EX10_BOILERPLATE_HEADING_RE = re.compile(
+    r"^\s*(?:(?:ARTICLE|SECTION)\s+[IVX0-9]+[.\s:\-–—]+|\d+\.\s+)"
+    r"(?:DEFINITIONS?|NOTICES?|MISCELLANEOUS|COUNTERPARTS|SEVERABILITY|ENTIRE\s+AGREEMENT|"
+    r"GOVERNING\s+LAW|HEADINGS|WAIVER|FURTHER\s+ASSURANCES|INTERPRETATION|ASSIGNMENT\s+AND\s+NOTICES)\b",
+    re.IGNORECASE,
+)
+_EX10_OPERATIONAL_CLAUSE_RE = re.compile(
+    r"(?:"
+    r"\bexclusiv\w*\b|"
+    r"\bsole[-\s]+source\b|"
+    r"\bsingle[-\s]+source\b|"
+    r"\bminimum\b|"
+    r"\btake[-\s]+or[-\s]+pay\b|"
+    r"\bcapacity\b|"
+    r"\binventory\b|"
+    r"\bsafety\s+stock\b|"
+    r"\bbuffer\b|"
+    r"\blead\s+time\b|"
+    r"\bdelivery\b|"
+    r"\bforce\s+majeure\b|"
+    r"\btermination\b|"
+    r"\broyalt(?:y|ies)\b|"
+    r"\bfacilit(?:y|ies)\b|"
+    r"\bplant\b|"
+    r"\bfab\b|"
+    r"\bwafers?\b|"
+    r"\bsupply\b|"
+    r"\bvolume\b|"
+    r"\boff[-\s]?take\b|"
+    r"\btransition\s+services?\b"
+    r")",
+    re.IGNORECASE,
+)
+_EX10_STRONG_QUANT_CUE_RE = re.compile(
+    r"(?:\bsole[-\s]+source\b|\bexclusiv\w*\b|\bsafety\s+stock\b|\btake[-\s]+or[-\s]+pay\b|\blead\s+time\b|\bdays?\s+of\s+(?:inventory|buffer|supply)\b)",
+    re.IGNORECASE,
+)
+
+
+def classify_exhibit_10_attachment(
+    doc_type: str,
+    description: str,
+    document_name: str = "",
+) -> Optional[str]:
+    """Deterministically gate Exhibit 10 attachments before text extraction (ADR-00048).
+
+    Returns the matched operational contract category string if the attachment is an
+    operational material contract (supply, CDMO, off-take/PPA, PBM, logistics, TSA/JV),
+    or None if it is non-EX-10, binary/XBRL, or rejected by the compensation/debt stoplist.
+    """
+    dt = (doc_type or "").strip().upper()
+    desc = (description or "").strip()
+    dname = (document_name or "").strip().lower()
+
+    if dt and _EXCLUDED_EXHIBIT_TYPES_RE.match(dt):
+        return None
+    if dname and dname.endswith(_EXCLUDED_EXHIBIT_EXTS):
+        return None
+
+    is_ex10 = bool(_EXHIBIT_10_TYPE_RE.match(dt)) if dt else bool(_EXHIBIT_10_DESC_RE.search(desc))
+    if not is_ex10:
+        return None
+
+    haystack = f"{desc} {dname}".strip()
+    if not haystack:
+        return None
+    if _EX10_EXCLUSION_STOPLIST_RE.search(haystack):
+        return None
+
+    for category, pattern in _EX10_OPERATIONAL_ALLOWLIST:
+        if pattern.search(haystack):
+            return category
+    return None
+
+
+def extract_operational_contract_clauses(
+    raw_text: str,
+    *,
+    max_chars: int = DEFAULT_MAX_FILING_CHARS,
+    preamble_chars: int = 4_000,
+) -> str:
+    """Preserve contract preamble/recitals + operational supply/termination clauses under `max_chars` (ADR-00048)."""
+    if not raw_text:
+        return ""
+    cleaned = raw_text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not cleaned:
+        return ""
+
+    # Strip trailing signature block when it occurs past the contract opening
+    sig_match = _EX10_SIGNATURE_TAIL_RE.search(cleaned)
+    if sig_match is not None and sig_match.start() >= 200:
+        cleaned = cleaned[: sig_match.start()].rstrip()
+
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n+", cleaned) if p.strip()]
+    if not paragraphs:
+        return cleaned[:max_chars] if max_chars > 0 else cleaned
+
+    kept_preamble: List[str] = []
+    preamble_len = 0
+    body_start_idx = 0
+
+    for idx, para in enumerate(paragraphs):
+        if idx > 0 and _EX10_BODY_SECTION_START_RE.match(para):
+            body_start_idx = idx
+            break
+        if preamble_len > 0 and preamble_len + len(para) + 2 > preamble_chars:
+            body_start_idx = idx
+            break
+        kept_preamble.append(para[:preamble_chars] if preamble_len == 0 and len(para) > preamble_chars else para)
+        preamble_len += len(kept_preamble[-1]) + 2
+        body_start_idx = idx + 1
+
+    kept_body: List[str] = []
+    for para in paragraphs[body_start_idx:]:
+        if _EX10_BOILERPLATE_HEADING_RE.match(para) and not _EX10_STRONG_QUANT_CUE_RE.search(para):
+            continue
+        if _EX10_OPERATIONAL_CLAUSE_RE.search(para):
+            kept_body.append(para)
+
+    combined = "\n\n".join([*kept_preamble, *kept_body]).strip()
+    if not combined:
+        combined = cleaned
+    if max_chars > 0 and len(combined) > max_chars:
+        combined = combined[:max_chars].rstrip()
+    return combined
+
 try:
     os.environ.setdefault("EDGAR_LOCAL_DATA_DIR", "/tmp/edgar")
     Path("/tmp/edgar").mkdir(parents=True, exist_ok=True)
@@ -190,8 +430,13 @@ class EdgarClient:
             return text or None
         return None
 
-    def extract_10k_sections(self, filing: Any) -> Dict[str, Any]:
-        """Extract structured sections from a 10-K or 10-K/A filing using edgartools TenK parser (ADR-00046)."""
+    def extract_10k_sections(
+        self,
+        filing: Any,
+        *,
+        include_exhibit_10: bool = False,
+    ) -> Dict[str, Any]:
+        """Extract structured sections from a 10-K or 10-K/A filing using edgartools TenK parser (ADR-00046 / ADR-00048)."""
         raw_form = getattr(filing, "form", None)
         canonical_form = (
             normalize_form_type(raw_form, default=SECFormType.FORM_10K.value)
@@ -214,6 +459,8 @@ class EdgarClient:
         }
 
         if not filing:
+            if include_exhibit_10:
+                result["exhibit_10_contracts"] = []
             return result
 
         try:
@@ -233,8 +480,13 @@ class EdgarClient:
             # Extract Exhibit 21 (Subsidiaries) — captures delayed Exhibit 21 schedules on 10-K/A as well
             result["subsidiaries"] = self.extract_exhibit_21_subsidiaries(filing)
 
+            if include_exhibit_10:
+                result["exhibit_10_contracts"] = self.extract_exhibit_10_contracts(filing)
+
         except Exception as e:
             logger.warning(f"Error extracting sections from {canonical_form} filing: {e}")
+            if include_exhibit_10 and "exhibit_10_contracts" not in result:
+                result["exhibit_10_contracts"] = []
 
         return result
 
@@ -291,25 +543,75 @@ class EdgarClient:
                     results.append({"name": name, "jurisdiction": "Unknown"})
         return results
 
-    _EXCLUDED_EXHIBIT_TYPES_RE = re.compile(
-        r"^(?:EX[- \t]*)?(?:101|104)(?:\b|[._-])|^(?:GRAPHIC|ZIP|EXCEL|XML|JSON|PDF)\b",
-        re.IGNORECASE,
-    )
-    _EXCLUDED_EXHIBIT_EXTS: Tuple[str, ...] = (
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".gif",
-        ".svg",
-        ".pdf",
-        ".zip",
-        ".xls",
-        ".xlsx",
-        ".xsd",
-        ".xml",
-    )
+    _EXCLUDED_EXHIBIT_TYPES_RE = _EXCLUDED_EXHIBIT_TYPES_RE
+    _EXCLUDED_EXHIBIT_EXTS = _EXCLUDED_EXHIBIT_EXTS
     _EXHIBIT_99_TYPE_RE = re.compile(r"^EX[- \t]?99(?:\.(\d+))?\b", re.IGNORECASE)
     _EXHIBIT_99_DESC_RE = re.compile(r"\bexhibit\s*99(?:\.(\d+))?\b", re.IGNORECASE)
+
+    def extract_exhibit_10_contracts(
+        self,
+        filing: Any,
+        *,
+        max_contracts: int = 5,
+        max_chars: int = DEFAULT_MAX_FILING_CHARS,
+    ) -> List[Dict[str, Any]]:
+        """Pre-filter and clause-window operational Exhibit 10 material contracts (ADR-00048)."""
+        contracts: List[Dict[str, Any]] = []
+        if not filing or max_contracts <= 0:
+            return contracts
+
+        try:
+            attachments = getattr(filing, "attachments", None)
+            if not attachments:
+                return contracts
+            for att in attachments:
+                raw_type = getattr(att, "document_type", "")
+                doc_type = raw_type.strip().upper() if isinstance(raw_type, str) else ""
+                raw_desc = getattr(att, "description", "")
+                desc = raw_desc.strip() if isinstance(raw_desc, str) else ""
+                raw_doc = getattr(att, "document", "")
+                doc_name = raw_doc.strip() if isinstance(raw_doc, str) else ""
+
+                # Pre-fetch classification gate: reject comp/debt/non-EX-10 BEFORE reading text
+                category = classify_exhibit_10_attachment(doc_type, desc, doc_name)
+                if category is None:
+                    continue
+
+                raw_text = self._coerce_section_text(att)
+                if not raw_text:
+                    continue
+
+                filtered_text = extract_operational_contract_clauses(raw_text, max_chars=max_chars)
+                if not filtered_text:
+                    continue
+
+                type_match = _EXHIBIT_10_TYPE_RE.match(doc_type) if doc_type else None
+                desc_match = _EXHIBIT_10_DESC_RE.search(desc) if desc else None
+                if type_match:
+                    suffix = type_match.group(1)
+                    exhibit_key = f"EX-10.{suffix}" if suffix else "EX-10"
+                elif desc_match:
+                    suffix = desc_match.group(1)
+                    exhibit_key = f"EX-10.{suffix}" if suffix else "EX-10"
+                else:
+                    exhibit_key = "EX-10"
+
+                contracts.append(
+                    {
+                        "exhibit_key": exhibit_key,
+                        "description": desc,
+                        "matched_category": category,
+                        "text": filtered_text,
+                        "raw_char_count": len(raw_text),
+                        "filtered_char_count": len(filtered_text),
+                    }
+                )
+                if len(contracts) >= max_contracts:
+                    break
+        except Exception as e:
+            logger.debug(f"Exhibit 10 extraction error: {e}")
+
+        return contracts
 
     def extract_exhibit_99_attachments(
         self,
@@ -377,6 +679,7 @@ class EdgarClient:
         *,
         form_type: str = SECFormType.FORM_8K.value,
         include_exhibits: bool = True,
+        include_exhibit_10: bool = False,
         max_chars: int = DEFAULT_MAX_FILING_CHARS,
     ) -> List[Dict[str, Any]]:
         """Fetch recent or year-specific Form 8-K / 8-K/A filings with attached Exhibit 99.x press releases."""
@@ -421,6 +724,11 @@ class EdgarClient:
                     record["exhibit_99_1"] = exhibits["EX-99.1"]
                 elif exhibits:
                     record["exhibit_99_1"] = next(iter(exhibits.values()))
+                if include_exhibit_10:
+                    record["exhibit_10_contracts"] = self.extract_exhibit_10_contracts(
+                        filing,
+                        max_chars=max_chars,
+                    )
                 results.append(record)
                 count += 1
                 if count >= limit:

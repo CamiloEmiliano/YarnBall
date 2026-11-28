@@ -485,6 +485,35 @@ def create_queue_table(db_name: str = "financial_rag"):
     logger.info("Created/checked table sec_filings_queue")
 
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS sec_xbrl_priors (
+            cik                 VARCHAR(10) NOT NULL,
+            ticker              VARCHAR(12),
+            gics_sector         VARCHAR(64),
+            metric_name         VARCHAR(40) NOT NULL,
+            period_end          DATE NOT NULL,
+            filed_date          DATE NOT NULL,
+            valid_from          DATE NOT NULL,
+            known_at            TIMESTAMPTZ,
+            accession_number    VARCHAR(32) NOT NULL,
+            form_type           VARCHAR(20) NOT NULL,
+            metric_value        DOUBLE PRECISION NOT NULL,
+            inventory_usd       DOUBLE PRECISION,
+            cogs_annualized_usd DOUBLE PRECISION,
+            inventory_tag       TEXT,
+            cogs_tag            TEXT,
+            period_basis        VARCHAR(32),
+            metadata            JSONB DEFAULT '{}'::jsonb,
+            created_at          TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (cik, metric_name, period_end, accession_number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sec_xbrl_priors_lookup
+            ON sec_xbrl_priors (cik, metric_name, valid_from DESC);
+        CREATE INDEX IF NOT EXISTS idx_sec_xbrl_priors_ticker
+            ON sec_xbrl_priors (ticker, metric_name, valid_from DESC);
+    """)
+    logger.info("Created/checked table sec_xbrl_priors")
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS sp500_historical_constituents (
             id SERIAL PRIMARY KEY,
             ticker VARCHAR(12) NOT NULL,

@@ -16,6 +16,8 @@ Static AST API reference for `universe/`, `ingestion/`, and `streaming/` (paired
 
 ::: ingestion.sec.client
 
+::: ingestion.sec.xbrl
+
 ::: ingestion.sec.disruption_gating
 
 ::: ingestion.sec.parser

@@ -5,7 +5,7 @@ Single, zero-internal-dependency source of truth (Python standard library only) 
 2. All 9 tracked statutory exhibits & structured XBRL feeds (`SEC_EXHIBIT_CANON`).
 3. All 32 statutory SEC Form 8-K items (`SECForm8KItem`), human-readable descriptions
    (`SEC_ITEM_DESCRIPTIONS`), and 4-tier disruption precedence lattice (`SEC_8K_PRIORITY_TIERS`).
-4. All 25 unified statutory filing section regexes & Pass-2 gleaning rules (`SEC_SECTION_CANON`).
+4. All 26 unified statutory filing section regexes & Pass-2 gleaning rules (`SEC_SECTION_CANON`).
 5. Deterministic normalization, default-harvest, termination-eligibility (`ADR-00033` Invariant #8),
    and epistemic confidence helpers supporting Phase-2 form-ablation studies.
 """
@@ -687,26 +687,35 @@ SEC_EXHIBIT_CANON: Dict[str, SECExhibitSpec] = {
     ),
     "Exhibit 10": SECExhibitSpec(
         exhibit_key="Exhibit 10",
-        status=SECFormStatus.PLANNED,
+        status=SECFormStatus.ACTIVE,
         applicable_forms=(
             SECFormType.FORM_10K,
+            SECFormType.FORM_10KA,
             SECFormType.FORM_10Q,
+            SECFormType.FORM_10QA,
             SECFormType.FORM_8K,
+            SECFormType.FORM_8KA,
             SECFormType.FORM_10,
             SECFormType.FORM_S1,
         ),
         ingestion_mode=SECIngestionMode.TEXT_LLM_EXTRACTION,
-        provenance_key=None,
+        provenance_key="SEC_EXHIBIT_10",
         base_confidence=0.98,
         roadmap_phase="Phase 2b",
         description="Material contracts (supply, licensing, LNG/pipeline off-take, DoD/airline, PPA, PBM, co-brand cards).",
     ),
     "Exhibit 101 / XBRL": SECExhibitSpec(
         exhibit_key="Exhibit 101 / XBRL",
-        status=SECFormStatus.PLANNED,
-        applicable_forms=(SECFormType.FORM_10K, SECFormType.FORM_10Q, SECFormType.FORM_20F),
+        status=SECFormStatus.ACTIVE,
+        applicable_forms=(
+            SECFormType.FORM_10K,
+            SECFormType.FORM_10KA,
+            SECFormType.FORM_10Q,
+            SECFormType.FORM_10QA,
+            SECFormType.FORM_20F,
+        ),
         ingestion_mode=SECIngestionMode.STRUCTURED_XML_OR_XBRL,
-        provenance_key=None,
+        provenance_key="SEC_XBRL_COMPANYFACTS",
         base_confidence=1.00,
         roadmap_phase="Phase 2b",
         description="Inline XBRL / EDGAR companyfacts (Days Inventory Outstanding, ASC 280 customer concentration, split ratios).",
@@ -908,7 +917,7 @@ SEC_8K_PRIORITY_TIERS: Tuple[Tuple[int, Tuple[str, ...]], ...] = (
 
 
 # ==============================================================================
-# 4. UNIFIED STATUTORY SECTION & PASS-2 GLEANING CANON (25 SECTIONS)
+# 4. UNIFIED STATUTORY SECTION & PASS-2 GLEANING CANON (26 SECTIONS)
 # ==============================================================================
 
 _PERIODIC_FORMS: Tuple[SECFormType, ...] = (
@@ -1125,7 +1134,26 @@ SEC_SECTION_CANON: Tuple[SECSectionSpec, ...] = (
         high_signal_gleaning=True,
         gleaning_match_pattern=re.compile(r"\bitem\s*8\.01\b", re.IGNORECASE),
     ),
-    # Exhibit 21 & Foreign 20-F Reserved Boundaries
+    # Exhibits (10 & 21) & Foreign 20-F Reserved Boundaries
+    SECSectionSpec(
+        canonical_name="Exhibit 10 - Material Contract",
+        header_pattern=re.compile(
+            r"(?:\n|^)\s*(?:EXHIBIT\s+10(?:\.\d+)?\b[.\s–—\-]+MATERIAL\s+CONTRACT\b)",
+            re.IGNORECASE,
+        ),
+        applicable_forms=(
+            SECFormType.FORM_10K,
+            SECFormType.FORM_10KA,
+            SECFormType.FORM_10Q,
+            SECFormType.FORM_10QA,
+            SECFormType.FORM_8K,
+            SECFormType.FORM_8KA,
+            SECFormType.FORM_10,
+            SECFormType.FORM_S1,
+        ),
+        high_signal_gleaning=True,
+        gleaning_match_pattern=re.compile(r"\bexhibit\s*10(?:\.\d+)?\b", re.IGNORECASE),
+    ),
     SECSectionSpec(
         canonical_name="Exhibit 21 - Subsidiaries",
         header_pattern=re.compile(r"(?:\n|^)\s*(?:EXHIBIT\s+21(?:\.1)?[.\s–—\-]+SUBSIDIARIES\b)", re.IGNORECASE),

@@ -3,7 +3,8 @@ SEC EDGAR Regulatory Disclosures Ingestion Subpackage.
 
 Modules:
 - `canon`: Zero-dependency canonical SEC EDGAR form, exhibit, 8-K item & section registry (ADR-00045)
-- `client`: `EdgarClient`, `DEFAULT_SP500_BENCHMARK`, filing downloader
+- `client`: `EdgarClient`, `DEFAULT_SP500_BENCHMARK`, operational Exhibit 10 filter & filing downloader
+- `xbrl`: Offline US-GAAP XBRL `companyfacts` DIO & ASC 280 concentration priors store (ADR-00048)
 - `parser`: `EdgarEntityLinker`, `normalize_company_name`, section extractor, LLM prompts
 - `harvester`: `HistoricalSECHarvester`, `EdgarWorker`, batch queue pipeline
 - `disruption_gating`: Form 8-K boilerplate sanitization & disruption gating (ADR-00014)
@@ -38,7 +39,21 @@ from .client import (
     DEFAULT_SP500_BENCHMARK,
     EDGAR_AVAILABLE,
     EdgarClient,
+    classify_exhibit_10_attachment,
     download_filings_for_ticker,
+    extract_operational_contract_clauses,
+)
+from .xbrl import (
+    PHYSICAL_INVENTORY_GICS_SECTORS,
+    XBRLConcentrationRecord,
+    XBRLDIOPriorRecord,
+    XBRLPriorRecord,
+    XBRLPriorStore,
+    extract_asc280_concentration_from_companyfacts,
+    extract_xbrl_dio_priors_from_companyfacts,
+    fetch_companyfacts_json,
+    is_physical_inventory_sector,
+    lookup_pit_xbrl_dio,
 )
 from .parser import (
     CORP_SUFFIXES,
@@ -97,7 +112,20 @@ __all__ = [
     "EdgarClient",
     "DEFAULT_SP500_BENCHMARK",
     "EDGAR_AVAILABLE",
+    "classify_exhibit_10_attachment",
     "download_filings_for_ticker",
+    "extract_operational_contract_clauses",
+    # XBRL Priors (ADR-00048)
+    "PHYSICAL_INVENTORY_GICS_SECTORS",
+    "XBRLConcentrationRecord",
+    "XBRLDIOPriorRecord",
+    "XBRLPriorRecord",
+    "XBRLPriorStore",
+    "extract_asc280_concentration_from_companyfacts",
+    "extract_xbrl_dio_priors_from_companyfacts",
+    "fetch_companyfacts_json",
+    "is_physical_inventory_sector",
+    "lookup_pit_xbrl_dio",
     # Parser
     "EdgarEntityLinker",
     "normalize_company_name",

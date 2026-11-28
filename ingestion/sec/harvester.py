@@ -26,6 +26,7 @@ from knowledge_graph.graph_store import MAX_LABEL_LENGTH, MAX_REL_TYPE_LENGTH
 from universe import SP500Constituent, SP500UniverseManager
 from .canon import (
     SECFormType,
+    SECGraphLayer,
     get_default_harvest_forms,
     is_termination_eligible_form,
     normalize_form_type,
@@ -163,6 +164,7 @@ class HistoricalSECHarvester:
         acc_dir.mkdir(parents=True, exist_ok=True)
         ticker = constituent.ticker.upper()
         subs = sections.get("subsidiaries", [])
+        ex10_contracts = sections.get("exhibit_10_contracts") or []
         populated_sections = [
             key for key, _ in self._STAGED_10K_SECTION_FILES if sections.get(key)
         ]
@@ -179,6 +181,7 @@ class HistoricalSECHarvester:
             "report_date": sections.get("report_date"),
             "sections_present": populated_sections,
             "subsidiaries_count": len(subs),
+            "exhibit_10_count": len(ex10_contracts),
         }
         with open(acc_dir / "metadata.json", "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
@@ -192,6 +195,10 @@ class HistoricalSECHarvester:
         if subs:
             with open(acc_dir / "subsidiaries.json", "w", encoding="utf-8") as f:
                 json.dump(subs, f, indent=2)
+
+        if ex10_contracts:
+            with open(acc_dir / "exhibit_10_contracts.json", "w", encoding="utf-8") as f:
+                json.dump(ex10_contracts, f, indent=2)
 
         return len(subs)
 
@@ -255,6 +262,11 @@ class HistoricalSECHarvester:
         with open(acc_dir / "form8k_events.json", "w", encoding="utf-8") as f:
             json.dump(canonical_8k, f, indent=2)
 
+        ex10_contracts = k_filing.get("exhibit_10_contracts") or []
+        if ex10_contracts:
+            with open(acc_dir / "exhibit_10_contracts.json", "w", encoding="utf-8") as f:
+                json.dump(ex10_contracts, f, indent=2)
+
         return bool(canonical_8k.get("exhibit_texts"))
 
     def harvest_company_year(
@@ -262,6 +274,8 @@ class HistoricalSECHarvester:
         constituent: SP500Constituent,
         year: int,
         forms: Optional[List[str]] = None,
+        *,
+        include_exhibit_10: bool = False,
     ) -> Dict[str, Any]:
         """Harvest all requested filings for a specific company and fiscal year (strictly honoring `forms`)."""
         requested = forms if forms is not None else list(get_default_harvest_forms())
@@ -283,6 +297,7 @@ class HistoricalSECHarvester:
             "8k_count": 0,
             "8ka_count": 0,
             "exhibit_99_1_count": 0,
+            "exhibit_10_count": 0,
             "form4_count": 0,
             "subsidiaries_count": 0,
             "filings_saved": [],
@@ -293,7 +308,11 @@ class HistoricalSECHarvester:
             time.sleep(self.rate_limit_delay)
             filing_10k = self.client.fetch_latest_10k(ticker, year=year)
             if filing_10k:
-                sections = self.client.extract_10k_sections(filing_10k)
+                sections = (
+                    self.client.extract_10k_sections(filing_10k, include_exhibit_10=True)
+                    if include_exhibit_10
+                    else self.client.extract_10k_sections(filing_10k)
+                )
                 acc_num = sections.get("accession_number", "UNKNOWN")
                 acc_dir = company_year_dir / f"10K_{acc_num}"
                 sub_count = self._stage_10k_bundle(
@@ -305,6 +324,7 @@ class HistoricalSECHarvester:
                 )
                 stats["10k_downloaded"] = True
                 stats["subsidiaries_count"] += sub_count
+                stats["exhibit_10_count"] += len(sections.get("exhibit_10_contracts") or [])
                 stats["filings_saved"].append(f"10K_{acc_num}")
 
         # 1b. Form 10-K/A (amendments stamped at amendment acceptance_datetime)
@@ -317,7 +337,11 @@ class HistoricalSECHarvester:
                 limit=2,
             )
             for filing_10ka in filings_10ka:
-                sections = self.client.extract_10k_sections(filing_10ka)
+                sections = (
+                    self.client.extract_10k_sections(filing_10ka, include_exhibit_10=True)
+                    if include_exhibit_10
+                    else self.client.extract_10k_sections(filing_10ka)
+                )
                 acc_num = sections.get("accession_number", "UNKNOWN")
                 acc_dir = company_year_dir / f"10KA_{acc_num}"
                 sub_count = self._stage_10k_bundle(
@@ -329,6 +353,7 @@ class HistoricalSECHarvester:
                 )
                 stats["10ka_count"] += 1
                 stats["subsidiaries_count"] += sub_count
+                stats["exhibit_10_count"] += len(sections.get("exhibit_10_contracts") or [])
                 stats["filings_saved"].append(f"10KA_{acc_num}")
 
         # 2. Form 10-Q
@@ -373,7 +398,11 @@ class HistoricalSECHarvester:
         # 3. Form 8-K
         if SECFormType.FORM_8K.value in forms_to_fetch:
             time.sleep(self.rate_limit_delay)
-            filings_8k = self.client.fetch_recent_8k(ticker, limit=5, year=year)
+            filings_8k = (
+                self.client.fetch_recent_8k(ticker, limit=5, year=year, include_exhibit_10=True)
+                if include_exhibit_10
+                else self.client.fetch_recent_8k(ticker, limit=5, year=year)
+            )
             for k_filing in filings_8k:
                 acc_num = k_filing.get("accession_number", "UNKNOWN")
                 acc_dir = company_year_dir / f"8K_{acc_num}"
@@ -386,16 +415,27 @@ class HistoricalSECHarvester:
                 stats["8k_count"] += 1
                 if has_exhibit:
                     stats["exhibit_99_1_count"] += 1
+                stats["exhibit_10_count"] += len(k_filing.get("exhibit_10_contracts") or [])
                 stats["filings_saved"].append(f"8K_{acc_num}")
 
         # 3b. Form 8-K/A
         if SECFormType.FORM_8KA.value in forms_to_fetch:
             time.sleep(self.rate_limit_delay)
-            filings_8ka = self.client.fetch_recent_8k(
-                ticker,
-                limit=5,
-                year=year,
-                form_type=SECFormType.FORM_8KA.value,
+            filings_8ka = (
+                self.client.fetch_recent_8k(
+                    ticker,
+                    limit=5,
+                    year=year,
+                    form_type=SECFormType.FORM_8KA.value,
+                    include_exhibit_10=True,
+                )
+                if include_exhibit_10
+                else self.client.fetch_recent_8k(
+                    ticker,
+                    limit=5,
+                    year=year,
+                    form_type=SECFormType.FORM_8KA.value,
+                )
             )
             for ka_filing in filings_8ka:
                 acc_num = ka_filing.get("accession_number", "UNKNOWN")
@@ -409,6 +449,7 @@ class HistoricalSECHarvester:
                 stats["8ka_count"] += 1
                 if has_exhibit:
                     stats["exhibit_99_1_count"] += 1
+                stats["exhibit_10_count"] += len(ka_filing.get("exhibit_10_contracts") or [])
                 stats["filings_saved"].append(f"8KA_{acc_num}")
 
         # 4. Form 4 (OPTIONAL_ABLATION — explicit opt-in via forms=["4"])
@@ -551,6 +592,7 @@ class EdgarWorker:
         *,
         form_type: str = SECFormType.FORM_10K.value,
         gics_sector: Optional[str] = None,
+        include_exhibit_10: bool = False,
     ) -> Dict[str, Any]:
         """Ingest, extract, and persist a company's 10-K or 10-K/A filing into PostgreSQL and Memgraph."""
         canonical_form = normalize_form_type(form_type, default=SECFormType.FORM_10K.value)
@@ -571,7 +613,11 @@ class EdgarWorker:
             logger.warning(f"No {canonical_form} filing found for {ticker_or_cik}")
             return {"status": "not_found", "nodes": 0, "edges": 0}
 
-        sections = self.client.extract_10k_sections(filing)
+        sections = (
+            self.client.extract_10k_sections(filing, include_exhibit_10=True)
+            if include_exhibit_10
+            else self.client.extract_10k_sections(filing)
+        )
         effective_form = normalize_form_type(sections.get("form"), default=canonical_form)
         acc_num = sections.get("accession_number", "UNKNOWN")
         filing_date_str = sections.get("filing_date") or datetime.utcnow().strftime("%Y-%m-%d")
@@ -593,9 +639,12 @@ class EdgarWorker:
             ("item_7_mda", "Item 7 - Management Discussion and Analysis", "Item 7"),
         )
         subs = sections.get("subsidiaries", [])
+        ex10_contracts = sections.get("exhibit_10_contracts") or []
         items_present = [short_label for key, _, short_label in section_specs if sections.get(key)]
         if subs:
             items_present.append("Exhibit 21")
+        if ex10_contracts:
+            items_present.append("Exhibit 10")
         if not items_present:
             items_present = ["Item 1", "Item 1A", "Exhibit 21"]
 
@@ -751,6 +800,112 @@ class EdgarWorker:
             )
             extracted_nodes.extend(n)
             extracted_edges.extend(e)
+
+        # 3. Process operational Exhibit 10 material contracts when present (ADR-00048)
+        if ex10_contracts:
+            ex10_parts: List[str] = []
+            for contract in ex10_contracts:
+                c_text = str(contract.get("text") or "").strip()
+                if not c_text:
+                    continue
+                ex_key = str(contract.get("exhibit_key") or "EX-10").strip()
+                cat = str(contract.get("matched_category") or "OPERATIONAL_CONTRACT").strip()
+                desc = str(contract.get("description") or "").strip()
+                header = f"[{ex_key} | {cat}" + (f" | {desc}" if desc else "") + "]"
+                ex10_parts.append(f"{header}\n{c_text}")
+
+            if ex10_parts:
+                ex10_corpus = "\n\n".join(ex10_parts)
+                ex10_label = "Exhibit 10 - Material Contract"
+                ex10_chunks = segmenter.segment_filing(
+                    ex10_corpus,
+                    filing_meta,
+                    default_section_name=ex10_label,
+                )
+                ex10_ranked = rank_salient_chunks(ex10_chunks)
+                ex10_chunk_records = [
+                    DocumentChunkRecord(
+                        chunk_id=c.chunk_id,
+                        doc_id=acc_num,
+                        source_type="sec_filing",
+                        cik=cik or None,
+                        section=ex10_label,
+                        char_start=c.start_char,
+                        char_end=c.end_char,
+                        text=c.text,
+                        valid_from=doc_valid_from_iso,
+                        known_at=doc_known_at_iso,
+                        form_type=effective_form,
+                    )
+                    for c in ex10_chunks
+                ]
+                if self.pg_conn and ex10_chunk_records:
+                    try:
+                        store_document_chunks(ex10_chunk_records, conn=self.pg_conn)
+                    except Exception as exc:
+                        logger.warning("Failed storing Exhibit 10 document_chunks for %s: %s", acc_num, exc)
+
+                ex10_payloads: List[Dict[str, Any]] = []
+                for chunk in ex10_ranked:
+                    try:
+                        try:
+                            chunk_graph = extract_sec_relationships(
+                                chunk.text,
+                                source_id=f"{acc_num}:exhibit_10",
+                                doc_id=acc_num,
+                                cik=cik,
+                                ticker=ticker,
+                                company_name=primary_name,
+                                form_type=effective_form,
+                                filing_date=filing_date_str,
+                                section_name=ex10_label,
+                                gics_sector=resolved_sector,
+                            )
+                        except TypeError:
+                            try:
+                                chunk_graph = extract_sec_relationships(
+                                    chunk.text,
+                                    source_id=f"{acc_num}:exhibit_10",
+                                )
+                            except TypeError:
+                                chunk_graph = extract_sec_relationships(chunk.text)
+                    except GraphExtractionError as exc:
+                        logger.warning(
+                            "Quarantined SEC Exhibit 10 chunk %s extraction for %s (%s): %s",
+                            chunk.chunk_id,
+                            ticker_or_cik,
+                            acc_num,
+                            exc,
+                        )
+                        continue
+
+                    if chunk_graph.get("nodes") or chunk_graph.get("edges"):
+                        for edge in chunk_graph.get("edges", []):
+                            eprops = dict(edge.get("properties") or {})
+                            eprops["evidence_chunk_ids"] = sorted(
+                                {*(eprops.get("evidence_chunk_ids") or []), chunk.chunk_id}
+                            )
+                            eprops["sec_graph_layer"] = SECGraphLayer.DOMAIN1_OPERATIONAL.value
+                            edge["properties"] = eprops
+                        chunk_graph["chunk_id"] = chunk.chunk_id
+                        ex10_payloads.append(chunk_graph)
+
+                if ex10_payloads:
+                    ex10_graph_data = merge_chunk_extraction_payloads(ex10_payloads)
+                    n, e = self._persist_sec_graph_data(
+                        primary_name=primary_name,
+                        primary_ticker=ticker,
+                        graph_data=ex10_graph_data,
+                        accession_number=acc_num,
+                        filing_date=filing_date_str,
+                        form_type=effective_form,
+                        section=ex10_label,
+                        source_text=ex10_corpus,
+                        acceptance_datetime=acceptance_dt_str,
+                        evidence_chunk_ids=[c.chunk_id for c in ex10_chunks],
+                    )
+                    extracted_nodes.extend(n)
+                    extracted_edges.extend(e)
 
         if self.pg_conn:
             self._update_filing_queue(

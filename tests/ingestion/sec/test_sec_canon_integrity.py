@@ -76,7 +76,7 @@ def test_sec_form_canon_complete_bijection_and_bounds() -> None:
     assert set(SEC_FORM_CANON.keys()) == set(SECFormType)
     assert len(SEC_FORM_CANON) == 33
     assert len(SEC_EXHIBIT_CANON) == 9
-    assert len(SEC_SECTION_CANON) == 25
+    assert len(SEC_SECTION_CANON) == 26
 
     for ft, spec in SEC_FORM_CANON.items():
         assert spec.form_type is ft
@@ -134,6 +134,8 @@ def test_default_harvest_forms_domain1_active_only() -> None:
         assert spec.status == SECFormStatus.ACTIVE
         assert spec.graph_layer == SECGraphLayer.DOMAIN1_OPERATIONAL
     assert SEC_EXHIBIT_CANON["Exhibit 99.1"].status == SECFormStatus.ACTIVE
+    assert SEC_EXHIBIT_CANON["Exhibit 10"].status == SECFormStatus.ACTIVE
+    assert SEC_EXHIBIT_CANON["Exhibit 101 / XBRL"].status == SECFormStatus.ACTIVE
     assert "Exhibit 99.1" in SEC_FORM_CANON[SECFormType.FORM_8K].tracked_exhibits
     assert "Exhibit 99.1" in SEC_FORM_CANON[SECFormType.FORM_8KA].tracked_exhibits
 
@@ -143,7 +145,15 @@ def test_ontology_provenance_confidence_parity_without_cycle() -> None:
     from ontology.validation import PROVENANCE_CONFIDENCE_MAP
 
     sec_map = get_sec_provenance_confidence_map()
-    assert set(sec_map.keys()) == {"SEC_10K_ITEM1", "SEC_10Q", "SEC_8K", "SEC_FORM_4", "SEC_EXHIBIT_21"}
+    assert set(sec_map.keys()) == {
+        "SEC_10K_ITEM1",
+        "SEC_10Q",
+        "SEC_8K",
+        "SEC_FORM_4",
+        "SEC_EXHIBIT_21",
+        "SEC_EXHIBIT_10",
+        "SEC_XBRL_COMPANYFACTS",
+    }
     for key, conf in sec_map.items():
         assert key in PROVENANCE_CONFIDENCE_MAP
         assert PROVENANCE_CONFIDENCE_MAP[key] == pytest.approx(conf)
@@ -202,6 +212,8 @@ def test_unified_section_and_gleaning_alignment() -> None:
         "Item 2.05 - Exit or Disposal Activities",
         "Item 2.06 - Material Impairments",
         "Item 8.01 - Other Events",
+        "Exhibit 10 - Material Contract",
+        "Exhibit 10.1",
     )
     low_signal_cases = (
         "Item 1B - Unresolved Staff Comments",
@@ -211,6 +223,7 @@ def test_unified_section_and_gleaning_alignment() -> None:
         "Item 2.02 - Results of Operations",
         "Item 7.01 - Regulation FD Disclosure",
         "Exhibit 21 - Subsidiaries",
+        "Exhibit 101",
         "",
         None,
     )

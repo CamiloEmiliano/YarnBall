@@ -1,4 +1,4 @@
-"""Supply-chain cascade parameter extraction and provenance tracking (ADR-00026)."""
+"""Supply-chain cascade parameter extraction and provenance tracking (ADR-00026 / ADR-00048)."""
 
 from __future__ import annotations
 
@@ -6,20 +6,47 @@ from dataclasses import dataclass
 from enum import Enum
 import math
 import re
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple
+
+
+MAX_PLAUSIBLE_XBRL_DIO_DAYS: float = 365.0
+
+PHYSICAL_INVENTORY_GICS_SECTORS: FrozenSet[str] = frozenset(
+    {
+        "Information Technology",
+        "Industrials",
+        "Consumer Discretionary",
+        "Consumer Staples",
+        "Health Care",
+        "Energy",
+        "Materials",
+    }
+)
+_PHYSICAL_INVENTORY_GICS_SECTORS_LOWER: FrozenSet[str] = frozenset(
+    sector.lower() for sector in PHYSICAL_INVENTORY_GICS_SECTORS
+)
+
+
+def is_physical_inventory_gics_sector(gics_sector: Optional[str]) -> bool:
+    """Return True iff `gics_sector` carries physical GAAP inventory eligible for XBRL DIO priors (ADR-00048)."""
+    if not gics_sector:
+        return False
+    return str(gics_sector).strip().lower() in _PHYSICAL_INVENTORY_GICS_SECTORS_LOWER
 
 
 class ParameterProvenance(str, Enum):
-    """Explicit empirical origin of supply-chain cascade edge parameters (ADR-00026)."""
+    """Explicit empirical origin of supply-chain cascade edge parameters (ADR-00026 / ADR-00048)."""
 
     EXTRACTED_QUANTITATIVE = "EXTRACTED_QUANTITATIVE"
     EXTRACTED_QUALITATIVE_SOLE_SOURCE = "EXTRACTED_QUALITATIVE_SOLE_SOURCE"
+    XBRL_ISSUER_DIO_PROXY = "XBRL_ISSUER_DIO_PROXY"
     DEFAULT_CONSERVATIVE_BOUND = "DEFAULT_CONSERVATIVE_BOUND"
 
 
 PROVENANCE_CONFIDENCE_RANK: Dict[str, int] = {
     ParameterProvenance.EXTRACTED_QUANTITATIVE.value: 3,
     ParameterProvenance.EXTRACTED_QUALITATIVE_SOLE_SOURCE.value: 2,
+    ParameterProvenance.XBRL_ISSUER_DIO_PROXY.value: 2,
     ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND.value: 1,
 }
 
@@ -154,8 +181,19 @@ def extract_cascade_parameters_from_text(
 def resolve_edge_cascade_parameters(
     edge: Mapping[str, Any],
     source_text: Optional[str] = None,
+    *,
+    target_xbrl_dio_days: Optional[float] = None,
+    target_gics_sector: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Normalize cascade edge parameters and emit explicit ParameterProvenance metadata."""
+    """Normalize cascade edge parameters and emit explicit ParameterProvenance metadata.
+
+    Precedence for inventory `buffer_days` (ADR-00026 / ADR-00048):
+    1. Explicit edge or filing-text `buffer_days` (`EXTRACTED_QUANTITATIVE`) always wins.
+    2. Else if `target_xbrl_dio_days` is finite in `(0, 365]`, `dependency_domain == "PHYSICAL_COMPONENT"`,
+       and `target_gics_sector` is either omitted or in `PHYSICAL_INVENTORY_GICS_SECTORS`, apply the
+       issuer-level XBRL DIO proxy (`XBRL_ISSUER_DIO_PROXY`) while keeping `share_is_default` honest.
+    3. Else fail closed to `buffer_days = 0.0` (`DEFAULT_CONSERVATIVE_BOUND`).
+    """
     props_raw = edge.get("properties")
     props: Mapping[str, Any] = props_raw if isinstance(props_raw, Mapping) else {}
 
@@ -238,7 +276,8 @@ def resolve_edge_cascade_parameters(
         provenance = ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND
 
     share_is_default = (explicit_share is None) or bool(_lookup("share_is_default"))
-    buffer_is_default = (explicit_buffer is None) or bool(_lookup("buffer_days_is_default"))
+    buffer_was_defaulted = bool(_lookup("buffer_days_is_default"))
+    buffer_is_default = (explicit_buffer is None) or buffer_was_defaulted
 
     final_share = 1.0 if explicit_share is None else explicit_share
     final_buffer = 0.0 if explicit_buffer is None else explicit_buffer
@@ -246,6 +285,34 @@ def resolve_edge_cascade_parameters(
         f"{input_group} {clause_text}",
         explicit_domain=str(_lookup("dependency_domain") or "") or None,
     )
+
+    dio_raw = target_xbrl_dio_days if target_xbrl_dio_days is not None else _lookup("target_xbrl_dio_days")
+    sector_raw = target_gics_sector if target_gics_sector is not None else _lookup("target_gics_sector")
+    xbrl_dio_val = _to_finite_float(dio_raw)
+    sector_eligible = (
+        True
+        if sector_raw is None or not str(sector_raw).strip()
+        else is_physical_inventory_gics_sector(str(sector_raw))
+    )
+    can_apply_xbrl_buffer = (
+        explicit_buffer is None
+        or (
+            buffer_was_defaulted
+            and explicit_buffer == 0.0
+            and provenance == ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND
+        )
+    )
+    if (
+        can_apply_xbrl_buffer
+        and xbrl_dio_val is not None
+        and 0.0 < xbrl_dio_val <= MAX_PLAUSIBLE_XBRL_DIO_DAYS
+        and dependency_domain == "PHYSICAL_COMPONENT"
+        and sector_eligible
+    ):
+        final_buffer = round(float(xbrl_dio_val), 6)
+        buffer_is_default = False
+        if provenance == ParameterProvenance.DEFAULT_CONSERVATIVE_BOUND:
+            provenance = ParameterProvenance.XBRL_ISSUER_DIO_PROXY
 
     raw_chunk_ids = _lookup("evidence_chunk_ids")
     evidence_chunk_ids: List[str] = []

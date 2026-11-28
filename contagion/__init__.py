@@ -12,8 +12,11 @@ from contagion.cascade import (
     SparseNetworkCascadeEngine,
 )
 from contagion.parameters import (
+    MAX_PLAUSIBLE_XBRL_DIO_DAYS,
+    PHYSICAL_INVENTORY_GICS_SECTORS,
     ParameterProvenance,
     extract_cascade_parameters_from_text,
+    is_physical_inventory_gics_sector,
     resolve_edge_cascade_parameters,
 )
 
@@ -23,8 +26,11 @@ __all__ = [
     "CascadeGraph",
     "ConvergentShockSummary",
     "SparseNetworkCascadeEngine",
+    "MAX_PLAUSIBLE_XBRL_DIO_DAYS",
+    "PHYSICAL_INVENTORY_GICS_SECTORS",
     "ParameterProvenance",
     "extract_cascade_parameters_from_text",
+    "is_physical_inventory_gics_sector",
     "resolve_edge_cascade_parameters",
 ]
 
