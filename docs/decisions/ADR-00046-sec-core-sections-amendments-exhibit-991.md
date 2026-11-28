@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00046
 - **Filename**: `ADR-00046-sec-core-sections-amendments-exhibit-991.md`
 - **Date**: 2026-11-28 04:19 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `ingestion` / `tests` / `docs`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`9b4716b`](../../ingestion/sec/canon.py), [`9b4716b`](../../ingestion/sec/client.py), [`9b4716b`](../../ingestion/sec/harvester.py), [`9b4716b`](../../ingestion/sec/parser.py), [`9b4716b`](../../tests/ingestion/sec/test_sec_phase2a_expansion.py)
 
 ---
 
@@ -129,7 +129,7 @@ However, an audit of [`ingestion/sec/client.py`](../../ingestion/sec/client.py),
 
 ## 6. Verification Plan
 
-1. **New Phase 2a Unit & Integration Suite** (`tests/ingestion/sec/test_sec_phase2a_expansion.py` — created upon approval):
+1. **New Phase 2a Unit & Integration Suite** ([`tests/ingestion/sec/test_sec_phase2a_expansion.py`](../../tests/ingestion/sec/test_sec_phase2a_expansion.py)):
    - Mocked `edgartools` `TenK` / `TenQ` / `8-K` / `8-K/A` fixtures verifying:
      - `extract_10k_sections` populates all 6 sections (`Item 1`, `1A`, `1C`, `2`, `3`, `7`) + `Exhibit 21` and preserves `"10-K"` vs. `"10-K/A"`.
      - `extract_10q_sections` extracts part-qualified `Part I Item 2`, `Part I Item 3`, `Part II Item 1`, `Part II Item 1A` without pulling `Part I Item 1` GAAP tables, and falls back to `50_000`-char text cleanly when `.obj()` lacks sections.
