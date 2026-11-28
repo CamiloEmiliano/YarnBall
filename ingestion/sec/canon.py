@@ -5,7 +5,7 @@ Single, zero-internal-dependency source of truth (Python standard library only) 
 2. All 9 tracked statutory exhibits & structured XBRL feeds (`SEC_EXHIBIT_CANON`).
 3. All 32 statutory SEC Form 8-K items (`SECForm8KItem`), human-readable descriptions
    (`SEC_ITEM_DESCRIPTIONS`), and 4-tier disruption precedence lattice (`SEC_8K_PRIORITY_TIERS`).
-4. All 26 unified statutory filing section regexes & Pass-2 gleaning rules (`SEC_SECTION_CANON`).
+4. All 29 unified statutory filing section regexes & Pass-2 gleaning rules (`SEC_SECTION_CANON`).
 5. Deterministic normalization, default-harvest, termination-eligibility (`ADR-00033` Invariant #8),
    and epistemic confidence helpers supporting Phase-2 form-ablation studies.
 """
@@ -377,26 +377,26 @@ SEC_FORM_CANON: Dict[SECFormType, SECFormSpec] = {
         category=SECFormCategory.FOREIGN_COUNTERPARTY,
         graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
         ingestion_mode=SECIngestionMode.HYBRID,
-        status=SECFormStatus.PLANNED,
+        status=SECFormStatus.ACTIVE,
         default_batch_harvest=False,
         allow_contract_termination=False,
         tracked_exhibits=("Exhibit 8",),
-        provenance_key=None,
+        provenance_key="SEC_20F",
         base_confidence=0.98,
         roadmap_phase="Phase 2c",
         sector_scope="Non-U.S. Tier-1 suppliers across Pharma, Energy, Materials, Semis",
-        description="Foreign Private Issuer annual report (Item 3.D Risks, Item 4 Company, Exhibit 8 Subsidiaries).",
+        description="Foreign Private Issuer annual report (Item 3.D Risks, Item 4 Company, Item 5 OFR, Exhibit 8 Subsidiaries).",
     ),
     SECFormType.FORM_20FA: SECFormSpec(
         form_type=SECFormType.FORM_20FA,
         category=SECFormCategory.FOREIGN_COUNTERPARTY,
         graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
         ingestion_mode=SECIngestionMode.HYBRID,
-        status=SECFormStatus.PLANNED,
+        status=SECFormStatus.ACTIVE,
         default_batch_harvest=False,
         allow_contract_termination=False,
         tracked_exhibits=("Exhibit 8",),
-        provenance_key=None,
+        provenance_key="SEC_20F",
         base_confidence=0.98,
         roadmap_phase="Phase 2c",
         sector_scope="Non-U.S. Tier-1 suppliers",
@@ -407,26 +407,26 @@ SEC_FORM_CANON: Dict[SECFormType, SECFormSpec] = {
         category=SECFormCategory.FOREIGN_COUNTERPARTY,
         graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
         ingestion_mode=SECIngestionMode.HYBRID,
-        status=SECFormStatus.PLANNED,
+        status=SECFormStatus.ACTIVE,
         default_batch_harvest=False,
         allow_contract_termination=False,
-        tracked_exhibits=(),
-        provenance_key=None,
+        tracked_exhibits=("Exhibit 99.1",),
+        provenance_key="SEC_40F",
         base_confidence=0.98,
         roadmap_phase="Phase 2c",
         sector_scope="Canadian MJDS pipelines, energy, fertilizer, mining, and Class-I rail",
-        description="Canadian MJDS annual report for upstream North American infrastructure and commodity partners.",
+        description="Canadian MJDS annual report (AIF & MD&A) for upstream North American infrastructure and commodity partners.",
     ),
     SECFormType.FORM_6K: SECFormSpec(
         form_type=SECFormType.FORM_6K,
         category=SECFormCategory.FOREIGN_COUNTERPARTY,
         graph_layer=SECGraphLayer.DOMAIN1_OPERATIONAL,
         ingestion_mode=SECIngestionMode.TEXT_LLM_EXTRACTION,
-        status=SECFormStatus.PLANNED,
+        status=SECFormStatus.ACTIVE,
         default_batch_harvest=False,
         allow_contract_termination=False,
         tracked_exhibits=("Exhibit 99.1",),
-        provenance_key=None,
+        provenance_key="SEC_6K",
         base_confidence=0.95,
         roadmap_phase="Phase 2c",
         sector_scope="Non-U.S. Tier-1 suppliers across all sectors",
@@ -678,12 +678,18 @@ SEC_EXHIBIT_CANON: Dict[str, SECExhibitSpec] = {
     "Exhibit 99.1": SECExhibitSpec(
         exhibit_key="Exhibit 99.1",
         status=SECFormStatus.ACTIVE,
-        applicable_forms=(SECFormType.FORM_8K, SECFormType.FORM_8KA, SECFormType.FORM_6K, SECFormType.FORM_10),
+        applicable_forms=(
+            SECFormType.FORM_8K,
+            SECFormType.FORM_8KA,
+            SECFormType.FORM_6K,
+            SECFormType.FORM_40F,
+            SECFormType.FORM_10,
+        ),
         ingestion_mode=SECIngestionMode.TEXT_LLM_EXTRACTION,
         provenance_key=None,
         base_confidence=0.95,
         roadmap_phase="Phase 2a / 2c",
-        description="Attached operational press releases on Form 8-K/8-K/A/6-K and spin-off Information Statements on Form 10.",
+        description="Attached operational press releases on Form 8-K/8-K/A/6-K, Canadian 40-F AIFs, and spin-off Information Statements on Form 10.",
     ),
     "Exhibit 10": SECExhibitSpec(
         exhibit_key="Exhibit 10",
@@ -722,10 +728,10 @@ SEC_EXHIBIT_CANON: Dict[str, SECExhibitSpec] = {
     ),
     "Exhibit 8": SECExhibitSpec(
         exhibit_key="Exhibit 8",
-        status=SECFormStatus.PLANNED,
+        status=SECFormStatus.ACTIVE,
         applicable_forms=(SECFormType.FORM_20F, SECFormType.FORM_20FA, SECFormType.FORM_F1),
         ingestion_mode=SECIngestionMode.HYBRID,
-        provenance_key=None,
+        provenance_key="SEC_EXHIBIT_8",
         base_confidence=1.00,
         roadmap_phase="Phase 2c",
         description="Foreign Private Issuer significant subsidiaries schedule (FPI equivalent of Exhibit 21).",
@@ -917,7 +923,7 @@ SEC_8K_PRIORITY_TIERS: Tuple[Tuple[int, Tuple[str, ...]], ...] = (
 
 
 # ==============================================================================
-# 4. UNIFIED STATUTORY SECTION & PASS-2 GLEANING CANON (26 SECTIONS)
+# 4. UNIFIED STATUTORY SECTION & PASS-2 GLEANING CANON (29 SECTIONS)
 # ==============================================================================
 
 _PERIODIC_FORMS: Tuple[SECFormType, ...] = (
@@ -1177,6 +1183,39 @@ SEC_SECTION_CANON: Tuple[SECSectionSpec, ...] = (
         high_signal_gleaning=True,
         gleaning_match_pattern=re.compile(r"\bitem\s*4\s*[-–—.]+\s*information\s+on\s+the\s+company\b", re.IGNORECASE),
     ),
+    SECSectionSpec(
+        canonical_name="Item 5 - Operating and Financial Review (20-F)",
+        header_pattern=re.compile(
+            r"(?:\n|^)\s*(?:ITEM\s+5[.\s–—\-]+OPERATING\s+AND\s+FINANCIAL\s+REVIEW\b)",
+            re.IGNORECASE,
+        ),
+        applicable_forms=_FPI_20F_FORMS,
+        high_signal_gleaning=False,
+        sector_gleaning_only=("Financials",),
+        gleaning_match_pattern=re.compile(
+            r"\bitem\s*5\s*[-–—.\s]+operating\s+and\s+financial\s+review\b",
+            re.IGNORECASE,
+        ),
+    ),
+    SECSectionSpec(
+        canonical_name="Exhibit 8 - Significant Subsidiaries (20-F)",
+        header_pattern=re.compile(
+            r"(?:\n|^)\s*(?:EXHIBIT\s+8(?:\.1)?\b[.\s–—\-]+(?:SIGNIFICANT\s+)?SUBSIDIARIES\b)",
+            re.IGNORECASE,
+        ),
+        applicable_forms=(SECFormType.FORM_20F, SECFormType.FORM_20FA, SECFormType.FORM_F1),
+        high_signal_gleaning=False,
+    ),
+    SECSectionSpec(
+        canonical_name="Annual Information Form (40-F)",
+        header_pattern=re.compile(
+            r"(?:\n|^)\s*(?:ANNUAL\s+INFORMATION\s+FORM\b)",
+            re.IGNORECASE,
+        ),
+        applicable_forms=(SECFormType.FORM_40F,),
+        high_signal_gleaning=True,
+        gleaning_match_pattern=re.compile(r"\bannual\s+information\s+form\b|\b40-f\b", re.IGNORECASE),
+    ),
 )
 
 _ITEM_1B_EXCLUSION_RE = re.compile(r"\bitem\s*1b\b", re.IGNORECASE)
@@ -1239,6 +1278,15 @@ def get_default_harvest_forms() -> Tuple[str, ...]:
         spec.form_type.value
         for spec in SEC_FORM_CANON.values()
         if spec.status == SECFormStatus.ACTIVE and spec.default_batch_harvest
+    )
+
+
+def get_foreign_harvest_forms() -> Tuple[str, ...]:
+    """Return canonical ACTIVE form codes for opt-in non-U.S. counterparty harvesting (ADR-00049)."""
+    return tuple(
+        spec.form_type.value
+        for spec in SEC_FORM_CANON.values()
+        if spec.status == SECFormStatus.ACTIVE and spec.category == SECFormCategory.FOREIGN_COUNTERPARTY
     )
 
 
@@ -1329,6 +1377,7 @@ __all__ = [
     "normalize_form_type",
     "get_form_spec",
     "get_default_harvest_forms",
+    "get_foreign_harvest_forms",
     "get_forms_by_status",
     "get_forms_by_layer",
     "is_termination_eligible_form",

@@ -24,6 +24,7 @@ from ingestion.sec.canon import (
     SECGraphLayer,
     SECIngestionMode,
     get_default_harvest_forms,
+    get_foreign_harvest_forms,
     get_forms_by_layer,
     get_forms_by_status,
     get_sec_provenance_confidence_map,
@@ -76,7 +77,7 @@ def test_sec_form_canon_complete_bijection_and_bounds() -> None:
     assert set(SEC_FORM_CANON.keys()) == set(SECFormType)
     assert len(SEC_FORM_CANON) == 33
     assert len(SEC_EXHIBIT_CANON) == 9
-    assert len(SEC_SECTION_CANON) == 26
+    assert len(SEC_SECTION_CANON) == 29
 
     for ft, spec in SEC_FORM_CANON.items():
         assert spec.form_type is ft
@@ -90,7 +91,11 @@ def test_sec_form_canon_complete_bijection_and_bounds() -> None:
 
     assert SECFormType.FORM_13F_HR in get_forms_by_status(SECFormStatus.OPTIONAL_ABLATION)
     assert SECFormType.FORM_424B2 in get_forms_by_layer(SECGraphLayer.FINANCING_OFFERING)
-    assert SECFormType.FORM_20F in get_forms_by_status(SECFormStatus.PLANNED)
+    assert SECFormType.FORM_10 in get_forms_by_status(SECFormStatus.PLANNED)
+    assert SECFormType.FORM_20F in get_forms_by_status(SECFormStatus.ACTIVE)
+    assert SECFormType.FORM_40F in get_forms_by_status(SECFormStatus.ACTIVE)
+    assert SECFormType.FORM_6K in get_forms_by_status(SECFormStatus.ACTIVE)
+    assert get_foreign_harvest_forms() == ("20-F", "20-F/A", "40-F", "6-K")
 
 
 def test_sec_8k_items_exhaustive_descriptions_and_tier_bijection() -> None:
@@ -136,6 +141,7 @@ def test_default_harvest_forms_domain1_active_only() -> None:
     assert SEC_EXHIBIT_CANON["Exhibit 99.1"].status == SECFormStatus.ACTIVE
     assert SEC_EXHIBIT_CANON["Exhibit 10"].status == SECFormStatus.ACTIVE
     assert SEC_EXHIBIT_CANON["Exhibit 101 / XBRL"].status == SECFormStatus.ACTIVE
+    assert SEC_EXHIBIT_CANON["Exhibit 8"].status == SECFormStatus.ACTIVE
     assert "Exhibit 99.1" in SEC_FORM_CANON[SECFormType.FORM_8K].tracked_exhibits
     assert "Exhibit 99.1" in SEC_FORM_CANON[SECFormType.FORM_8KA].tracked_exhibits
 
@@ -153,6 +159,10 @@ def test_ontology_provenance_confidence_parity_without_cycle() -> None:
         "SEC_EXHIBIT_21",
         "SEC_EXHIBIT_10",
         "SEC_XBRL_COMPANYFACTS",
+        "SEC_20F",
+        "SEC_40F",
+        "SEC_6K",
+        "SEC_EXHIBIT_8",
     }
     for key, conf in sec_map.items():
         assert key in PROVENANCE_CONFIDENCE_MAP

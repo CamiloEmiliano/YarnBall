@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .canon import SECFormType, normalize_form_type
 from .disruption_gating import DEFAULT_MAX_FILING_CHARS
+from .foreign import filter_english_operational_text, sanitize_sec_6k_text
 
 # ==============================================================================
 # Operational Exhibit 10 Classification & Clause Windowing (ADR-00048)
@@ -545,8 +546,313 @@ class EdgarClient:
 
     _EXCLUDED_EXHIBIT_TYPES_RE = _EXCLUDED_EXHIBIT_TYPES_RE
     _EXCLUDED_EXHIBIT_EXTS = _EXCLUDED_EXHIBIT_EXTS
+    _EXHIBIT_8_TYPE_RE = re.compile(r"^EX[- \t]?8(?:\.(\d+))?\b", re.IGNORECASE)
+    _EXHIBIT_8_DESC_RE = re.compile(r"\bexhibit\s*8(?:\.(\d+))?\b", re.IGNORECASE)
     _EXHIBIT_99_TYPE_RE = re.compile(r"^EX[- \t]?99(?:\.(\d+))?\b", re.IGNORECASE)
     _EXHIBIT_99_DESC_RE = re.compile(r"\bexhibit\s*99(?:\.(\d+))?\b", re.IGNORECASE)
+    _FORM_20F_SECTION_BOUNDARY_RE = re.compile(
+        r"(?:\n|^)\s*(ITEM\s+(?:3\.?D|4A?|5|6|7|8)\b[^\n]*)",
+        re.IGNORECASE,
+    )
+
+    def extract_exhibit_8_subsidiaries(self, filing: Any) -> List[Dict[str, str]]:
+        """Find and parse Form 20-F / F-1 Exhibit 8 significant subsidiaries attachments (ADR-00049)."""
+        subsidiaries: List[Dict[str, str]] = []
+        if not filing:
+            return subsidiaries
+
+        try:
+            attachments = getattr(filing, "attachments", None)
+            if not attachments:
+                return subsidiaries
+            for att in attachments:
+                raw_type = getattr(att, "document_type", "")
+                doc_type = raw_type.strip().upper() if isinstance(raw_type, str) else ""
+                raw_desc = getattr(att, "description", "")
+                desc = raw_desc.strip() if isinstance(raw_desc, str) else ""
+                raw_doc = getattr(att, "document", "")
+                doc_name = raw_doc.strip().lower() if isinstance(raw_doc, str) else ""
+
+                if doc_type and self._EXCLUDED_EXHIBIT_TYPES_RE.match(doc_type):
+                    continue
+                if doc_name and doc_name.endswith(self._EXCLUDED_EXHIBIT_EXTS):
+                    continue
+
+                is_ex8 = bool(self._EXHIBIT_8_TYPE_RE.match(doc_type)) if doc_type else False
+                if not is_ex8 and not doc_type:
+                    is_ex8 = bool(self._EXHIBIT_8_DESC_RE.search(desc) or "significant subsidiaries" in desc.lower())
+                elif not is_ex8 and doc_type.startswith("EX-8"):
+                    is_ex8 = bool(self._EXHIBIT_8_TYPE_RE.match(doc_type))
+                if not is_ex8:
+                    continue
+
+                content = self._coerce_section_text(att)
+                if content:
+                    subsidiaries.extend(self._parse_subsidiaries_text(content))
+        except Exception as e:
+            logger.debug(f"Exhibit 8 extraction error: {e}")
+
+        return subsidiaries
+
+    def fetch_20f_filings(
+        self,
+        ticker_or_cik: str,
+        year: Optional[int] = None,
+        *,
+        form_type: str = SECFormType.FORM_20F.value,
+        limit: int = 2,
+    ) -> List[Any]:
+        """Retrieve Form 20-F or 20-F/A filings for a Foreign Private Issuer (ADR-00049)."""
+        company = self.get_company(ticker_or_cik)
+        if not company:
+            return []
+
+        canonical_form = normalize_form_type(form_type, default=SECFormType.FORM_20F.value)
+        matched: List[Any] = []
+        try:
+            filings = company.get_filings(form=canonical_form)
+            if not filings:
+                return []
+            for filing in filings:
+                if year is not None:
+                    filing_date = str(getattr(filing, "filing_date", ""))
+                    report_date = str(getattr(filing, "report_date", ""))
+                    if str(year) not in filing_date and str(year) not in report_date:
+                        continue
+                matched.append(filing)
+                if len(matched) >= limit:
+                    break
+        except Exception as e:
+            logger.error(f"Error fetching {canonical_form} for '{ticker_or_cik}': {e}")
+        return matched
+
+    @classmethod
+    def _regex_extract_20f_sections(cls, raw_text: str) -> Dict[str, str]:
+        """Fallback splitter extracting Item 3.D, Item 4, and Item 5 from plain Form 20-F text."""
+        extracted = {
+            "item_3d_risk_factors": "",
+            "item_4_company_info": "",
+            "item_5_operating_review": "",
+        }
+        if not raw_text:
+            return extracted
+
+        matches = list(cls._FORM_20F_SECTION_BOUNDARY_RE.finditer(raw_text))
+        for idx, match in enumerate(matches):
+            heading = match.group(1).strip().upper()
+            end_pos = matches[idx + 1].start() if idx + 1 < len(matches) else len(raw_text)
+            body = raw_text[match.end() : end_pos].strip()
+            if not body:
+                continue
+            if re.match(r"ITEM\s+3\.?D\b", heading) and not extracted["item_3d_risk_factors"]:
+                extracted["item_3d_risk_factors"] = body
+            elif re.match(r"ITEM\s+4\b(?!A\b)", heading) and not extracted["item_4_company_info"]:
+                extracted["item_4_company_info"] = body
+            elif re.match(r"ITEM\s+5\b", heading) and not extracted["item_5_operating_review"]:
+                extracted["item_5_operating_review"] = body
+        return extracted
+
+    def extract_20f_sections(
+        self,
+        filing: Any,
+        *,
+        include_exhibit_10: bool = False,
+        max_fallback_chars: int = DEFAULT_MAX_FILING_CHARS,
+    ) -> Dict[str, Any]:
+        """Extract Form 20-F / 20-F/A narrative sections (Items 3.D, 4, 5) and Exhibit 8 subsidiaries (ADR-00049)."""
+        raw_form = getattr(filing, "form", None)
+        canonical_form = (
+            normalize_form_type(raw_form, default=SECFormType.FORM_20F.value)
+            if isinstance(raw_form, str)
+            else SECFormType.FORM_20F.value
+        )
+        result: Dict[str, Any] = {
+            "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
+            "filing_date": str(getattr(filing, "filing_date", "")),
+            "acceptance_datetime": self._extract_acceptance_datetime(filing),
+            "report_date": str(getattr(filing, "report_date", "")),
+            "form": canonical_form,
+            "item_3d_risk_factors": "",
+            "item_4_company_info": "",
+            "item_5_operating_review": "",
+            "subsidiaries": [],
+        }
+        if not filing:
+            if include_exhibit_10:
+                result["exhibit_10_contracts"] = []
+            return result
+
+        try:
+            report_obj = filing.obj() if hasattr(filing, "obj") else None
+            if report_obj is not None:
+                section_map: Tuple[Tuple[str, Tuple[str, ...], Tuple[str, ...]], ...] = (
+                    ("item_3d_risk_factors", ("item_3d", "risk_factors"), ("Item 3.D", "Item 3D")),
+                    ("item_4_company_info", ("item_4", "company_info", "business"), ("Item 4", "Item 4.")),
+                    ("item_5_operating_review", ("item_5", "operating_review", "management_discussion"), ("Item 5", "Item 5.")),
+                )
+                for result_key, attr_names, item_keys in section_map:
+                    result[result_key] = self._extract_report_item(report_obj, attr_names, item_keys)
+
+            if not any(result[k] for k in ("item_3d_risk_factors", "item_4_company_info", "item_5_operating_review")):
+                raw_text = self._coerce_section_text(filing)
+                if raw_text:
+                    regex_secs = self._regex_extract_20f_sections(raw_text)
+                    for key, val in regex_secs.items():
+                        if val:
+                            result[key] = val[:max_fallback_chars] if max_fallback_chars > 0 else val
+
+            result["subsidiaries"] = self.extract_exhibit_8_subsidiaries(filing)
+            if include_exhibit_10:
+                result["exhibit_10_contracts"] = self.extract_exhibit_10_contracts(filing)
+        except Exception as e:
+            logger.warning(f"Error extracting sections from {canonical_form} filing: {e}")
+            if include_exhibit_10 and "exhibit_10_contracts" not in result:
+                result["exhibit_10_contracts"] = []
+
+        return result
+
+    def fetch_40f_filings(
+        self,
+        ticker_or_cik: str,
+        year: Optional[int] = None,
+        limit: int = 2,
+    ) -> List[Any]:
+        """Retrieve Canadian MJDS Form 40-F annual filings (ADR-00049)."""
+        company = self.get_company(ticker_or_cik)
+        if not company:
+            return []
+
+        matched: List[Any] = []
+        try:
+            filings = company.get_filings(form=SECFormType.FORM_40F.value)
+            if not filings:
+                return []
+            for filing in filings:
+                if year is not None:
+                    filing_date = str(getattr(filing, "filing_date", ""))
+                    report_date = str(getattr(filing, "report_date", ""))
+                    if str(year) not in filing_date and str(year) not in report_date:
+                        continue
+                matched.append(filing)
+                if len(matched) >= limit:
+                    break
+        except Exception as e:
+            logger.error(f"Error fetching 40-F for '{ticker_or_cik}': {e}")
+        return matched
+
+    def extract_40f_sections(
+        self,
+        filing: Any,
+        *,
+        max_chars: int = DEFAULT_MAX_FILING_CHARS,
+    ) -> Dict[str, Any]:
+        """Extract Canadian MJDS Form 40-F Annual Information Form (AIF) & MD&A exhibits (ADR-00049)."""
+        raw_form = getattr(filing, "form", None)
+        canonical_form = (
+            normalize_form_type(raw_form, default=SECFormType.FORM_40F.value)
+            if isinstance(raw_form, str)
+            else SECFormType.FORM_40F.value
+        )
+        result: Dict[str, Any] = {
+            "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
+            "filing_date": str(getattr(filing, "filing_date", "")),
+            "acceptance_datetime": self._extract_acceptance_datetime(filing),
+            "report_date": str(getattr(filing, "report_date", "")),
+            "form": canonical_form,
+            "annual_information_form": "",
+            "exhibits": {},
+            "text": "",
+        }
+        if not filing:
+            return result
+
+        try:
+            exhibits_raw = self.extract_exhibit_99_attachments(filing, max_chars=max_chars)
+            filtered_exhibits: Dict[str, str] = {}
+            for key, ex_text in exhibits_raw.items():
+                en_text, lang_rep = filter_english_operational_text(ex_text)
+                if en_text and lang_rep.is_usable_english:
+                    filtered_exhibits[key] = en_text[:max_chars] if max_chars > 0 else en_text
+            result["exhibits"] = filtered_exhibits
+
+            if filtered_exhibits:
+                aif_text = "\n\n".join(
+                    f"[{key}]\n{body}" for key, body in filtered_exhibits.items()
+                )
+                result["annual_information_form"] = aif_text[:max_chars] if max_chars > 0 else aif_text
+                result["text"] = result["annual_information_form"]
+            else:
+                raw_primary = self._coerce_section_text(filing)
+                en_primary, _ = filter_english_operational_text(raw_primary)
+                bounded = (en_primary or raw_primary)[:max_chars] if max_chars > 0 else (en_primary or raw_primary)
+                result["annual_information_form"] = bounded
+                result["text"] = bounded
+        except Exception as e:
+            logger.warning(f"Error extracting sections from {canonical_form} filing: {e}")
+
+        return result
+
+    def fetch_recent_6k(
+        self,
+        ticker_or_cik: str,
+        limit: int = 10,
+        year: Optional[int] = None,
+        *,
+        include_exhibits: bool = True,
+        max_chars: int = DEFAULT_MAX_FILING_CHARS,
+    ) -> List[Dict[str, Any]]:
+        """Fetch Form 6-K Foreign Private Issuer current reports with Rule 306 English filtering (ADR-00049)."""
+        company = self.get_company(ticker_or_cik)
+        if not company:
+            return []
+
+        results: List[Dict[str, Any]] = []
+        try:
+            filings = company.get_filings(form=SECFormType.FORM_6K.value)
+            if not filings:
+                return []
+            count = 0
+            for filing in filings:
+                filing_date_str = str(getattr(filing, "filing_date", ""))
+                if year and str(year) not in filing_date_str:
+                    continue
+                raw_text = self._coerce_section_text(filing)
+                sanitized_primary, _, primary_lang = sanitize_sec_6k_text(raw_text, max_chars=max_chars)
+                raw_exhibits = (
+                    self.extract_exhibit_99_attachments(filing, max_chars=max_chars)
+                    if include_exhibits
+                    else {}
+                )
+                exhibits: Dict[str, str] = {}
+                exhibit_usable = False
+                for ex_key, ex_val in raw_exhibits.items():
+                    clean_ex, _, ex_lang = sanitize_sec_6k_text(ex_val, max_chars=max_chars)
+                    if clean_ex and ex_lang.is_usable_english:
+                        exhibits[ex_key] = clean_ex
+                        exhibit_usable = True
+
+                is_usable = primary_lang.is_usable_english or exhibit_usable
+                record: Dict[str, Any] = {
+                    "accession_number": getattr(filing, "accession_number", getattr(filing, "accession_no", "UNKNOWN")),
+                    "filing_date": filing_date_str,
+                    "acceptance_datetime": self._extract_acceptance_datetime(filing),
+                    "form": SECFormType.FORM_6K.value,
+                    "text": sanitized_primary,
+                    "exhibits": exhibits,
+                    "is_usable_english": is_usable,
+                    "latin_letter_ratio": primary_lang.latin_letter_ratio,
+                }
+                if "EX-99.1" in exhibits:
+                    record["exhibit_99_1"] = exhibits["EX-99.1"]
+                elif exhibits:
+                    record["exhibit_99_1"] = next(iter(exhibits.values()))
+                results.append(record)
+                count += 1
+                if count >= limit:
+                    break
+        except Exception as e:
+            logger.error(f"Error fetching 6-K for '{ticker_or_cik}': {e}")
+        return results
 
     def extract_exhibit_10_contracts(
         self,

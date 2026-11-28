@@ -28,10 +28,16 @@ from .canon import (
     SECFormType,
     SECGraphLayer,
     get_default_harvest_forms,
+    get_foreign_harvest_forms,
     is_termination_eligible_form,
     normalize_form_type,
 )
 from .client import EdgarClient, DEFAULT_SP500_BENCHMARK
+from .foreign import (
+    ForeignCounterparty,
+    assess_sec_6k_disruption,
+    lookup_foreign_counterparty,
+)
 from .parser import (
     EdgarEntityLinker,
     extract_sec_relationships,
@@ -466,6 +472,163 @@ class HistoricalSECHarvester:
 
         # Write top-level company year summary
         with open(company_year_dir / "summary.json", "w", encoding="utf-8") as f:
+            json.dump(stats, f, indent=2)
+
+        return stats
+
+    _STAGED_20F_SECTION_FILES: Tuple[Tuple[str, str], ...] = (
+        ("item_3d_risk_factors", "item_3d_risk_factors.txt"),
+        ("item_4_company_info", "item_4_company_info.txt"),
+        ("item_5_operating_review", "item_5_operating_review.txt"),
+    )
+
+    def harvest_foreign_counterparty_year(
+        self,
+        counterparty: ForeignCounterparty,
+        year: int,
+        *,
+        forms: Optional[List[str]] = None,
+        include_exhibit_10: bool = False,
+    ) -> Dict[str, Any]:
+        """Opt-in batch harvest for a Foreign Private Issuer or Canadian MJDS counterparty (ADR-00049).
+
+        Stages filings cleanly under `{output_dir}/FOREIGN/{TICKER}/{YEAR}/` without modifying
+        domestic S&P 500 universe paths or default batch harvesting.
+        """
+        if forms is not None:
+            forms_to_fetch = [normalize_form_type(f) for f in forms]
+        else:
+            default_foreign = [counterparty.annual_form]
+            if counterparty.annual_form == SECFormType.FORM_20F.value:
+                default_foreign.append(SECFormType.FORM_20FA.value)
+            default_foreign.append(SECFormType.FORM_6K.value)
+            forms_to_fetch = [f for f in default_foreign if f in get_foreign_harvest_forms()]
+
+        ticker = counterparty.ticker.upper()
+        year_dir = self.output_dir / "FOREIGN" / ticker / str(year)
+        year_dir.mkdir(parents=True, exist_ok=True)
+
+        stats: Dict[str, Any] = {
+            "ticker": ticker,
+            "cik": counterparty.cik,
+            "company_name": counterparty.company_name,
+            "home_country": counterparty.home_country,
+            "gics_sector": counterparty.gics_sector,
+            "year": year,
+            "20f_count": 0,
+            "20fa_count": 0,
+            "40f_count": 0,
+            "6k_count": 0,
+            "exhibit_8_subsidiaries_count": 0,
+            "exhibit_10_count": 0,
+            "filings_saved": [],
+        }
+
+        # 1. Form 20-F & 20-F/A
+        for form_code, prefix, count_key in (
+            (SECFormType.FORM_20F.value, "20F", "20f_count"),
+            (SECFormType.FORM_20FA.value, "20FA", "20fa_count"),
+        ):
+            if form_code not in forms_to_fetch:
+                continue
+            time.sleep(self.rate_limit_delay)
+            filings_20f = self.client.fetch_20f_filings(ticker, year=year, form_type=form_code, limit=2)
+            for f20 in filings_20f:
+                sections = (
+                    self.client.extract_20f_sections(f20, include_exhibit_10=True)
+                    if include_exhibit_10
+                    else self.client.extract_20f_sections(f20)
+                )
+                acc_num = sections.get("accession_number", "UNKNOWN")
+                acc_dir = year_dir / f"{prefix}_{acc_num}"
+                acc_dir.mkdir(parents=True, exist_ok=True)
+                subs = sections.get("subsidiaries") or []
+                ex10_contracts = sections.get("exhibit_10_contracts") or []
+                meta = {
+                    **counterparty.to_dict(),
+                    "form": form_code,
+                    "year": year,
+                    "accession_number": acc_num,
+                    "filing_date": sections.get("filing_date"),
+                    "acceptance_datetime": sections.get("acceptance_datetime"),
+                    "report_date": sections.get("report_date"),
+                    "subsidiaries_count": len(subs),
+                    "exhibit_10_count": len(ex10_contracts),
+                }
+                with open(acc_dir / "metadata.json", "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+                for sec_key, fname in self._STAGED_20F_SECTION_FILES:
+                    txt = sections.get(sec_key, "")
+                    if txt:
+                        with open(acc_dir / fname, "w", encoding="utf-8") as f:
+                            f.write(txt)
+                if subs:
+                    with open(acc_dir / "exhibit_8_subsidiaries.json", "w", encoding="utf-8") as f:
+                        json.dump(subs, f, indent=2)
+                if ex10_contracts:
+                    with open(acc_dir / "exhibit_10_contracts.json", "w", encoding="utf-8") as f:
+                        json.dump(ex10_contracts, f, indent=2)
+                stats[count_key] += 1
+                stats["exhibit_8_subsidiaries_count"] += len(subs)
+                stats["exhibit_10_count"] += len(ex10_contracts)
+                stats["filings_saved"].append(f"{prefix}_{acc_num}")
+
+        # 2. Canadian MJDS Form 40-F
+        if SECFormType.FORM_40F.value in forms_to_fetch:
+            time.sleep(self.rate_limit_delay)
+            filings_40f = self.client.fetch_40f_filings(ticker, year=year, limit=2)
+            for f40 in filings_40f:
+                sections_40f = self.client.extract_40f_sections(f40)
+                acc_num = sections_40f.get("accession_number", "UNKNOWN")
+                acc_dir = year_dir / f"40F_{acc_num}"
+                acc_dir.mkdir(parents=True, exist_ok=True)
+                meta_40f = {
+                    **counterparty.to_dict(),
+                    "form": SECFormType.FORM_40F.value,
+                    "year": year,
+                    "accession_number": acc_num,
+                    "filing_date": sections_40f.get("filing_date"),
+                    "acceptance_datetime": sections_40f.get("acceptance_datetime"),
+                    "report_date": sections_40f.get("report_date"),
+                }
+                with open(acc_dir / "metadata.json", "w", encoding="utf-8") as f:
+                    json.dump(meta_40f, f, indent=2)
+                aif_txt = sections_40f.get("annual_information_form", "")
+                if aif_txt:
+                    with open(acc_dir / "annual_information_form.txt", "w", encoding="utf-8") as f:
+                        f.write(aif_txt)
+                stats["40f_count"] += 1
+                stats["filings_saved"].append(f"40F_{acc_num}")
+
+        # 3. Form 6-K Current Reports (Rule 306 English-filtered + zero-shock gated)
+        if SECFormType.FORM_6K.value in forms_to_fetch:
+            time.sleep(self.rate_limit_delay)
+            filings_6k = self.client.fetch_recent_6k(ticker, limit=10, year=year)
+            for k6 in filings_6k:
+                acc_num = k6.get("accession_number", "UNKNOWN")
+                acc_dir = year_dir / f"6K_{acc_num}"
+                acc_dir.mkdir(parents=True, exist_ok=True)
+                ex_texts = list((k6.get("exhibits") or {}).values())
+                assessment = assess_sec_6k_disruption(
+                    headline=f"{counterparty.company_name} Form 6-K",
+                    content=str(k6.get("text") or ""),
+                    exhibit_texts=ex_texts,
+                )
+                staged_6k = {
+                    **k6,
+                    "ticker": ticker,
+                    "cik": counterparty.cik,
+                    "company_name": counterparty.company_name,
+                    "home_country": counterparty.home_country,
+                    "gics_sector": counterparty.gics_sector,
+                    "disruption_assessment": assessment.model_dump(mode="json"),
+                }
+                with open(acc_dir / "form6k_events.json", "w", encoding="utf-8") as f:
+                    json.dump(staged_6k, f, indent=2)
+                stats["6k_count"] += 1
+                stats["filings_saved"].append(f"6K_{acc_num}")
+
+        with open(year_dir / "summary.json", "w", encoding="utf-8") as f:
             json.dump(stats, f, indent=2)
 
         return stats
@@ -926,6 +1089,241 @@ class EdgarWorker:
             "edges": len(extracted_edges),
         }
 
+    def process_foreign_annual(
+        self,
+        ticker_or_cik: str,
+        year: Optional[int] = None,
+        *,
+        form_type: str = SECFormType.FORM_20F.value,
+        gics_sector: Optional[str] = None,
+        include_exhibit_10: bool = False,
+    ) -> Dict[str, Any]:
+        """Ingest and persist a Foreign Private Issuer Form 20-F/20-F/A or Canadian 40-F filing (ADR-00049)."""
+        canonical_form = normalize_form_type(form_type, default=SECFormType.FORM_20F.value)
+        if canonical_form not in (
+            SECFormType.FORM_20F.value,
+            SECFormType.FORM_20FA.value,
+            SECFormType.FORM_40F.value,
+        ):
+            raise ValueError(
+                f"process_foreign_annual requires form_type in ('20-F', '20-F/A', '40-F'), got {form_type!r}"
+            )
+
+        if canonical_form == SECFormType.FORM_40F.value:
+            filings = self.client.fetch_40f_filings(ticker_or_cik, year=year, limit=1)
+        else:
+            filings = self.client.fetch_20f_filings(ticker_or_cik, year=year, form_type=canonical_form, limit=1)
+
+        filing = filings[0] if filings else None
+        if not filing:
+            logger.warning(f"No {canonical_form} filing found for {ticker_or_cik}")
+            return {"status": "not_found", "form_type": canonical_form, "nodes": 0, "edges": 0}
+
+        if canonical_form == SECFormType.FORM_40F.value:
+            sections = self.client.extract_40f_sections(filing)
+            section_specs: Tuple[Tuple[str, str, str], ...] = (
+                ("annual_information_form", "Annual Information Form (40-F)", "AIF"),
+            )
+        else:
+            sections = (
+                self.client.extract_20f_sections(filing, include_exhibit_10=True)
+                if include_exhibit_10
+                else self.client.extract_20f_sections(filing)
+            )
+            section_specs = (
+                ("item_3d_risk_factors", "Item 3.D - Risk Factors (20-F)", "Item 3.D"),
+                ("item_4_company_info", "Item 4 - Information on the Company (20-F)", "Item 4"),
+                ("item_5_operating_review", "Item 5 - Operating and Financial Review (20-F)", "Item 5"),
+            )
+
+        effective_form = normalize_form_type(sections.get("form"), default=canonical_form)
+        acc_num = sections.get("accession_number", "UNKNOWN")
+        filing_date_str = sections.get("filing_date") or datetime.utcnow().strftime("%Y-%m-%d")
+        acceptance_dt_str = sections.get("acceptance_datetime")
+        report_date_str = sections.get("report_date") or filing_date_str
+
+        foreign_meta = lookup_foreign_counterparty(ticker_or_cik)
+        primary_entity = self.linker.link_entity(
+            ticker=ticker_or_cik,
+            name=(foreign_meta.company_name if foreign_meta else getattr(filing, "company", ticker_or_cik)),
+        )
+        cik = (
+            (primary_entity.get("cik") if primary_entity else None)
+            or (foreign_meta.cik if foreign_meta else None)
+            or str(getattr(filing, "cik", "") or "")
+        )
+        primary_name = (
+            (primary_entity.get("company_name") if primary_entity else None)
+            or (foreign_meta.company_name if foreign_meta else ticker_or_cik)
+        )
+        ticker = (
+            (primary_entity.get("ticker") if primary_entity else None)
+            or (foreign_meta.ticker if foreign_meta else ticker_or_cik.upper())
+        )
+        resolved_sector = gics_sector or (foreign_meta.gics_sector if foreign_meta else None)
+
+        subs = sections.get("subsidiaries") or []
+        items_present = [short_label for key, _, short_label in section_specs if sections.get(key)]
+        if subs:
+            items_present.append("Exhibit 8")
+
+        if self.pg_conn:
+            self._record_filing_queue(
+                accession_number=acc_num,
+                cik=cik,
+                ticker=ticker,
+                form_type=effective_form,
+                filing_date=filing_date_str,
+                report_date=report_date_str,
+                items_present=items_present,
+                status="processing",
+            )
+
+        extracted_nodes: List[str] = []
+        extracted_edges: List[Dict[str, Any]] = []
+
+        # 1. Persist Exhibit 8 Subsidiaries (FPI equivalent of Exhibit 21)
+        if subs:
+            sub_nodes, sub_edges = self._persist_subsidiaries(
+                parent_cik=cik,
+                parent_name=primary_name,
+                parent_ticker=ticker,
+                subsidiaries=subs,
+                accession_number=acc_num,
+                filing_date=filing_date_str,
+                acceptance_datetime=acceptance_dt_str,
+                form_type=effective_form,
+                section="Exhibit 8 - Significant Subsidiaries (20-F)",
+            )
+            extracted_nodes.extend(sub_nodes)
+            extracted_edges.extend(sub_edges)
+
+        # 2. Segment and extract narrative sections with PiT anchoring
+        from ingestion.sec.parser import rank_salient_chunks
+        from ingestion.segmentation.chunker import FilingMetadata, FinancialSectionSegmenter
+        from knowledge_graph.chunk_store import DocumentChunkRecord, store_document_chunks
+        from knowledge_graph.graph_store import GraphExtractionError, merge_chunk_extraction_payloads
+        from retrieval.temporal import actionable_session
+
+        doc_session_date, doc_known_at_utc, _ = actionable_session(
+            acceptance_dt_str,
+            fallback_doc_date=filing_date_str or None,
+        )
+        doc_valid_from_iso = doc_session_date.isoformat() if doc_session_date else None
+        doc_known_at_iso = doc_known_at_utc.isoformat() if doc_known_at_utc else None
+
+        segmenter = FinancialSectionSegmenter(max_tokens=800, overlap_tokens=120)
+        filing_meta = FilingMetadata(
+            cik=cik or "0000000000",
+            ticker=ticker,
+            company_name=primary_name,
+            form_type=effective_form,
+            period=report_date_str,
+            filing_date=filing_date_str,
+            accession_number=acc_num,
+        )
+
+        for section_key, section_label, _ in section_specs:
+            section_text = sections.get(section_key, "")
+            if not section_text:
+                continue
+
+            raw_chunks = segmenter.segment_filing(
+                section_text,
+                filing_meta,
+                default_section_name=section_label,
+            )
+            ranked_chunks = rank_salient_chunks(raw_chunks)
+            chunk_records = [
+                DocumentChunkRecord(
+                    chunk_id=c.chunk_id,
+                    doc_id=acc_num,
+                    source_type="sec_filing",
+                    cik=cik or None,
+                    section=c.section_name,
+                    char_start=c.start_char,
+                    char_end=c.end_char,
+                    text=c.text,
+                    valid_from=doc_valid_from_iso,
+                    known_at=doc_known_at_iso,
+                    form_type=effective_form,
+                )
+                for c in raw_chunks
+            ]
+            if self.pg_conn and chunk_records:
+                try:
+                    store_document_chunks(chunk_records, conn=self.pg_conn)
+                except Exception as exc:
+                    logger.warning("Failed storing foreign SEC chunks for %s (%s): %s", acc_num, section_label, exc)
+
+            per_chunk_payloads: List[Dict[str, Any]] = []
+            for chunk in ranked_chunks:
+                try:
+                    try:
+                        chunk_graph = extract_sec_relationships(
+                            chunk.text,
+                            source_id=f"{acc_num}:{section_key}",
+                            doc_id=acc_num,
+                            cik=cik,
+                            ticker=ticker,
+                            company_name=primary_name,
+                            form_type=effective_form,
+                            filing_date=filing_date_str,
+                            section_name=chunk.section_name,
+                            gics_sector=resolved_sector,
+                        )
+                    except TypeError:
+                        chunk_graph = extract_sec_relationships(chunk.text, source_id=f"{acc_num}:{section_key}")
+                except GraphExtractionError as exc:
+                    logger.warning("Quarantined foreign %s chunk %s: %s", section_label, chunk.chunk_id, exc)
+                    continue
+
+                if chunk_graph.get("nodes") or chunk_graph.get("edges"):
+                    for edge in chunk_graph.get("edges", []):
+                        eprops = dict(edge.get("properties") or {})
+                        eprops["evidence_chunk_ids"] = sorted(
+                            {*(eprops.get("evidence_chunk_ids") or []), chunk.chunk_id}
+                        )
+                        eprops["sec_graph_layer"] = SECGraphLayer.DOMAIN1_OPERATIONAL.value
+                        edge["properties"] = eprops
+                    chunk_graph["chunk_id"] = chunk.chunk_id
+                    per_chunk_payloads.append(chunk_graph)
+
+            if not per_chunk_payloads:
+                continue
+
+            graph_data = merge_chunk_extraction_payloads(per_chunk_payloads)
+            n, e = self._persist_sec_graph_data(
+                primary_name=primary_name,
+                primary_ticker=ticker,
+                graph_data=graph_data,
+                accession_number=acc_num,
+                filing_date=filing_date_str,
+                form_type=effective_form,
+                section=section_label,
+                source_text=section_text,
+                acceptance_datetime=acceptance_dt_str,
+                evidence_chunk_ids=[c.chunk_id for c in raw_chunks],
+            )
+            extracted_nodes.extend(n)
+            extracted_edges.extend(e)
+
+        if self.pg_conn:
+            self._update_filing_queue(
+                accession_number=acc_num,
+                status="completed",
+                node_count=len(extracted_nodes),
+                edge_count=len(extracted_edges),
+            )
+
+        return {
+            "status": "completed",
+            "form_type": effective_form,
+            "accession_number": acc_num,
+            "nodes": len(extracted_nodes),
+            "edges": len(extracted_edges),
+        }
+
     def _persist_subsidiaries(
         self,
         parent_cik: str,
@@ -936,6 +1334,7 @@ class EdgarWorker:
         filing_date: str,
         acceptance_datetime: Optional[str] = None,
         form_type: str = SECFormType.FORM_10K.value,
+        section: str = "Exhibit 21 - Subsidiaries",
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
         """Persist Exhibit 21 subsidiaries to PostgreSQL sec_subsidiaries and Memgraph."""
         from retrieval.temporal import actionable_session
@@ -990,7 +1389,7 @@ class EdgarWorker:
             store_document_chunks,
         )
 
-        ex21_chunk_id = make_chunk_id(accession_number, "Exhibit 21 - Subsidiaries", 1)
+        ex21_chunk_id = make_chunk_id(accession_number, section, 1)
         ex21_chunk_ids = [ex21_chunk_id]
         if self.pg_conn and subsidiaries:
             try:
@@ -1007,7 +1406,7 @@ class EdgarWorker:
                                 doc_id=accession_number,
                                 source_type="sec_filing",
                                 cik=parent_cik or None,
-                                section="Exhibit 21 - Subsidiaries",
+                                section=section,
                                 char_start=0,
                                 char_end=len(sub_summary),
                                 text=sub_summary,
@@ -1075,7 +1474,7 @@ class EdgarWorker:
                         source_type="sec_filing",
                         accession_number=accession_number,
                         form_type=canonical_form,
-                        section="Exhibit 21 - Subsidiaries",
+                        section=section,
                         fiscal_year=fiscal_year,
                         properties={"jurisdiction": jur},
                     )
@@ -1159,9 +1558,10 @@ class EdgarWorker:
                         "properties": {"jurisdiction": sub.get("jurisdiction", "Unknown")},
                     }
                 )
+        embed_tag = "Exhibit21" if section == "Exhibit 21 - Subsidiaries" else "Exhibit8"
         self._emit_sec_node_embeddings(
             embed_nodes,
-            source_hash=f"{accession_number}:Exhibit21",
+            source_hash=f"{accession_number}:{embed_tag}",
             valid_from=valid_from_iso,
             known_at=known_at_iso,
         )

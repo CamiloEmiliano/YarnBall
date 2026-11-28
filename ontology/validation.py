@@ -211,12 +211,16 @@ def validate_and_orient_triple(
 # ----------------------------------------------------------------------
 PROVENANCE_CONFIDENCE_MAP: Dict[str, float] = {
     "SEC_EXHIBIT_21": 1.00,          # Sworn statutory subsidiary disclosure (Ground Truth)
+    "SEC_EXHIBIT_8": 1.00,           # Foreign Private Issuer Exhibit 8 subsidiaries (ADR-00049)
     "SEC_FORM_4": 1.00,              # Official SEC insider transaction XML
-    "SEC_XBRL_COMPANYFACTS": 1.00,   # Structured US-GAAP XBRL companyfacts (DIO & ASC 280)
+    "SEC_XBRL_COMPANYFACTS": 1.00,   # Structured US-GAAP/IFRS XBRL companyfacts (DIO & ASC 280)
     "SEC_10K_ITEM1": 0.98,           # Form 10-K Item 1 Business
+    "SEC_20F": 0.98,                 # Foreign Private Issuer Form 20-F / 20-F/A (ADR-00049)
+    "SEC_40F": 0.98,                 # Canadian MJDS Form 40-F annual report (ADR-00049)
     "SEC_EXHIBIT_10": 0.98,          # Operational Exhibit 10 material contracts (ADR-00048)
     "SEC_10Q": 0.95,                 # Form 10-Q Segment & supply disclosure
     "SEC_8K": 0.95,                  # Form 8-K Material Event Disclosure
+    "SEC_6K": 0.95,                  # Foreign Private Issuer Form 6-K current report (ADR-00049)
     "MULTI_TEACHER_CONSENSUS": 0.85, # 2-of-3 Frontier LLM Consensus
     "FINANCIAL_NEWS_VERIFIED": 0.75, # News article corroboration
     "NEWS_EXTRACTION": 0.60,         # Single news article extraction

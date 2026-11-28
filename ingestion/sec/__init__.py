@@ -4,7 +4,8 @@ SEC EDGAR Regulatory Disclosures Ingestion Subpackage.
 Modules:
 - `canon`: Zero-dependency canonical SEC EDGAR form, exhibit, 8-K item & section registry (ADR-00045)
 - `client`: `EdgarClient`, `DEFAULT_SP500_BENCHMARK`, operational Exhibit 10 filter & filing downloader
-- `xbrl`: Offline US-GAAP XBRL `companyfacts` DIO & ASC 280 concentration priors store (ADR-00048)
+- `foreign`: Foreign Private Issuer (`20-F`/`40-F`/`6-K`/`Exhibit 8`) registry, Rule 306 guard & 6-K gating (ADR-00049)
+- `xbrl`: Offline US-GAAP & IFRS XBRL `companyfacts` DIO & ASC 280 concentration priors store (ADR-00048)
 - `parser`: `EdgarEntityLinker`, `normalize_company_name`, section extractor, LLM prompts
 - `harvester`: `HistoricalSECHarvester`, `EdgarWorker`, batch queue pipeline
 - `disruption_gating`: Form 8-K boilerplate sanitization & disruption gating (ADR-00014)
@@ -26,6 +27,7 @@ from .canon import (
     SECIngestionMode,
     SECSectionSpec,
     get_default_harvest_forms,
+    get_foreign_harvest_forms,
     get_form_spec,
     get_forms_by_layer,
     get_forms_by_status,
@@ -42,6 +44,17 @@ from .client import (
     classify_exhibit_10_attachment,
     download_filings_for_ticker,
     extract_operational_contract_clauses,
+)
+from .foreign import (
+    DEFAULT_TIER1_FOREIGN_COUNTERPARTIES,
+    ForeignCounterparty,
+    LanguageFilterReport,
+    assess_sec_6k_disruption,
+    filter_english_operational_text,
+    filter_foreign_counterparties,
+    is_foreign_counterparty,
+    lookup_foreign_counterparty,
+    sanitize_sec_6k_text,
 )
 from .xbrl import (
     PHYSICAL_INVENTORY_GICS_SECTORS,
@@ -102,6 +115,7 @@ __all__ = [
     "normalize_form_type",
     "get_form_spec",
     "get_default_harvest_forms",
+    "get_foreign_harvest_forms",
     "get_forms_by_status",
     "get_forms_by_layer",
     "is_termination_eligible_form",
@@ -115,6 +129,16 @@ __all__ = [
     "classify_exhibit_10_attachment",
     "download_filings_for_ticker",
     "extract_operational_contract_clauses",
+    # Foreign Counterparties (ADR-00049)
+    "DEFAULT_TIER1_FOREIGN_COUNTERPARTIES",
+    "ForeignCounterparty",
+    "LanguageFilterReport",
+    "assess_sec_6k_disruption",
+    "filter_english_operational_text",
+    "filter_foreign_counterparties",
+    "is_foreign_counterparty",
+    "lookup_foreign_counterparty",
+    "sanitize_sec_6k_text",
     # XBRL Priors (ADR-00048)
     "PHYSICAL_INVENTORY_GICS_SECTORS",
     "XBRLConcentrationRecord",

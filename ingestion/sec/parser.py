@@ -16,10 +16,19 @@ import logging
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
+import unicodedata
 
 logger = logging.getLogger("ingestion.sec.parser")
 
-# Common corporate suffixes to strip during normalization
+# Punctuated international corporate suffixes stripped BEFORE punctuation-to-space folding (ADR-00049)
+_PUNCTUATED_INTL_SUFFIX_RE = re.compile(
+    r"(?:(?<=\s)|^)(?:"
+    r"s\.a\.s\.?|s\.r\.l\.?|s\.p\.a\.?|s\.a\.|n\.v\.|b\.v\.|k\.k\.|l\.l\.c\.|p\.l\.c\.|a/s"
+    r")(?=\s|,|;|\)|$)",
+    flags=re.IGNORECASE,
+)
+
+# Common domestic and international corporate suffixes to strip during normalization
 CORP_SUFFIXES = [
     r"\binc(?:\.|\b)",
     r"\bincorporated\b",
@@ -38,10 +47,21 @@ CORP_SUFFIXES = [
     r"\bgroup\b",
     r"\bsa\b",
     r"\bs\.a\.(?:\.|\b)",
+    r"\bsas\b",
+    r"\bsrl\b",
+    r"\bspa\b",
     r"\bag\b",
     r"\bgmbh\b",
+    r"\bkgaa\b",
     r"\bnv\b",
     r"\bn\.v\.(?:\.|\b)",
+    r"\bbv\b",
+    r"\bkk\b",
+    r"\bpty\b",
+    r"\boyj\b",
+    r"\bkabushiki\s+kaisha\b",
+    r"\baktiengesellschaft\b",
+    r"\bsociete\s+anonyme\b",
     r"\bthe\b",
     r"\bclass\b",
     r"\bcl(?:\.|\b)",
@@ -56,25 +76,38 @@ SUFFIX_REGEX = re.compile(
 )
 
 
+def _fold_diacritics(text: str) -> str:
+    """Fold Unicode diacritics (e.g. 'Société' -> 'Societe') while preserving ASCII letters."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
 def normalize_company_name(name: Optional[str]) -> str:
-    """Normalize a company name by removing punctuation, extra spaces, and common legal suffixes.
-    
+    """Normalize a company name by folding diacritics, punctuation, and domestic/international suffixes.
+
     Examples:
         'Apple Inc.' -> 'apple'
         'Microsoft Corporation' -> 'microsoft'
         'Taiwan Semiconductor Manufacturing Co., Ltd.' -> 'taiwan semiconductor manufacturing'
+        'Société Industrielle S.A.' -> 'societe industrielle'
+        'ASML Netherlands B.V.' -> 'asml netherlands'
     """
     if not name:
         return ""
-    
-    # 1. Lowercase and replace punctuation with spaces
-    text = name.lower()
+
+    # 1. Fold Unicode diacritics and lowercase
+    text = _fold_diacritics(name).lower()
+
+    # 2. Strip punctuated international suffixes (e.g. B.V., K.K., S.A., S.r.l., A/S) before dot removal
+    text = _PUNCTUATED_INTL_SUFFIX_RE.sub(" ", text)
+
+    # 3. Replace remaining punctuation with spaces
     text = re.sub(r"[^\w\s]", " ", text)
-    
-    # 2. Strip legal entity suffixes
+
+    # 4. Strip legal entity suffixes
     text = SUFFIX_REGEX.sub(" ", text)
-    
-    # 3. Collapse whitespace
+
+    # 5. Collapse whitespace
     text = re.sub(r"\s+", " ", text).strip()
     return text
 

@@ -51,6 +51,15 @@ COGS_TAG_LADDER: Tuple[str, ...] = (
     "CostOfGoodsSold",
 )
 
+IFRS_INVENTORY_TAG_LADDER: Tuple[str, ...] = (
+    "Inventories",
+    "CurrentInventories",
+)
+IFRS_COGS_TAG_LADDER: Tuple[str, ...] = (
+    "CostOfSales",
+)
+_ISO_CURRENCY_UNIT_RE = re.compile(r"^[A-Z]{3}$")
+
 ASC280_CONCENTRATION_TAG = "ConcentrationRiskPercentage1"
 
 ALLOWED_XBRL_PERIODIC_FORMS = frozenset(
@@ -192,13 +201,143 @@ class XBRLConcentrationRecord:
         }
 
 
-def _extract_us_gaap_facts(companyfacts: Mapping[str, Any]) -> Mapping[str, Any]:
+def _extract_taxonomy_facts(companyfacts: Mapping[str, Any], taxonomy: str) -> Mapping[str, Any]:
     facts = companyfacts.get("facts")
     if isinstance(facts, Mapping):
-        us_gaap = facts.get("us-gaap")
-        if isinstance(us_gaap, Mapping):
-            return us_gaap
+        tax = facts.get(taxonomy)
+        if isinstance(tax, Mapping):
+            return tax
     return {}
+
+
+def _extract_us_gaap_facts(companyfacts: Mapping[str, Any]) -> Mapping[str, Any]:
+    return _extract_taxonomy_facts(companyfacts, "us-gaap")
+
+
+def _extract_ifrs_dio_records(
+    ifrs_facts: Mapping[str, Any],
+    *,
+    resolved_cik: str,
+    clean_ticker: Optional[str],
+    clean_sector: Optional[str],
+) -> List[XBRLDIOPriorRecord]:
+    """Extract currency-invariant IFRS (`ifrs-full`) DIO records strictly pairing identical ISO currencies (ADR-00049)."""
+    if not ifrs_facts:
+        return []
+
+    # Keyed strictly by (currency_code, period_end, accn) so cross-currency division is impossible
+    inv_by_key: Dict[Tuple[str, str, str], Tuple[int, float, str, str, str]] = {}
+    for tag_rank, inv_tag in enumerate(IFRS_INVENTORY_TAG_LADDER):
+        concept = ifrs_facts.get(inv_tag)
+        if not isinstance(concept, Mapping):
+            continue
+        units = concept.get("units")
+        if not isinstance(units, Mapping):
+            continue
+        for unit_key, items in units.items():
+            ccy = str(unit_key).strip().upper()
+            if not _ISO_CURRENCY_UNIT_RE.match(ccy) or not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, Mapping):
+                    continue
+                meta = _extract_filing_key(item)
+                val = _to_finite_float(item.get("val"))
+                if meta is None or val is None or val <= 0.0:
+                    continue
+                period_end, accn, filed_date, form_type = meta
+                key = (ccy, period_end, accn)
+                existing = inv_by_key.get(key)
+                if existing is None or tag_rank < existing[0]:
+                    inv_by_key[key] = (tag_rank, val, f"ifrs-full:{inv_tag}[{ccy}]", filed_date, form_type)
+
+    if not inv_by_key:
+        return []
+
+    cogs_by_key: Dict[Tuple[str, str, str], Tuple[int, int, float, str, str, str, str]] = {}
+    for tag_rank, cogs_tag in enumerate(IFRS_COGS_TAG_LADDER):
+        concept = ifrs_facts.get(cogs_tag)
+        if not isinstance(concept, Mapping):
+            continue
+        units = concept.get("units")
+        if not isinstance(units, Mapping):
+            continue
+        for unit_key, items in units.items():
+            ccy = str(unit_key).strip().upper()
+            if not _ISO_CURRENCY_UNIT_RE.match(ccy) or not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, Mapping):
+                    continue
+                meta = _extract_filing_key(item)
+                val = _to_finite_float(item.get("val"))
+                start_str = _normalize_date_str(item.get("start"))
+                if meta is None or val is None or val <= 0.0 or not start_str:
+                    continue
+                period_end, accn, filed_date, form_type = meta
+                key = (ccy, period_end, accn)
+                if key not in inv_by_key:
+                    continue
+                start_dt = date.fromisoformat(start_str)
+                end_dt = date.fromisoformat(period_end)
+                duration_days = (end_dt - start_dt).days + 1
+                if ANNUAL_DURATION_MIN_DAYS <= duration_days <= ANNUAL_DURATION_MAX_DAYS:
+                    basis_rank = 0
+                    period_basis = "ANNUAL"
+                    cogs_ann = val
+                elif QUARTERLY_DURATION_MIN_DAYS <= duration_days <= QUARTERLY_DURATION_MAX_DAYS:
+                    basis_rank = 1
+                    period_basis = "QUARTERLY_ANNUALIZED"
+                    cogs_ann = val * 4.0
+                else:
+                    continue
+
+                cand = (basis_rank, tag_rank, cogs_ann, f"ifrs-full:{cogs_tag}[{ccy}]", period_basis, filed_date, form_type)
+                existing_cogs = cogs_by_key.get(key)
+                if existing_cogs is None or (basis_rank, tag_rank) < (existing_cogs[0], existing_cogs[1]):
+                    cogs_by_key[key] = cand
+
+    records: List[XBRLDIOPriorRecord] = []
+    seen_period_acc: Dict[Tuple[str, str], XBRLDIOPriorRecord] = {}
+    for key, inv_entry in inv_by_key.items():
+        cogs_entry = cogs_by_key.get(key)
+        if cogs_entry is None:
+            continue
+        _, period_end, accn = key
+        _, inv_val, inv_tag, inv_filed, inv_form = inv_entry
+        _, _, cogs_ann, cogs_tag, period_basis, cogs_filed, cogs_form = cogs_entry
+        filed_date = max(inv_filed, cogs_filed)
+        form_type = inv_form or cogs_form
+        dio_days = 365.0 * inv_val / cogs_ann
+        if not math.isfinite(dio_days) or dio_days <= 0.0 or dio_days > MAX_PLAUSIBLE_XBRL_DIO_DAYS:
+            continue
+        session_date, known_at_utc, _ = actionable_session(None, fallback_doc_date=filed_date)
+        if session_date is None:
+            continue
+        rec = XBRLDIOPriorRecord(
+            cik=resolved_cik,
+            ticker=clean_ticker,
+            gics_sector=clean_sector,
+            period_end=period_end,
+            filed_date=filed_date,
+            valid_from=session_date.isoformat(),
+            known_at=known_at_utc.isoformat() if known_at_utc is not None else None,
+            accession_number=accn,
+            form_type=form_type,
+            dio_days=round(dio_days, 4),
+            inventory_usd=round(inv_val, 2),
+            cogs_annualized_usd=round(cogs_ann, 2),
+            inventory_tag=inv_tag,
+            cogs_tag=cogs_tag,
+            period_basis=period_basis,
+        )
+        pa_key = (period_end, accn)
+        if pa_key not in seen_period_acc or (rec.period_basis == "ANNUAL" and seen_period_acc[pa_key].period_basis != "ANNUAL"):
+            seen_period_acc[pa_key] = rec
+
+    records = list(seen_period_acc.values())
+    records.sort(key=lambda r: (r.valid_from, r.period_end, r.filed_date, r.accession_number))
+    return records
 
 
 def _iter_tag_unit_items(
@@ -259,8 +398,16 @@ def extract_xbrl_dio_priors_from_companyfacts(
     clean_sector = str(gics_sector).strip() if gics_sector and str(gics_sector).strip() else None
 
     us_gaap = _extract_us_gaap_facts(companyfacts)
-    if not us_gaap:
+    ifrs_facts = _extract_taxonomy_facts(companyfacts, "ifrs-full")
+    if not us_gaap and not ifrs_facts:
         return []
+    if not us_gaap and ifrs_facts:
+        return _extract_ifrs_dio_records(
+            ifrs_facts,
+            resolved_cik=resolved_cik,
+            clean_ticker=clean_ticker,
+            clean_sector=clean_sector,
+        )
 
     # Step 1: Collect point-in-time USD inventory observations keyed by (period_end, accn)
     # Value tuple: (priority_rank, inventory_usd, inventory_tag, filed_date, form_type)
@@ -316,6 +463,13 @@ def extract_xbrl_dio_priors_from_companyfacts(
             inventory_by_key[key] = (2, val, INVENTORY_FALLBACK_TAG, filed_date, form_type)
 
     if not inventory_by_key:
+        if ifrs_facts:
+            return _extract_ifrs_dio_records(
+                ifrs_facts,
+                resolved_cik=resolved_cik,
+                clean_ticker=clean_ticker,
+                clean_sector=clean_sector,
+            )
         return []
 
     # Step 2: Collect USD COGS flow observations keyed by (period_end, accn)
@@ -404,6 +558,14 @@ def extract_xbrl_dio_priors_from_companyfacts(
                 cogs_tag=cogs_tag,
                 period_basis=period_basis,
             )
+        )
+
+    if not records and ifrs_facts:
+        return _extract_ifrs_dio_records(
+            ifrs_facts,
+            resolved_cik=resolved_cik,
+            clean_ticker=clean_ticker,
+            clean_sector=clean_sector,
         )
 
     records.sort(key=lambda r: (r.valid_from, r.period_end, r.filed_date, r.accession_number))
