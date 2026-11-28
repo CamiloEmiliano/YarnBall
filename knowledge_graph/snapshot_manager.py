@@ -166,25 +166,40 @@ class SnapshotManager:
             ("text", pa.string()),
             ("valid_from", pa.string()),
             ("known_at", pa.string()),
+            ("form_type", pa.string()),
+            ("sec_graph_layer", pa.string()),
         ])
+
+        from ingestion.sec.canon import get_form_spec, normalize_form_type
+
+        def _format_chunk_row(item: Dict[str, Any], fallback_cid: str = "") -> Dict[str, Any]:
+            raw_form = item.get("form_type")
+            norm_form = normalize_form_type(str(raw_form)) if raw_form else None
+            raw_layer = item.get("sec_graph_layer")
+            norm_layer = str(raw_layer).strip() if raw_layer else None
+            if norm_form and not norm_layer:
+                spec = get_form_spec(norm_form)
+                if spec is not None:
+                    norm_layer = spec.graph_layer.value
+            return {
+                "chunk_id": str(item.get("chunk_id") or fallback_cid),
+                "doc_id": str(item.get("doc_id") or ""),
+                "source_type": str(item.get("source_type") or "sec_filing"),
+                "cik": (str(item["cik"]) if item.get("cik") else None),
+                "section": str(item.get("section") or ""),
+                "char_start": int(item.get("char_start") or 0),
+                "char_end": int(item.get("char_end") or 0),
+                "text": str(item.get("text") or ""),
+                "valid_from": (str(item["valid_from"]) if item.get("valid_from") is not None else None),
+                "known_at": (str(item["known_at"]) if item.get("known_at") is not None else None),
+                "form_type": norm_form,
+                "sec_graph_layer": norm_layer,
+            }
 
         chunk_rows: List[Dict[str, Any]] = []
         if chunks is not None:
             for item in chunks:
-                chunk_rows.append(
-                    {
-                        "chunk_id": str(item.get("chunk_id") or ""),
-                        "doc_id": str(item.get("doc_id") or ""),
-                        "source_type": str(item.get("source_type") or "sec_filing"),
-                        "cik": (str(item["cik"]) if item.get("cik") else None),
-                        "section": str(item.get("section") or ""),
-                        "char_start": int(item.get("char_start") or 0),
-                        "char_end": int(item.get("char_end") or 0),
-                        "text": str(item.get("text") or ""),
-                        "valid_from": (str(item["valid_from"]) if item.get("valid_from") is not None else None),
-                        "known_at": (str(item["known_at"]) if item.get("known_at") is not None else None),
-                    }
-                )
+                chunk_rows.append(_format_chunk_row(item))
         else:
             referenced_cids: List[str] = []
             for e in edges:
@@ -201,21 +216,7 @@ class SnapshotManager:
 
                 fetched = fetch_chunks_by_ids(referenced_cids)
                 for cid in sorted(fetched):
-                    item = fetched[cid]
-                    chunk_rows.append(
-                        {
-                            "chunk_id": str(item.get("chunk_id") or cid),
-                            "doc_id": str(item.get("doc_id") or ""),
-                            "source_type": str(item.get("source_type") or "sec_filing"),
-                            "cik": (str(item["cik"]) if item.get("cik") else None),
-                            "section": str(item.get("section") or ""),
-                            "char_start": int(item.get("char_start") or 0),
-                            "char_end": int(item.get("char_end") or 0),
-                            "text": str(item.get("text") or ""),
-                            "valid_from": (str(item["valid_from"]) if item.get("valid_from") is not None else None),
-                            "known_at": (str(item["known_at"]) if item.get("known_at") is not None else None),
-                        }
-                    )
+                    chunk_rows.append(_format_chunk_row(fetched[cid], fallback_cid=cid))
 
         node_table = pa.Table.from_pylist(nodes, schema=node_schema) if nodes else pa.Table.from_batches([], schema=node_schema)
         edge_table = pa.Table.from_pylist(edges, schema=edge_schema) if edges else pa.Table.from_batches([], schema=edge_schema)

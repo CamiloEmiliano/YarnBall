@@ -276,13 +276,19 @@ def create_queue_table(db_name: str = "financial_rag"):
             tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', text)) STORED,
             valid_from DATE,
             known_at TIMESTAMPTZ,
+            form_type VARCHAR(20),
+            sec_graph_layer VARCHAR(32),
             embedding vector({emb_dim}),
             created_at TIMESTAMPTZ DEFAULT now()
         );
+        ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS form_type VARCHAR(20);
+        ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS sec_graph_layer VARCHAR(32);
         CREATE INDEX IF NOT EXISTS idx_document_chunks_doc_id
             ON document_chunks (doc_id);
         CREATE INDEX IF NOT EXISTS idx_document_chunks_valid_from
             ON document_chunks (valid_from);
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_form_type
+            ON document_chunks (form_type, valid_from);
         CREATE INDEX IF NOT EXISTS idx_document_chunks_tsv_gin
             ON document_chunks USING gin (tsv);
         CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_hnsw

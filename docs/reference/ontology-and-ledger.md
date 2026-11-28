@@ -22,6 +22,8 @@ Static AST API reference for `ontology/`, `embedding/`, and `knowledge_graph/` (
 
 ::: embedding.embedder
 
+::: embedding.reranker
+
 ## `knowledge_graph`
 
 ::: knowledge_graph.errors
@@ -41,6 +43,8 @@ Static AST API reference for `ontology/`, `embedding/`, and `knowledge_graph/` (
 ::: knowledge_graph.ledger
 
 ::: knowledge_graph.communities
+
+::: knowledge_graph.ablation
 
 ::: knowledge_graph.snapshot_manager
 

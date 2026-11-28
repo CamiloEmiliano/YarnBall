@@ -39,7 +39,7 @@ def make_chunk_id(doc_id: str, section: Optional[str], ordinal: int) -> str:
 
 @dataclass(frozen=True)
 class DocumentChunkRecord:
-    """Canonical text-unit record persisted in `document_chunks` and `chunks.parquet`."""
+    """Canonical text-unit record persisted in `document_chunks` and `chunks.parquet` (ADR-00035 / ADR-00047)."""
 
     chunk_id: str
     doc_id: str
@@ -51,9 +51,29 @@ class DocumentChunkRecord:
     text: str
     valid_from: Optional[str] = None
     known_at: Optional[str] = None
+    form_type: Optional[str] = None
+    sec_graph_layer: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+def _resolve_chunk_form_and_layer(
+    raw_form: Optional[Any],
+    raw_layer: Optional[Any],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Normalize SEC `form_type` and derive canonical `sec_graph_layer` via `ingestion.sec.canon`."""
+    from ingestion.sec.canon import get_form_spec, normalize_form_type
+
+    form_str = str(raw_form).strip() if raw_form is not None else ""
+    norm_form = normalize_form_type(form_str) if form_str else None
+    layer_str = str(raw_layer).strip() if raw_layer is not None else ""
+    norm_layer: Optional[str] = layer_str or None
+    if norm_form and not norm_layer:
+        spec = get_form_spec(norm_form)
+        if spec is not None:
+            norm_layer = spec.graph_layer.value
+    return norm_form, norm_layer
 
 
 def store_document_chunks(
@@ -63,7 +83,7 @@ def store_document_chunks(
     embed: bool = False,
     batch_gpu: bool = False,
 ) -> int:
-    """Upsert text-unit records into PostgreSQL `document_chunks` with inherited PiT validity (ADR-00035)."""
+    """Upsert text-unit records into PostgreSQL `document_chunks` with inherited PiT & form provenance (ADR-00035 / ADR-00047)."""
     if not chunks:
         return 0
 
@@ -74,6 +94,10 @@ def store_document_chunks(
         txt = str(rec.get("text") or "").strip()
         if not cid or not txt:
             continue
+        norm_form, norm_layer = _resolve_chunk_form_and_layer(
+            rec.get("form_type"),
+            rec.get("sec_graph_layer"),
+        )
         normalized.append(
             {
                 "chunk_id": cid,
@@ -86,6 +110,8 @@ def store_document_chunks(
                 "text": txt,
                 "valid_from": rec.get("valid_from"),
                 "known_at": rec.get("known_at"),
+                "form_type": norm_form,
+                "sec_graph_layer": norm_layer,
             }
         )
 
@@ -102,9 +128,10 @@ def store_document_chunks(
     upsert_sql = """
         INSERT INTO document_chunks (
             chunk_id, doc_id, source_type, cik, section,
-            char_start, char_end, text, valid_from, known_at, embedding
+            char_start, char_end, text, valid_from, known_at,
+            form_type, sec_graph_layer, embedding
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::date, %s::timestamptz, %s::vector)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::date, %s::timestamptz, %s, %s, %s::vector)
         ON CONFLICT (chunk_id) DO UPDATE SET
             doc_id = EXCLUDED.doc_id,
             source_type = EXCLUDED.source_type,
@@ -115,6 +142,8 @@ def store_document_chunks(
             text = EXCLUDED.text,
             valid_from = COALESCE(document_chunks.valid_from, EXCLUDED.valid_from),
             known_at = COALESCE(document_chunks.known_at, EXCLUDED.known_at),
+            form_type = COALESCE(EXCLUDED.form_type, document_chunks.form_type),
+            sec_graph_layer = COALESCE(EXCLUDED.sec_graph_layer, document_chunks.sec_graph_layer),
             embedding = COALESCE(EXCLUDED.embedding, document_chunks.embedding);
     """
 
@@ -130,6 +159,8 @@ def store_document_chunks(
             r["text"],
             r["valid_from"],
             r["known_at"],
+            r["form_type"],
+            r["sec_graph_layer"],
             vec_lit,
         )
         for r, vec_lit in zip(normalized, vec_literals)
@@ -221,7 +252,8 @@ def fetch_chunks_by_ids(
 
     sql = """
         SELECT chunk_id, doc_id, source_type, cik, section,
-               char_start, char_end, text, valid_from, known_at
+               char_start, char_end, text, valid_from, known_at,
+               form_type, sec_graph_layer
         FROM document_chunks
         WHERE chunk_id = ANY(%s);
     """
@@ -243,6 +275,8 @@ def fetch_chunks_by_ids(
                     "text": str(row[7] or ""),
                     "valid_from": str(row[8]) if row[8] is not None else None,
                     "known_at": str(row[9]) if row[9] is not None else None,
+                    "form_type": (str(row[10]) if len(row) > 10 and row[10] is not None else None),
+                    "sec_graph_layer": (str(row[11]) if len(row) > 11 and row[11] is not None else None),
                 }
         return out_map
 
@@ -265,8 +299,12 @@ def search_chunks_hybrid_rrf(
     top_k: int = 10,
     rrf_k: int = 60,
     conn: Optional[Any] = None,
+    allowed_form_types: Optional[Sequence[str]] = None,
+    allowed_graph_layers: Optional[Sequence[str]] = None,
+    reranker: Optional[Any] = None,
+    rerank_top_m: int = 40,
 ) -> List[Dict[str, Any]]:
-    """Execute Point-in-Time hybrid dense + Postgres `tsvector` lexical chunk retrieval via RRF (ADR-00035)."""
+    """Execute Point-in-Time hybrid dense + Postgres `tsvector` lexical chunk retrieval via RRF (ADR-00035 / ADR-00047)."""
     if not isinstance(ctx, PiTContext):
         raise TypeError(f"ctx must be a PiTContext instance, got {type(ctx).__name__}")
     clean_q = str(query or "").strip()
@@ -274,36 +312,61 @@ def search_chunks_hybrid_rrf(
         return []
 
     from embedding.embedder import embed_query, format_pgvector_literal
+    from ingestion.sec.canon import normalize_form_type
 
     q_vec = format_pgvector_literal(embed_query(clean_q))
-    candidate_limit = max(top_k * 3, 20)
+    candidate_limit = max(top_k * 3, int(rerank_top_m) if reranker is not None else 20)
 
-    dense_sql = """
+    norm_forms: List[str] = []
+    if allowed_form_types is not None:
+        norm_forms = [normalize_form_type(f) for f in allowed_form_types if str(f or "").strip()]
+        if not norm_forms:
+            return []
+
+    norm_layers: List[str] = []
+    if allowed_graph_layers is not None:
+        norm_layers = [str(layer).strip().upper() for layer in allowed_graph_layers if str(layer or "").strip()]
+        if not norm_layers:
+            return []
+
+    filter_clauses: List[str] = []
+    filter_params: List[Any] = []
+    if norm_forms:
+        filter_clauses.append("AND form_type = ANY(%s)")
+        filter_params.append(norm_forms)
+    if norm_layers:
+        filter_clauses.append("AND sec_graph_layer = ANY(%s)")
+        filter_params.append(norm_layers)
+    extra_where = ("\n          " + "\n          ".join(filter_clauses)) if filter_clauses else ""
+
+    dense_sql = f"""
         SELECT chunk_id, doc_id, source_type, cik, section, text, valid_from, known_at,
-               1 - (embedding <=> %s::vector) AS dense_score
+               1 - (embedding <=> %s::vector) AS dense_score,
+               form_type, sec_graph_layer
         FROM document_chunks
         WHERE embedding IS NOT NULL
           AND valid_from IS NOT NULL
-          AND valid_from <= %s::date
+          AND valid_from <= %s::date{extra_where}
         ORDER BY embedding <=> %s::vector
         LIMIT %s;
     """
-    lexical_sql = """
+    lexical_sql = f"""
         SELECT chunk_id, doc_id, source_type, cik, section, text, valid_from, known_at,
-               ts_rank_cd(tsv, plainto_tsquery('english', %s)) AS lexical_score
+               ts_rank_cd(tsv, plainto_tsquery('english', %s)) AS lexical_score,
+               form_type, sec_graph_layer
         FROM document_chunks
         WHERE valid_from IS NOT NULL
           AND valid_from <= %s::date
-          AND tsv @@ plainto_tsquery('english', %s)
+          AND tsv @@ plainto_tsquery('english', %s){extra_where}
         ORDER BY lexical_score DESC, chunk_id ASC
         LIMIT %s;
     """
 
     def _run(active_conn: Any) -> Tuple[List[Tuple[Any, ...]], List[Tuple[Any, ...]]]:
         with active_conn.cursor() as cur:
-            cur.execute(dense_sql, (q_vec, ctx.as_of_iso, q_vec, candidate_limit))
+            cur.execute(dense_sql, (q_vec, ctx.as_of_iso, *filter_params, q_vec, candidate_limit))
             d_rows = list(cur.fetchall())
-            cur.execute(lexical_sql, (clean_q, ctx.as_of_iso, clean_q, candidate_limit))
+            cur.execute(lexical_sql, (clean_q, ctx.as_of_iso, clean_q, *filter_params, candidate_limit))
             l_rows = list(cur.fetchall())
         return d_rows, l_rows
 
@@ -330,6 +393,8 @@ def search_chunks_hybrid_rrf(
                 "text": str(row[5] or ""),
                 "valid_from": str(row[6]) if row[6] is not None else None,
                 "known_at": str(row[7]) if row[7] is not None else None,
+                "form_type": (str(row[9]) if len(row) > 9 and row[9] is not None else None),
+                "sec_graph_layer": (str(row[10]) if len(row) > 10 and row[10] is not None else None),
                 "dense_score": 0.0,
                 "lexical_score": 0.0,
                 "rrf_score": 0.0,
@@ -351,6 +416,8 @@ def search_chunks_hybrid_rrf(
                 "text": str(row[5] or ""),
                 "valid_from": str(row[6]) if row[6] is not None else None,
                 "known_at": str(row[7]) if row[7] is not None else None,
+                "form_type": (str(row[9]) if len(row) > 9 and row[9] is not None else None),
+                "sec_graph_layer": (str(row[10]) if len(row) > 10 and row[10] is not None else None),
                 "dense_score": 0.0,
                 "lexical_score": 0.0,
                 "rrf_score": 0.0,
@@ -360,7 +427,22 @@ def search_chunks_hybrid_rrf(
         entry["rrf_score"] += 1.0 / (rrf_k + rank)
 
     ranked = sorted(fused.values(), key=lambda item: (-float(item["rrf_score"]), item["chunk_id"]))
-    return ranked[: max(1, int(top_k))]
+    limit_k = max(1, int(top_k))
+    if reranker is not None and ranked:
+        top_m = ranked[: max(limit_k, int(rerank_top_m))]
+        scores = list(reranker.score_pairs(clean_q, [str(c.get("text") or "") for c in top_m]))
+        if len(scores) != len(top_m):
+            raise ValueError(
+                f"Reranker returned {len(scores)} scores for {len(top_m)} candidates."
+            )
+        for cand, score in zip(top_m, scores):
+            cand["rerank_score"] = float(score)
+        top_m.sort(
+            key=lambda item: (-float(item["rerank_score"]), -float(item["rrf_score"]), item["chunk_id"])
+        )
+        return top_m[:limit_k]
+
+    return ranked[:limit_k]
 
 
 def flag_legacy_unchunked_edges(driver: Optional[Any] = None) -> int:

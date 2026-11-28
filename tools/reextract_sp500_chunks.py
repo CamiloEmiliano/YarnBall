@@ -194,6 +194,7 @@ def run_sp500_chunk_reextraction(
                             text=c.text,
                             valid_from=valid_from_iso,
                             known_at=known_at_iso,
+                            form_type=form_type,
                         )
                         for c in raw_chunks
                     ]

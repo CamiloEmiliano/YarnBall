@@ -678,6 +678,7 @@ class EdgarWorker:
                     text=c.text,
                     valid_from=doc_valid_from_iso,
                     known_at=doc_known_at_iso,
+                    form_type=effective_form,
                 )
                 for c in raw_chunks
             ]
@@ -857,6 +858,7 @@ class EdgarWorker:
                                 text=sub_summary,
                                 valid_from=valid_from_iso,
                                 known_at=known_at_iso,
+                                form_type=canonical_form,
                             )
                         ],
                         conn=self.pg_conn,
@@ -1114,6 +1116,7 @@ class EdgarWorker:
                             text=source_text.strip(),
                             valid_from=valid_from_iso,
                             known_at=known_at_iso,
+                            form_type=form_type,
                         )
                     ],
                     conn=self.pg_conn,
