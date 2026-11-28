@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00047
 - **Filename**: `ADR-00047-kg-form-ablation-embedder-reranker-study.md`
 - **Date**: 2026-11-28 04:46 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `knowledge_graph` / `embedding` / `retrieval` / `tools` / `tests`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`7d6df08`](../../knowledge_graph/ablation.py), [`7d6df08`](../../knowledge_graph/chunk_store.py), [`7d6df08`](../../embedding/embedder.py), [`7d6df08`](../../embedding/reranker.py), [`7d6df08`](../../tools/eval_kg_form_ablation.py), [`7d6df08`](../../tests/knowledge_graph/test_kg_form_ablation_adr00047.py)
 
 ---
 
@@ -132,7 +132,7 @@ Every `(form_subset, graph_isolation, embedder_arm)` cell is evaluated determini
      $$\hat{v}_{1:d} = \frac{v_{1:d}}{\|v_{1:d}\|_2}$$
      before running `validate_embedding_vectors` ([`ADR-00020`](ADR-00020-fail-fast-embedder-and-zero-vector-guard.md)), rejecting any degenerate zero-norm prefix or $D < d$ mismatch.
    - Pass Ollama `dimensions` when supported while enforcing client-side truncation + L2 re-normalization as the deterministic source of truth.
-2. **Pluggable Cross-Encoder Reranker (`embedding/reranker.py` — created upon approval)**:
+2. **Pluggable Cross-Encoder Reranker ([`embedding/reranker.py`](../../embedding/reranker.py))**:
    - Define `RerankerPort` (`Protocol`) with `score_pairs(query: str, passages: Sequence[str]) -> List[float]`, plus:
      - `DeterministicMockReranker` (for offline CI / unit tests under `YARNBALL_RERANKER_MOCK=1`),
      - `LocalCrossEncoderReranker` (lazy `sentence_transformers.CrossEncoder` / local HuggingFace reranker defaulting to `Qwen/Qwen3-Reranker-0.6B`, configurable via `RERANKER_MODEL` to alternatives such as `BAAI/bge-reranker-v2-m3`, CPU-pinned by default for live serving).
@@ -140,7 +140,7 @@ Every `(form_subset, graph_isolation, embedder_arm)` cell is evaluated determini
 
 ### 4.5 Offline Evaluation Harness & Artifacts
 
-Implement a zero-database-capable offline harness (`knowledge_graph/ablation.py` + CLI `tools/eval_kg_form_ablation.py` — created upon approval):
+Implement a zero-database-capable offline harness ([`knowledge_graph/ablation.py`](../../knowledge_graph/ablation.py) + CLI [`tools/eval_kg_form_ablation.py`](../../tools/eval_kg_form_ablation.py)):
 
 - Consumes a persisted Parquet snapshot directory (`nodes.parquet`, `edges.parquet`, `chunks.parquet`), an optional rejection-queue JSONL directory, and a gold chunk-cited query JSONL file (`queries_gold.jsonl`).
 - Computes all four scorecard pillars across the requested form subsets (`--ladder`, `--lofo`), graph-isolation modes (`--layers flat,layered`), and embedder/reranker arms (`--arms E1,E2,E3` or `--arms E1,E2,E2b,E3`, plus `--mock` for CI).
@@ -176,7 +176,7 @@ Implement a zero-database-capable offline harness (`knowledge_graph/ablation.py`
 
 ## 6. Verification Plan
 
-1. **New Offline Ablation & Embedder Unit/Integration Suite** (`tests/knowledge_graph/test_kg_form_ablation_adr00047.py` — created upon approval):
+1. **New Offline Ablation & Embedder Unit/Integration Suite** ([`tests/knowledge_graph/test_kg_form_ablation_adr00047.py`](../../tests/knowledge_graph/test_kg_form_ablation_adr00047.py)):
    - **Chunk Provenance**: Verify `DocumentChunkRecord` stamps normalized `form_type` and auto-derived `sec_graph_layer` into both `chunks.parquet` and `store_document_chunks`, and that `search_chunks_hybrid_rrf` filters accurately by `allowed_form_types` / `allowed_graph_layers`.
    - **LOFO & Hub-Collapse Detection**: Construct a deterministic synthetic multi-form snapshot (`10-K`, `8-K`, `10-Q`, plus a synthetic `13F-HR` institutional-holder hub connecting all issuers) and assert:
      - `FLAT` ingestion measurably drops Leiden modularity $Q$, spikes $k_{\max}$ / degree Gini $G_k$, and raises `dropped_impact_share`;
