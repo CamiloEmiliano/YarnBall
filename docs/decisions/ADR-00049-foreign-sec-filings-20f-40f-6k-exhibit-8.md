@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00049
 - **Filename**: `ADR-00049-foreign-sec-filings-20f-40f-6k-exhibit-8.md`
 - **Date**: 2026-11-28 07:45 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `ingestion` / `ontology` / `retrieval` / `tests` / `docs`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`ec39c7a`](../../ingestion/sec/foreign.py), [`ec39c7a`](../../ingestion/sec/client.py), [`ec39c7a`](../../ingestion/sec/harvester.py), [`ec39c7a`](../../ingestion/sec/parser.py), [`ec39c7a`](../../ingestion/sec/canon.py), [`ec39c7a`](../../ingestion/sec/xbrl.py), [`ec39c7a`](../../ontology/validation.py), [`ec39c7a`](../../tests/ingestion/sec/test_sec_phase2c_foreign_filings.py)
 
 ---
 
@@ -64,9 +64,9 @@ Additionally, foreign SEC filings introduce three practical ingestion hazards no
      - `Exhibit 8 - Significant Subsidiaries (20-F)` (`applicable_forms=(FORM_20F, FORM_20FA, FORM_F1)`, `high_signal_gleaning=False`).
      - `Annual Information Form (40-F)` (`applicable_forms=(FORM_40F,)`, `high_signal_gleaning=True`).
 
-### 4.2 Dedicated Foreign Counterparty Module (`ingestion/sec/foreign.py` — created upon approval)
+### 4.2 Dedicated Foreign Counterparty Module ([`ingestion/sec/foreign.py`](../../ingestion/sec/foreign.py))
 
-Create `ingestion/sec/foreign.py` encapsulating foreign-issuer registries, SEC Rule 306 language guards, and Form `6-K` sanitization/disruption gating:
+Create [`ingestion/sec/foreign.py`](../../ingestion/sec/foreign.py) encapsulating foreign-issuer registries, SEC Rule 306 language guards, and Form `6-K` sanitization/disruption gating:
 
 1. **Curated Foreign Counterparty Registry**:
    - Frozen dataclass `ForeignCounterparty(ticker, cik, company_name, home_country, annual_form, gics_sector, sp500_supply_role)`.
@@ -116,7 +116,7 @@ Create `ingestion/sec/foreign.py` encapsulating foreign-issuer registries, SEC R
 
 ## 6. Verification Plan
 
-1. **New Phase 2c-i Unit & Integration Suite** (`tests/ingestion/sec/test_sec_phase2c_foreign_filings.py` — created upon approval):
+1. **New Phase 2c-i Unit & Integration Suite** ([`tests/ingestion/sec/test_sec_phase2c_foreign_filings.py`](../../tests/ingestion/sec/test_sec_phase2c_foreign_filings.py)):
    - **Rule 306 Language & Bilingual Filter**: Verify English operational prose passes, bilingual English+Chinese / English+French documents keep English paragraphs and drop foreign-script blocks, and pure non-English appendices are flagged `is_usable_english == False`.
    - **Form `6-K` Sanitization & Disruption Gating**: Verify a TSMC-style monthly revenue `6-K` and a dividend/AGM `6-K` produce zero shock (`is_material_operational_disruption is False`, `0.0`), while a Taiwan fab earthquake `6-K` (`Exhibit 99.1`) or Canadian pipeline outage `6-K` fires the expected disruption category with non-zero shock parameters.
    - **Form `20-F` / `20-F/A` / `40-F` & `Exhibit 8` Extraction**: Verify `Item 3.D`, `Item 4`, `Item 5`, `40-F` AIF/MD&A, and `Exhibit 8` subsidiary parsing, international suffix & diacritic normalization (`"Société Industrielle S.A."`, `"ASML Netherlands B.V."`, `"Murata Manufacturing K.K."`), opt-in foreign harvesting under `FOREIGN/{TICKER}/{YEAR}/`, and `EdgarWorker.process_foreign_annual` chunk/subsidiary persistence.
