@@ -30,6 +30,26 @@ _SIGNATURE_CUTOFF_RE = re.compile(
     r"\bpursuant\s+to\s+the\s+requirements\s+of\s+the\s+securities\s+exchange\s+act\s+of\s+1934\b",
     re.IGNORECASE,
 )
+_FENCED_EXHIBIT_HEADER_RE = re.compile(
+    r"(?:^|\r?\n)[ \t]*(?:"
+    r"[-=_*]{2,}[ \t]*EX(?:HIBIT)?[- \t]+99(?:\.\d+)?\b[^\r\n]*|"
+    r"<TYPE>[ \t]*EX-99(?:\.\d+)?\b[^\r\n]*"
+    r")(?=\r?\n|$)",
+    re.IGNORECASE,
+)
+_ATTACHED_EXHIBIT_HEADER_RE = re.compile(
+    r"(?:^|\r?\n)[ \t]*(?:"
+    r"[-=_*]{2,}[ \t]*EX(?:HIBIT)?[- \t]+99(?:\.\d+)?\b[^\r\n]*|"
+    r"EX(?:HIBIT)?[- \t]+99(?:\.\d+)?(?:[ \t]*[-=_*]{2,})?[ \t]*|"
+    r"<TYPE>[ \t]*EX-99(?:\.\d+)?\b[^\r\n]*"
+    r")(?=\r?\n|$)",
+    re.IGNORECASE,
+)
+_EXHIBIT_INDEX_PREDECESSOR_RE = re.compile(
+    r"(?:exhibit\s+index\b|exhibit\s+no\.?\b|exhibit\s+number\b|item\s+9\.01\b)",
+    re.IGNORECASE,
+)
+_XBRL_EXHIBIT_KEY_RE = re.compile(r"^(?:ex[- \t]*)?(?:101|104)(?:\b|[._-])", re.IGNORECASE)
 _INLINE_SECTION_SPLIT_RE = re.compile(
     r"\r?\n(?=\s*(?:item\s+\d+\.\d{2}\b|forward-looking\s+statements|cautionary\s+(?:note|statement)\b|"
     r"safe\s+harbor\b|signatures?\b))",
@@ -230,21 +250,85 @@ def _is_safe_harbor_paragraph(paragraph: str, lower: str) -> bool:
     return False
 
 
-def _sanitize_with_stats(raw_text: str, max_chars: int = DEFAULT_MAX_FILING_CHARS) -> Tuple[str, int]:
-    """Single-pass linear sanitization returning cleaned text and stripped block count."""
-    if not raw_text:
+def _is_exhibit_index_predecessor(prefix: str) -> bool:
+    """Returns True when the immediately preceding non-empty line is an Exhibit Index header."""
+    for line in reversed(prefix.splitlines()):
+        stripped = line.strip()
+        if stripped:
+            return bool(_EXHIBIT_INDEX_PREDECESSOR_RE.search(stripped))
+    return False
+
+
+def _split_document_segments(raw_text: str) -> Tuple[List[str], int]:
+    """Splits combined primary 8-K + attached Exhibit 99.x text without discarding exhibits at signatures.
+
+    Returns:
+        Tuple of (ordered document segments ready for independent per-document bounding & sanitization,
+        number of Exchange Act signature sections stripped during splitting).
+    """
+    # 1. Split first on explicitly fenced or EDGAR-tagged Exhibit 99.x document boundaries.
+    fenced_matches = list(_FENCED_EXHIBIT_HEADER_RE.finditer(raw_text))
+    if fenced_matches:
+        coarse_docs: List[str] = []
+        first_chunk = raw_text[: fenced_matches[0].start()]
+        if first_chunk.strip():
+            coarse_docs.append(first_chunk)
+        for idx, match in enumerate(fenced_matches):
+            end_pos = fenced_matches[idx + 1].start() if idx + 1 < len(fenced_matches) else len(raw_text)
+            body = raw_text[match.end() : end_pos]
+            if body.strip():
+                coarse_docs.append(body)
+    else:
+        coarse_docs = [raw_text]
+
+    # 2. Within each document segment, truncate its Exchange Act signature tail while preserving any
+    #    standalone attached Exhibit 99.x document that follows the signature block.
+    segments: List[str] = []
+    signatures_stripped = 0
+    for doc in coarse_docs:
+        sig_match = _SIGNATURE_CUTOFF_RE.search(doc)
+        if not sig_match:
+            segments.append(doc)
+            continue
+
+        signatures_stripped += 1
+        head = doc[: sig_match.start()]
+        if head.strip():
+            segments.append(head)
+
+        tail = doc[sig_match.end() :]
+        valid_exhibits: List[re.Match[str]] = []
+        for ex_match in _ATTACHED_EXHIBIT_HEADER_RE.finditer(tail):
+            header_text = ex_match.group(0).strip()
+            is_fenced_or_tagged = header_text.startswith(("-", "=", "_", "*", "<"))
+            if not is_fenced_or_tagged and _is_exhibit_index_predecessor(tail[: ex_match.start()]):
+                continue
+            valid_exhibits.append(ex_match)
+
+        for idx, ex_match in enumerate(valid_exhibits):
+            end_pos = valid_exhibits[idx + 1].start() if idx + 1 < len(valid_exhibits) else len(tail)
+            ex_body = tail[ex_match.end() : end_pos]
+            if ex_body.strip():
+                segments.append(ex_body)
+
+    return segments, signatures_stripped
+
+
+def _sanitize_single_document(raw_doc: str, max_chars: int = DEFAULT_MAX_FILING_CHARS) -> Tuple[str, int]:
+    """Bounds and sanitizes a single document segment (primary 8-K or one attached exhibit)."""
+    if not raw_doc:
         return "", 0
 
-    bounded = raw_text[:max_chars] if max_chars > 0 else raw_text
+    bounded = raw_doc[:max_chars] if max_chars > 0 else raw_doc
     stripped_count = 0
 
-    # 1. Truncate trailing Exchange Act signature section onward.
+    # Strip any remaining Exchange Act signature tail inside this individual document segment.
     sig_match = _SIGNATURE_CUTOFF_RE.search(bounded)
     if sig_match:
         bounded = bounded[: sig_match.start()]
         stripped_count += 1
 
-    # 2. Split monolithic or single-newline blocks on explicit disclaimer/exhibit headers.
+    # Split monolithic or single-newline blocks on explicit disclaimer/exhibit headers.
     expanded = _INLINE_SECTION_SPLIT_RE.sub("\n\n", bounded)
     paragraphs = _PARAGRAPH_SPLIT_RE.split(expanded)
 
@@ -267,6 +351,84 @@ def _sanitize_with_stats(raw_text: str, max_chars: int = DEFAULT_MAX_FILING_CHAR
             kept_segments.append(segment)
 
     return "\n\n".join(kept_segments), stripped_count
+
+
+def _sanitize_with_stats(raw_text: str, max_chars: int = DEFAULT_MAX_FILING_CHARS) -> Tuple[str, int]:
+    """Single-pass linear sanitization returning cleaned text and stripped block count.
+
+    Attached Exhibit 99.x documents appearing after the primary Exchange Act signature block
+    are split into independent segments before per-document `max_chars` bounding and
+    boilerplate/PSLRA Safe Harbor stripping.
+    """
+    if not raw_text:
+        return "", 0
+
+    segments, stripped_count = _split_document_segments(raw_text)
+    cleaned_docs: List[str] = []
+    for segment in segments:
+        cleaned, seg_stripped = _sanitize_single_document(segment, max_chars=max_chars)
+        stripped_count += seg_stripped
+        if cleaned:
+            cleaned_docs.append(cleaned)
+
+    return "\n\n".join(cleaned_docs), stripped_count
+
+
+def extract_8k_exhibit_texts(payload: Mapping[str, Any]) -> List[str]:
+    """Extracts attached narrative exhibit texts (e.g., Exhibit 99.1) from a Form 8-K payload."""
+    collected: List[str] = []
+    seen: set[str] = set()
+
+    def _add(raw_val: Any) -> None:
+        if not isinstance(raw_val, str):
+            return
+        stripped = raw_val.strip()
+        if stripped and stripped not in seen:
+            seen.add(stripped)
+            collected.append(raw_val)
+
+    def _collect_from_mapping(source: Mapping[str, Any]) -> None:
+        raw_list = source.get("exhibit_texts")
+        if isinstance(raw_list, (list, tuple)):
+            for item in raw_list:
+                _add(item)
+
+        for key in ("exhibit_99_1_text", "exhibit_99_1"):
+            _add(source.get(key))
+
+        raw_exhibits = source.get("exhibits")
+        if isinstance(raw_exhibits, Mapping):
+            for ex_key, ex_val in raw_exhibits.items():
+                if _XBRL_EXHIBIT_KEY_RE.match(str(ex_key).strip()):
+                    continue
+                if isinstance(ex_val, str):
+                    _add(ex_val)
+                elif isinstance(ex_val, Mapping):
+                    text_val = ex_val.get("text") if ex_val.get("text") is not None else ex_val.get("content")
+                    _add(text_val)
+        elif isinstance(raw_exhibits, (list, tuple)):
+            for entry in raw_exhibits:
+                if isinstance(entry, str):
+                    _add(entry)
+                elif isinstance(entry, Mapping):
+                    ex_id = str(
+                        entry.get("exhibit_type")
+                        or entry.get("type")
+                        or entry.get("exhibit_no")
+                        or entry.get("key")
+                        or ""
+                    ).strip()
+                    if ex_id and _XBRL_EXHIBIT_KEY_RE.match(ex_id):
+                        continue
+                    text_val = entry.get("text") if entry.get("text") is not None else entry.get("content")
+                    _add(text_val)
+
+    _collect_from_mapping(payload)
+    meta = payload.get("metadata")
+    if isinstance(meta, Mapping):
+        _collect_from_mapping(meta)
+
+    return collected
 
 
 def sanitize_sec_8k_text(raw_text: str, max_chars: int = DEFAULT_MAX_FILING_CHARS) -> str:
@@ -332,6 +494,7 @@ def assess_sec_8k_disruption(
     content: str,
     metadata: Optional[Mapping[str, Any]] = None,
     max_chars: int = DEFAULT_MAX_FILING_CHARS,
+    exhibit_texts: Optional[Sequence[str]] = None,
 ) -> SanitizedDisruptionAssessment:
     """Executes boilerplate sanitization, tier resolution, and negative-control gating."""
     meta = metadata or {}
@@ -339,9 +502,22 @@ def assess_sec_8k_disruption(
     tier = get_sec_8k_item_tier(primary_item)
 
     sanitized_headline, h_stripped = _sanitize_with_stats(headline or "", max_chars=max_chars)
-    sanitized_content, c_stripped = _sanitize_with_stats(content or "", max_chars=max_chars)
+    sanitized_primary, c_stripped = _sanitize_with_stats(content or "", max_chars=max_chars)
     total_stripped = h_stripped + c_stripped
 
+    resolved_exhibits: List[str] = (
+        [ex for ex in exhibit_texts if isinstance(ex, str) and ex.strip()]
+        if exhibit_texts is not None
+        else (extract_8k_exhibit_texts(meta) if meta else [])
+    )
+    sanitized_parts: List[str] = [sanitized_primary] if sanitized_primary else []
+    for exhibit_raw in resolved_exhibits:
+        sanitized_exhibit, ex_stripped = _sanitize_with_stats(exhibit_raw, max_chars=max_chars)
+        total_stripped += ex_stripped
+        if sanitized_exhibit:
+            sanitized_parts.append(sanitized_exhibit)
+
+    sanitized_content = "\n\n".join(sanitized_parts)
     combined_sanitized = "\n".join(part for part in (sanitized_headline, sanitized_content) if part).strip()
     lexical_category = _classify_sanitized_text(combined_sanitized)
 
@@ -488,8 +664,18 @@ def _infer_path_metadata(filing_path: Optional[Union[str, Path]]) -> Tuple[Optio
     return inferred_ticker, inferred_acc
 
 
-def _synthesize_8k_headline(content: str, items: Sequence[str]) -> str:
-    cleaned_body = sanitize_sec_8k_text(content)
+def _synthesize_8k_headline(
+    content: str,
+    items: Sequence[str],
+    exhibit_texts: Optional[Sequence[str]] = None,
+) -> str:
+    cleaned_parts = [sanitize_sec_8k_text(content)]
+    for ex in exhibit_texts or ():
+        if isinstance(ex, str) and ex.strip():
+            cleaned_ex = sanitize_sec_8k_text(ex)
+            if cleaned_ex:
+                cleaned_parts.append(cleaned_ex)
+    cleaned_body = "\n".join(part for part in cleaned_parts if part)
     lines = [line.strip() for line in cleaned_body.splitlines() if line.strip()]
     cover_skip = re.compile(
         r"^(?:united\s+states|securities\s+and\s+exchange\s+commission|"
@@ -600,8 +786,9 @@ def normalize_staged_8k_payload(
     if not cik:
         cik = "0000000000"
 
+    exhibit_texts = extract_8k_exhibit_texts(payload)
     raw_headline = str(payload.get("headline") or "").strip()
-    headline = raw_headline or _synthesize_8k_headline(content, items)
+    headline = raw_headline or _synthesize_8k_headline(content, items, exhibit_texts=exhibit_texts)
 
     normalized: Dict[str, Any] = dict(payload)
     normalized.update(
@@ -617,6 +804,7 @@ def normalize_staged_8k_payload(
             "headline": headline,
             "content": content,
             "text": content,
+            "exhibit_texts": exhibit_texts,
             "metadata": metadata,
         }
     )

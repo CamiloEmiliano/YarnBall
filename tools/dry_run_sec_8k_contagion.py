@@ -209,12 +209,14 @@ def run_sec_8k_dry_run(
     items = filing_data["items"]
     headline = str(filing_data["headline"])
     content = str(filing_data["content"])
+    exhibit_texts = filing_data.get("exhibit_texts") or []
 
     assessment = assess_sec_8k_disruption(
         items=items,
         headline=headline,
         content=content,
         metadata=metadata,
+        exhibit_texts=exhibit_texts,
     )
     sec_item = assessment.primary_sec_item
     duration_days = assessment.shock_duration_days

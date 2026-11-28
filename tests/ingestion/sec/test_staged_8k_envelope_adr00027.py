@@ -124,3 +124,68 @@ def test_dry_run_and_workbench_discover_and_evaluate_legacy_staged_8k(tmp_path: 
     eval_data = eval_resp.json()
     assert eval_data["report"]["disrupted_entity_ticker"] == "AAPL"
     assert eval_data["report"]["disrupted_entity_cik"] == "0000320193"
+
+
+def test_staged_and_inline_8k_preserve_separate_exhibit_99_1_through_dry_run_and_workbench(tmp_path: Path) -> None:
+    staged = tmp_path / "data" / "dry_run_staging" / "sec" / "AAPL" / "2024" / "8K_0000320193-24-000101" / "form8k_events.json"
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    primary_wrapper = (
+        "Item 8.01 Other Events.\n\n"
+        "Apple Inc. issued a press release attached hereto as Exhibit 99.1.\n\n"
+        "SIGNATURES\n"
+        "Pursuant to the requirements of the Securities Exchange Act of 1934, duly signed.\n"
+        "By: /s/ CFO"
+    )
+    exhibit_99_1 = (
+        "FOR IMMEDIATE RELEASE\n\n"
+        "Operations were suspended following an industrial fire at a primary assembly facility.\n\n"
+        "Forward-Looking Statements: Actual results may differ materially due to ransomware."
+    )
+    staged.write_text(
+        json.dumps(
+            {
+                "accession_number": "0000320193-24-000101",
+                "filing_date": "2024-06-14",
+                "form": "8-K",
+                "items": "8.01,9.01",
+                "text": primary_wrapper,
+                "exhibit_99_1": exhibit_99_1,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report, _ = run_sec_8k_dry_run(filing_path=staged, offline_isolation=True, use_mock=True)
+    assert report.disrupted_entity_ticker == "AAPL"
+    assert report.disruption_category == "FACILITY_FIRE_OR_EXPLOSION"
+
+    app = create_workbench_app(project_root=tmp_path)
+    client = TestClient(app)
+    cat = client.get("/api/catalog").json()
+
+    file_eval = client.post(
+        "/api/evaluate-8k",
+        json={"filing_path": cat["filings"][0]["path"], "use_mock": True},
+    )
+    assert file_eval.status_code == 200
+    file_data = file_eval.json()
+    assert file_data["assessment"]["is_material_operational_disruption"] is True
+    assert file_data["assessment"]["disruption_category"] == "FACILITY_FIRE_OR_EXPLOSION"
+    assert "ransomware" not in file_data["assessment"]["sanitized_content"].lower()
+
+    inline_eval = client.post(
+        "/api/evaluate-8k",
+        json={
+            "inline_filing": {
+                "ticker": "AAPL",
+                "items": ["Item 8.01", "Item 9.01"],
+                "content": primary_wrapper,
+                "exhibit_99_1": exhibit_99_1,
+            },
+            "use_mock": True,
+        },
+    )
+    assert inline_eval.status_code == 200
+    inline_data = inline_eval.json()
+    assert inline_data["assessment"]["is_material_operational_disruption"] is True
+    assert inline_data["assessment"]["disruption_category"] == "FACILITY_FIRE_OR_EXPLOSION"

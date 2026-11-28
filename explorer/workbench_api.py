@@ -147,6 +147,8 @@ class InlineForm8KPayload(BaseModel):
     items: List[str] = Field(default_factory=lambda: ["Item 8.01 Other Events"])
     headline: str = ""
     content: str = ""
+    exhibit_99_1: Optional[str] = None
+    exhibit_texts: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -761,6 +763,7 @@ def create_workbench_app(
                 headline=str(filing_data["headline"]),
                 content=str(filing_data["content"]),
                 metadata=filing_data["metadata"],
+                exhibit_texts=filing_data.get("exhibit_texts") or [],
             )
             report, _ = run_sec_8k_dry_run(
                 filing_path=filing_file,
@@ -784,6 +787,7 @@ def create_workbench_app(
                 headline=payload_dict["headline"],
                 content=payload_dict["content"],
                 metadata=payload_dict["metadata"],
+                exhibit_texts=payload_dict.get("exhibit_texts") or [],
             )
             with tempfile.TemporaryDirectory(prefix="yarnball_8k_") as tmpdir:
                 temp_filing = Path(tmpdir) / "inline_8k.json"

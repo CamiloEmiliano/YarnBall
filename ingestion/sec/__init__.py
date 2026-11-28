@@ -61,6 +61,7 @@ from .harvester import (
 from .disruption_gating import (
     SanitizedDisruptionAssessment,
     assess_sec_8k_disruption,
+    extract_8k_exhibit_texts,
     get_sec_8k_item_tier,
     normalize_staged_8k_payload,
     sanitize_sec_8k_text,
@@ -116,6 +117,7 @@ __all__ = [
     # Disruption Gating (ADR-00014)
     "SanitizedDisruptionAssessment",
     "assess_sec_8k_disruption",
+    "extract_8k_exhibit_texts",
     "get_sec_8k_item_tier",
     "normalize_staged_8k_payload",
     "sanitize_sec_8k_text",
