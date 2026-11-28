@@ -3,9 +3,9 @@
 - **ADR ID**: ADR-00048
 - **Filename**: `ADR-00048-exhibit-10-contracts-and-xbrl-dio-priors.md`
 - **Date**: 2026-11-28 06:29 UTC
-- **Status**: PROPOSED
+- **Status**: ACCEPTED
 - **Target Subsystem**: `ingestion` / `contagion` / `ontology` / `retrieval` / `tools` / `tests`
-- **Linked Commits**: Pending acceptance
+- **Linked Commits**: [`865f4db`](../../ingestion/sec/xbrl.py), [`865f4db`](../../ingestion/sec/client.py), [`865f4db`](../../ingestion/sec/harvester.py), [`865f4db`](../../ingestion/sec/canon.py), [`865f4db`](../../contagion/parameters.py), [`865f4db`](../../ontology/validation.py), [`865f4db`](../../tools/init_db.py), [`865f4db`](../../tests/ingestion/sec/test_sec_phase2b_ex10_xbrl.py)
 
 ---
 
@@ -64,9 +64,9 @@ Two statutory SEC EDGAR data sources already registered as **Phase 2b (`PLANNED`
    - Add opt-in staging in `HistoricalSECHarvester.harvest_company_year(..., include_exhibit_10: bool = False)` (and explicit `"Exhibit 10"` support in `extract_10k_sections` / `fetch_recent_8k` when requested), persisting `exhibit_10_contracts.json` alongside `metadata.json` so [`ADR-00047`](ADR-00047-kg-form-ablation-embedder-reranker-study.md) can run clean LOFO ablation comparing `F4` vs. `F4 + Exhibit 10`.
    - Stamp extracted `Exhibit 10` chunks with `section="Exhibit 10 - Material Contract"`, `form_type`, and `sec_graph_layer="DOMAIN1_OPERATIONAL"`.
 
-### 4.2 Offline XBRL `companyfacts` Parser & PiT Priors Store (`ingestion/sec/xbrl.py` — created upon approval)
+### 4.2 Offline XBRL `companyfacts` Parser & PiT Priors Store ([`ingestion/sec/xbrl.py`](../../ingestion/sec/xbrl.py))
 
-Create a clean, offline-first XBRL module (`ingestion/sec/xbrl.py`) consuming either local cached EDGAR `companyfacts` JSON files (`CIK{10-digit}.json`) or `edgartools` `Company.get_facts()` during offline batch harvesting:
+Create a clean, offline-first XBRL module ([`ingestion/sec/xbrl.py`](../../ingestion/sec/xbrl.py)) consuming either local cached EDGAR `companyfacts` JSON files (`CIK{10-digit}.json`) or `edgartools` `Company.get_facts()` during offline batch harvesting:
 
 1. **Physical-Inventory GICS Sector Allowlist**:
    - `PHYSICAL_INVENTORY_GICS_SECTORS`: `{"Information Technology", "Industrials", "Consumer Discretionary", "Consumer Staples", "Health Care", "Energy", "Materials"}`.
@@ -114,7 +114,7 @@ Create a clean, offline-first XBRL module (`ingestion/sec/xbrl.py`) consuming ei
 
 ## 6. Verification Plan
 
-1. **New Phase 2b Unit & Integration Suite** (`tests/ingestion/sec/test_sec_phase2b_ex10_xbrl.py` — created upon approval):
+1. **New Phase 2b Unit & Integration Suite** ([`tests/ingestion/sec/test_sec_phase2b_ex10_xbrl.py`](../../tests/ingestion/sec/test_sec_phase2b_ex10_xbrl.py)):
    - **Exhibit 10 Classifier**: Verify operational contracts (foundry supply, pharma CDMO, LNG off-take, utility PPA, PBM, TSA) pass while executive employment, RSU award, director compensation, indemnification, and credit agreements are deterministically rejected.
    - **Exhibit 10 Clause Windowing**: Verify recitals + operational clauses (exclusivity, volume floors, buffer days, termination) are preserved under `50_000` chars while boilerplate legal definitions/notices are trimmed.
    - **XBRL `companyfacts` Parser**: Feed deterministic multi-quarter/multi-year `companyfacts` JSON fixtures and verify exact $\text{DIO}$ calculation (annual `FY` and annualized `10-Q`), outlier rejection (`<= 0` or `> 365`), ASC 280 `ConcentrationRiskPercentage1` parsing, strict `valid_from <= as_of` PiT lookups (no future balance-sheet leakage), and exclusion of `Financials` / `Real Estate` / `Utilities` / `Communication Services`.
